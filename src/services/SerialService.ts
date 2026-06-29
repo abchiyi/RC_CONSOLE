@@ -69,7 +69,7 @@ export class SerialService {
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null
   private closing = false
-  private lineCallback: ((line: string) => void) | null = null
+  private lineListeners: Set<(line: string) => void> = new Set()
   private disconnectCallback: (() => void) | null = null
 
   static isSupported(): boolean {
@@ -167,7 +167,15 @@ export class SerialService {
   }
 
   onLine(cb: (line: string) => void): void {
-    this.lineCallback = cb
+    this.addLineListener(cb)
+  }
+
+  addLineListener(cb: (line: string) => void): void {
+    this.lineListeners.add(cb)
+  }
+
+  removeLineListener(cb: (line: string) => void): void {
+    this.lineListeners.delete(cb)
   }
 
   onDisconnect(cb: () => void): void {
@@ -212,11 +220,11 @@ export class SerialService {
                   }
                   continue
                 }
-                if (line.length > 500) {
-                  console.log('[Serial] large line:', line.length, 'B',
+                if (import.meta.env.DEV && line.length > 2000) {
+                  console.debug('[Serial] large line:', line.length, 'B',
                     'preview:', line.substring(0, 80))
                 }
-                try { this.lineCallback?.(line) } catch { /* ignore */ }
+                this.lineListeners.forEach(cb => { try { cb(line) } catch { /* ignore */ } })
               }
             }
           }

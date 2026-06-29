@@ -521,6 +521,9 @@ async function saveModel(): Promise<void> {
   await configStore.saveConfig()
 }
 
+// 工具栏按钮别名
+const saveToDevice = saveModel
+
 // 仅切换选项卡加载数据，不自动激活
 function onSlotSelect(slot: number): void {
   configStore.fetchModel(slot).then(() => syncEditFromStore())
