@@ -21,6 +21,11 @@
           prepend-icon="mdi-target"
           to="/calibration"
         />
+        <v-list-item
+          title="系统"
+          prepend-icon="mdi-cog"
+          to="/system"
+        />
       </v-list>
 
       <template #append>

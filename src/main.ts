@@ -19,6 +19,7 @@ import { createPinia } from 'pinia'
 // Stores (import definition at top, usage after pinia install)
 import { useChannelStore } from '@/stores/channels'
 import { useConfigStore } from '@/stores/config'
+import { usePowerStore } from '@/stores/power'
 
 // Serial
 import { serialService } from '@/services/SerialService'
@@ -59,6 +60,16 @@ serialService.onLine((line: string) => {
           && typeof json.channels[0] === 'object')
     ) {
       useConfigStore().handleResponse(json as Record<string, unknown>)
+    }
+
+    // get_power_cfg / set_power_cfg / get_power_state → 电源 Store
+    if (
+      (typeof json.idle_warning_s === 'number' && typeof json.idle_shutdown_s === 'number')
+      || json.ok === true
+      || (typeof json.state === 'string' && typeof json.idle_s === 'number')
+      || typeof json.debug_mode === 'boolean'
+    ) {
+      usePowerStore().handleResponse(json as Record<string, unknown>)
     }
   } catch {
     // 忽略解析失败（日志背景噪音或截断数据）

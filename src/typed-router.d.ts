@@ -21,6 +21,7 @@ declare module 'vue-router/auto-routes' {
     '/': RouteRecordInfo<'/', '/', Record<never, never>, Record<never, never>>,
     '/calibration': RouteRecordInfo<'/calibration', '/calibration', Record<never, never>, Record<never, never>>,
     '/config': RouteRecordInfo<'/config', '/config', Record<never, never>, Record<never, never>>,
+    '/system': RouteRecordInfo<'/system', '/system', Record<never, never>, Record<never, never>>,
   }
 
   /**
@@ -44,6 +45,10 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/config.vue': {
       routes: '/config'
+      views: never
+    }
+    'src/pages/system.vue': {
+      routes: '/system'
       views: never
     }
   }
