@@ -20,6 +20,7 @@ import { createPinia } from 'pinia'
 import { useChannelStore } from '@/stores/channels'
 import { useConfigStore } from '@/stores/config'
 import { usePowerStore } from '@/stores/power'
+import { useCalibrationStore } from '@/stores/calibration'
 
 // Serial
 import { serialService } from '@/services/SerialService'
@@ -48,6 +49,14 @@ serialService.onLine((line: string) => {
         channels: json.channels,
         sources: json.sources ?? [],
       })
+      return
+    }
+
+    // cal_status / cal_get → 校准 Store
+    if (json.cmd === 'cal_status' || json.state !== undefined
+        || json.adc || json.imu || json.lpf_alpha !== undefined) {
+      useCalibrationStore().handleResponse(json as Record<string, unknown>)
+      return
     }
 
     // get_info / get_config / get_model → 配置 Store
@@ -60,6 +69,7 @@ serialService.onLine((line: string) => {
           && typeof json.channels[0] === 'object')
     ) {
       useConfigStore().handleResponse(json as Record<string, unknown>)
+      return
     }
 
     // get_power_cfg / set_power_cfg / get_power_state → 电源 Store
@@ -70,6 +80,7 @@ serialService.onLine((line: string) => {
       || typeof json.debug_mode === 'boolean'
     ) {
       usePowerStore().handleResponse(json as Record<string, unknown>)
+      return
     }
   } catch {
     // 忽略解析失败（日志背景噪音或截断数据）

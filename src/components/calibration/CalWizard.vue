@@ -315,35 +315,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { serialService } from '@/services/SerialService'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useChannelStore } from '@/stores/channels'
+import { useCalibrationStore, type CalType, type AdcCal } from '@/stores/calibration'
 
 const chStore = useChannelStore()
+const calStore = useCalibrationStore()
 
-type CalType = 'trigger' | 'joy_x' | 'joy_y' | 'imu'
-
-// --- 校准数据 ---
-interface AdcCal {
-  raw?: number
-  raw_min?: number
-  raw_center?: number
-  raw_max?: number
-  deadzone: number
-}
-const trigger = reactive<AdcCal>({ deadzone: 30 })
-const joyX = reactive<AdcCal>({ deadzone: 30 })
-const joyY = reactive<AdcCal>({ deadzone: 30 })
-
-interface ImuCal {
-  roll?: number
-  pitch?: number
-  yaw?: number
-  gyro_bias_x?: number
-  gyro_bias_y?: number
-  gyro_bias_z?: number
-}
-const imu = reactive<ImuCal>({})
+// 模板中直接使用 store 的响应式数据（保持别名简洁）
+const trigger = calStore.trigger
+const joyX = calStore.joyX
+const joyY = calStore.joyY
+const imu = calStore.imu
+const lpfAlpha = calStore.lpfAlpha
+const runningType = calStore.runningType
+const calProgress = calStore.calProgress
+const lastMessage = calStore.lastMessage
+const lastType = calStore.lastType
 
 // --- 通道映射: 从 chStore 反查 source → CH# ---
 function sourceChannel(source: string): number {
@@ -359,123 +347,16 @@ const imuChs = computed<number[]>(() => {
   return idxs
 })
 
-// --- 校准状态 ---
-const runningType = ref<CalType | null>(null)
-const calProgress = ref(0)
-const lastMessage = ref('')
-const lastType = ref<CalType | null>(null)
-let statusPollTimer: ReturnType<typeof setInterval> | null = null
-let calTimeout: ReturnType<typeof setTimeout> | null = null
-let calDataTimer: ReturnType<typeof setInterval> | null = null
-
-// --- LPF ---
-const lpfAlpha = ref(500)
-let lpfInitialized = false
-
-// --- 串口响应处理 ---
-function handleLine(line: string): void {
-  try {
-    const msg = JSON.parse(line)
-    // cal_status 响应
-    if (msg.cmd === 'cal_status' || msg.state !== undefined) {
-      const st = msg.state ?? msg.type ?? ''
-      calProgress.value = msg.progress ?? 0
-      if (st === 'done' || st === 2) {
-        lastMessage.value = msg.message || '校准完成'
-        lastType.value = runningType.value
-        stopCal()
-      } else if (st === 'error' || st === 3) {
-        lastMessage.value = msg.message || '校准失败'
-        lastType.value = runningType.value
-        stopCal()
-      } else if (st === 'running' || st === 1) {
-        lastMessage.value = msg.message || '校准进行中…'
-        lastType.value = runningType.value
-      }
-    }
-    // cal_get 响应: {"adc":{"trigger":{min,center,max,deadzone,...},"raw":{...}},"imu":{...},"lpf_alpha":...}
-    if (msg.adc || msg.imu || msg.lpf_alpha !== undefined) {
-      applyCalData(msg)
-    }
-  } catch { /* ignore non-JSON */ }
-}
-
-function applyCalData(data: Record<string, any>): void {
-  const adc = data.adc
-  if (adc) {
-    const raw = adc.raw || {}
-    if (adc.trigger) {
-      trigger.raw = raw.trigger
-      trigger.raw_min = adc.trigger.min
-      trigger.raw_center = adc.trigger.center
-      trigger.raw_max = adc.trigger.max
-      if (adc.trigger.deadzone !== undefined) trigger.deadzone = adc.trigger.deadzone
-    }
-    if (adc.joy_x) {
-      joyX.raw = raw.joy_x
-      joyX.raw_min = adc.joy_x.min
-      joyX.raw_center = adc.joy_x.center
-      joyX.raw_max = adc.joy_x.max
-      if (adc.joy_x.deadzone !== undefined) joyX.deadzone = adc.joy_x.deadzone
-    }
-    if (adc.joy_y) {
-      joyY.raw = raw.joy_y
-      joyY.raw_min = adc.joy_y.min
-      joyY.raw_center = adc.joy_y.center
-      joyY.raw_max = adc.joy_y.max
-      if (adc.joy_y.deadzone !== undefined) joyY.deadzone = adc.joy_y.deadzone
-    }
-  }
-  if (data.imu) {
-    imu.roll = data.imu.roll
-    imu.pitch = data.imu.pitch
-    imu.yaw = data.imu.yaw
-    imu.gyro_bias_x = data.imu.cal?.gyro_bias_x
-    imu.gyro_bias_y = data.imu.cal?.gyro_bias_y
-    imu.gyro_bias_z = data.imu.cal?.gyro_bias_z
-  }
-  if (data.lpf_alpha !== undefined && !lpfInitialized) {
-    lpfAlpha.value = data.lpf_alpha
-    lpfInitialized = true
-  }
-}
-
-// --- 校准控制 ---
+// --- 校准控制（封装 Store 方法） ---
 async function startCal(type: CalType): Promise<void> {
-  if (runningType.value) return
-  runningType.value = type
-  calProgress.value = 0
-  lastMessage.value = '校准进行中…'
-  lastType.value = type
-  await serialService.sendCommand('cal_start', { type })
-
-  // 轮询状态
-  statusPollTimer = setInterval(async () => {
-    await serialService.sendCommand('cal_status')
-  }, 500)
-
-  // 超时保护 15s
-  calTimeout = setTimeout(() => {
-    if (runningType.value) {
-      lastMessage.value = '校准超时，请重试'
-      stopCal()
-    }
-  }, 15000)
-}
-
-function stopCal(): void {
-  runningType.value = null
-  if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null }
-  if (calTimeout) { clearTimeout(calTimeout); calTimeout = null }
+  if (calStore.runningType) return
+  await calStore.startCal(type)
+  calStore.startStatusPolling()
+  calStore.startCalTimeout()
 }
 
 async function cancelCal(): Promise<void> {
-  lastMessage.value = '已取消'
-  stopCal()
-}
-
-async function fetchCalData(): Promise<void> {
-  await serialService.sendCommand('cal_get')
+  calStore.cancelCal()
 }
 
 // --- 死区 ---
@@ -485,7 +366,7 @@ function debounceDeadzone(type: string): void {
   deadzoneTimers[type] = setTimeout(async () => {
     const dz = type === 'trigger' ? trigger.deadzone
       : type === 'joy_x' ? joyX.deadzone : joyY.deadzone
-    await serialService.sendCommand('cal_set_deadzone', { type, deadzone: dz })
+    await calStore.setDeadzone(type, dz)
   }, 300)
 }
 
@@ -494,16 +375,13 @@ let lpfTimer: ReturnType<typeof setTimeout> | null = null
 function sendLpf(): void {
   if (lpfTimer) clearTimeout(lpfTimer)
   lpfTimer = setTimeout(async () => {
-    await serialService.sendCommand('cal_set_lpf_alpha', { alpha: lpfAlpha.value })
+    await calStore.setLpf(lpfAlpha.value)
   }, 300)
 }
 
 // --- IMU 归零 ---
 async function zeroIMU(): Promise<void> {
-  await serialService.sendCommand('cal_zero_imu')
-  lastMessage.value = 'IMU 已归零'
-  lastType.value = 'imu'
-  setTimeout(() => { lastMessage.value = '' }, 2000)
+  await calStore.zeroIMU()
 }
 
 // --- 进度条计算 ---
@@ -539,19 +417,17 @@ function fmtBias(v?: number): string {
 
 // --- 生命周期 ---
 onMounted(() => {
-  serialService.addLineListener(handleLine)
   // 自动开启通道轮询
   if (!chStore.polling) chStore.startPolling()
   // 获取初始校准数据
-  setTimeout(() => fetchCalData(), 300)
+  setTimeout(() => calStore.fetchCalData(), 300)
   // 持续轮询 cal_get 以获取实时 raw 值 (30ms ≈ 33Hz)
-  calDataTimer = setInterval(() => fetchCalData(), 30)
+  calStore.startCalDataPolling(30)
 })
 
 onUnmounted(() => {
-  serialService.removeLineListener(handleLine)
-  if (calDataTimer) { clearInterval(calDataTimer); calDataTimer = null }
-  stopCal()
+  calStore.stopTimers()
+  calStore.stopCalDataPolling()
 })
 </script>
 

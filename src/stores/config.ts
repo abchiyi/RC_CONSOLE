@@ -4,6 +4,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { serialService } from '@/services/SerialService'
+import { RequestResponseHandler } from '@/utils/requestResponse'
 
 export interface InputSourceInfo {
   id: string
@@ -35,6 +36,7 @@ export interface ModelChannel {
   output_center: number
   output_max: number
   deadzone: number
+  ec11_step: number
   reverse: boolean
 }
 
@@ -56,24 +58,8 @@ export const useConfigStore = defineStore('config', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  // 等待设备响应的 Promise 解析器
-  let _pendingResolve: (() => void) | null = null
-  let _pendingCmd: string | null = null
+  const rr = new RequestResponseHandler()
   let _pendingModelSlot: number | null = null
-
-  function _waitForResponse(cmd: string, timeoutMs = 3000): Promise<void> {
-    return new Promise((resolve, reject) => {
-      _pendingCmd = cmd
-      _pendingResolve = resolve
-      setTimeout(() => {
-        if (_pendingCmd === cmd) {
-          _pendingResolve = null
-          _pendingCmd = null
-          reject(new Error(`设备响应超时: ${cmd}`))
-        }
-      }, timeoutMs)
-    })
-  }
 
   const activeModelIndex = computed(() => config.value?.active_model ?? 0)
   const modelCount = computed(() => config.value?.models?.length ?? 0)
@@ -85,7 +71,7 @@ export const useConfigStore = defineStore('config', () => {
   async function fetchDeviceInfo(): Promise<void> {
     loading.value = true
     error.value = null
-    const promise = _waitForResponse('get_info')
+    const promise = rr.wait('get_info')
     await serialService.sendCommand('get_info')
     try {
       await promise
@@ -98,7 +84,7 @@ export const useConfigStore = defineStore('config', () => {
   async function fetchConfig(): Promise<void> {
     loading.value = true
     error.value = null
-    const promise = _waitForResponse('get_config')
+    const promise = rr.wait('get_config')
     await serialService.sendCommand('get_config')
     try {
       await promise
@@ -126,7 +112,7 @@ export const useConfigStore = defineStore('config', () => {
 
     for (let slot = 0; slot < count; slot++) {
       const tag = `get_model_${slot}`
-      const p = _waitForResponse(tag, 2000)
+      const p = rr.wait(tag, 2000)
       _pendingModelSlot = slot
       await serialService.sendCommand('get_model', { slot })
       try {
@@ -143,7 +129,7 @@ export const useConfigStore = defineStore('config', () => {
   async function fetchModel(slot: number): Promise<void> {
     loading.value = true
     const tag = `get_model_${slot}`
-    const p = _waitForResponse(tag, 2000)
+    const p = rr.wait(tag, 2000)
     _pendingModelSlot = slot
     await serialService.sendCommand('get_model', { slot })
     try {
@@ -185,12 +171,7 @@ export const useConfigStore = defineStore('config', () => {
       && config.value
     ) {
       config.value.models[_pendingModelSlot] = json as unknown as ModelConfig
-      const tag = `get_model_${_pendingModelSlot}`
-      if (_pendingCmd === tag && _pendingResolve) {
-        _pendingResolve()
-        _pendingResolve = null
-        _pendingCmd = null
-      }
+      rr.tryResolve(`get_model_${_pendingModelSlot}`)
       return
     }
 
@@ -206,16 +187,7 @@ export const useConfigStore = defineStore('config', () => {
 
     // 匹配等待中的请求，resolve 对应 Promise
     const cmd = json.cmd as string | undefined
-    const matched =
-      (_pendingCmd === 'get_info' && (cmd === 'get_info' || deviceInfo.value))
-      || (_pendingCmd === 'get_config' && (cmd === 'get_config' || config.value))
-      || (cmd && cmd === _pendingCmd)
-
-    if (matched && _pendingResolve) {
-      _pendingResolve()
-      _pendingResolve = null
-      _pendingCmd = null
-    }
+    if (cmd) rr.tryResolve(cmd)
   }
 
   return {

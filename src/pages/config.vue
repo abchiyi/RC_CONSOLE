@@ -1,5 +1,9 @@
 <template>
   <div>
+    <v-snackbar v-model="snackbarVisible" color="info" timeout="2000">
+      {{ snackbarMsg }}
+    </v-snackbar>
+
     <v-toolbar color="transparent" density="compact">
       <v-toolbar-title class="text-h6">
         <v-icon class="mr-2">mdi-cog</v-icon>
@@ -126,7 +130,8 @@
                     <div class="chan-header-wide d-flex align-center flex-wrap">
                       <span class="text-caption font-weight-bold mr-3" style="min-width:32px">CH{{ idx }}</span>
                       <v-select v-model="ch.source" :items="sourceOptions" density="compact" hide-details
-                        variant="outlined" style="max-width:140px" class="mr-3" @click.stop />
+                        variant="outlined" style="max-width:140px" class="mr-3"
+                        @update:model-value="(val: string) => onSourceChange(idx, val)" @click.stop />
                       <template v-if="ch.source !== 'NONE'">
                         <div class="flex-grow-1 mx-2" @click.stop>
                           <template v-if="isButtonSource(ch.source)">
@@ -171,7 +176,8 @@
                       <div class="d-flex justify-space-between align-center">
                         <span class="text-caption font-weight-bold">CH{{ idx }}</span>
                         <v-select v-model="ch.source" :items="sourceOptions" density="compact" hide-details
-                          variant="outlined" style="max-width:130px" @click.stop />
+                          variant="outlined" style="max-width:130px"
+                          @update:model-value="(val: string) => onSourceChange(idx, val)" @click.stop />
                       </div>
                       <template v-if="ch.source !== 'NONE'">
                         <div class="d-flex ga-2 mt-2 pb-1" @click.stop>
@@ -276,8 +282,21 @@
                                 </span>
                               </div>
                             </div>
-                          </template>
+                        </template>
+                        <!-- EC11 旋钮步长 -->
+                        <template v-if="isKnobEc11Source(ch.source)">
                           <v-divider class="my-2" />
+                          <div class="param-group">
+                            <span class="text-caption font-weight-bold">EC11 步长 (µs/格)</span>
+                            <span class="param-input-wrap">
+                              <v-number-input v-model="ch.ec11_step" :min="1" :max="500" :step="1"
+                                controlVariant="split" density="compact" hide-details
+                                :hideInput="false" :inset="false" variant="outlined"
+                                style="min-width:140px" />
+                            </span>
+                          </div>
+                        </template>
+                        <v-divider class="my-2" />
                           <div class="param-group">
                             <span class="text-caption font-weight-bold">输出中心偏移</span>
                             <span class="param-controls">
@@ -362,6 +381,8 @@ const editChannels = reactive<ModelChannel[]>([])
 
 // 当前展开的通道行 (null = 无展开)
 const expandedIdx = ref<number | null>(null)
+const snackbarMsg = ref('')
+const snackbarVisible = ref(false)
 
 function toggleExpand(idx: number): void {
   expandedIdx.value = expandedIdx.value === idx ? null : idx
@@ -409,6 +430,22 @@ function isContinuousSource(s: string): boolean { return CONTINUOUS_SOURCES.has(
 // IMU 类输入源 (中心值固定为 0，无需配置)
 const IMU_SOURCES = new Set(['IMU_ROLL', 'IMU_PITCH'])
 function isImuSource(s: string): boolean { return IMU_SOURCES.has(s) }
+
+// EC11 旋钮输入源 (仅能绑定一个通道)
+const KNOB_EC11_SOURCES = new Set(['KNOB_EC11'])
+function isKnobEc11Source(s: string): boolean { return KNOB_EC11_SOURCES.has(s) }
+
+// 来源变更时：EC11 互斥，自动从旧通道移除
+function onSourceChange(idx: number, newSource: string): void {
+  if (newSource !== 'KNOB_EC11') return
+  for (let i = 0; i < editChannels.length; i++) {
+    if (i !== idx && editChannels[i]!.source === 'KNOB_EC11') {
+      editChannels[i]!.source = 'NONE'
+      snackbarMsg.value = `EC11 已从 CH${i} 移动到 CH${idx}`
+      snackbarVisible.value = true
+    }
+  }
+}
 
 /** 根据输入源类型返回滑块合理范围 */
 function inputRangeBounds(source: string): { min: number; max: number } {
