@@ -29,6 +29,10 @@ export interface ModelChannel {
     trigger: string
     value: number
   }
+  toggle: {
+    trigger: string
+    value: number
+  }
   input_min: number
   input_center: number
   input_max: number

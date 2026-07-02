@@ -135,17 +135,19 @@
                       <template v-if="ch.source !== 'NONE'">
                         <div class="flex-grow-1 mx-2" @click.stop>
                           <template v-if="isButtonSource(ch.source)">
-                            <v-range-slider :model-value="[ch.activate.value ?? 1500, ch.deactivate.value ?? 1500]"
-                              @update:model-value="(v: number[]) => { ch.activate.value = v[0]!; ch.deactivate.value = v[1]! }"
+                            <v-range-slider :model-value="[ch.output_min ?? 1000, ch.output_max ?? 2000]"
+                              @update:model-value="onBtnOutputRangeChange(idx, $event)"
                               :min="1000" :max="2000" :step="1" density="compact" hide-details thumb-label>
                               <template #prepend>
-                                <v-text-field :model-value="ch.activate.value ?? 1500"
-                                  @update:model-value="(v: string) => ch.activate.value = Number(v)" density="compact"
+                                <v-text-field :model-value="ch.output_min ?? 1000"
+                                  @update:model-value="(v: string) => onBtnOutputRangeChange(idx, [Number(v), ch.output_max ?? 2000])"
+                                  density="compact"
                                   style="width:90px" type="number" variant="outlined" hide-details single-line />
                               </template>
                               <template #append>
-                                <v-text-field :model-value="ch.deactivate.value ?? 1500"
-                                  @update:model-value="(v: string) => ch.deactivate.value = Number(v)" density="compact"
+                                <v-text-field :model-value="ch.output_max ?? 2000"
+                                  @update:model-value="(v: string) => onBtnOutputRangeChange(idx, [ch.output_min ?? 1000, Number(v)])"
+                                  density="compact"
                                   style="width:90px" type="number" variant="outlined" hide-details single-line />
                               </template>
                             </v-range-slider>
@@ -182,12 +184,14 @@
                       <template v-if="ch.source !== 'NONE'">
                         <div class="d-flex ga-2 mt-2 pb-1" @click.stop>
                           <template v-if="isButtonSource(ch.source)">
-                            <v-text-field :model-value="ch.activate.value ?? 1500"
-                              @update:model-value="(v: string) => ch.activate.value = Number(v)" density="compact"
-                              type="number" variant="outlined" hide-details single-line label="激活" />
-                            <v-text-field :model-value="ch.deactivate.value ?? 1500"
-                              @update:model-value="(v: string) => ch.deactivate.value = Number(v)" density="compact"
-                              type="number" variant="outlined" hide-details single-line label="关闭" />
+                            <v-text-field :model-value="ch.output_min ?? 1000"
+                              @update:model-value="(v: string) => onBtnOutputRangeChange(idx, [Number(v), ch.output_max ?? 2000])"
+                              density="compact"
+                              type="number" variant="outlined" hide-details single-line label="最小" />
+                            <v-text-field :model-value="ch.output_max ?? 2000"
+                              @update:model-value="(v: string) => onBtnOutputRangeChange(idx, [ch.output_min ?? 1000, Number(v)])"
+                              density="compact"
+                              type="number" variant="outlined" hide-details single-line label="最大" />
                           </template>
                           <template v-else>
                             <v-text-field :model-value="ch.output_min ?? 1000"
@@ -214,7 +218,7 @@
                               <v-select v-model="ch.activate.trigger" :items="triggerOptions" class="param-select"
                                 density="compact" hide-details variant="outlined" />
                               <v-icon class="mx-1" size="16">mdi-arrow-right</v-icon>
-                              <v-number-input v-model="ch.activate.value" :reverse="false" :min="1000" :max="2000"
+                              <v-number-input v-model="ch.activate.value" :reverse="false" :min="ch.output_min ?? 1000" :max="ch.output_max ?? 2000"
                                 :step="1" class="param-val" controlVariant="split" density="compact" hide-details
                                 :hideInput="false" :inset="false" variant="outlined" style="width:180px" />
                             </span>
@@ -226,7 +230,19 @@
                               <v-select v-model="ch.deactivate.trigger" :items="triggerOptions" class="param-select"
                                 density="compact" hide-details variant="outlined" />
                               <v-icon class="mx-1" size="16">mdi-arrow-right</v-icon>
-                              <v-number-input v-model="ch.deactivate.value" :reverse="false" :min="1000" :max="2000"
+                              <v-number-input v-model="ch.deactivate.value" :reverse="false" :min="ch.output_min ?? 1000" :max="ch.output_max ?? 2000"
+                                :step="1" class="param-val" controlVariant="split" density="compact" hide-details
+                                :hideInput="false" :inset="false" variant="outlined" style="width:180px" />
+                            </span>
+                          </div>
+                          <v-divider class="my-2" />
+                          <div class="param-group">
+                            <span class="text-caption font-weight-bold">循环挡位</span>
+                            <span class="param-controls">
+                              <v-select v-model="ch.toggle.trigger" :items="triggerOptions" class="param-select"
+                                density="compact" hide-details variant="outlined" />
+                              <v-icon class="mx-1" size="16">mdi-arrow-right</v-icon>
+                              <v-number-input v-model="ch.toggle.value" :reverse="false" :min="ch.output_min ?? 1000" :max="ch.output_max ?? 2000"
                                 :step="1" class="param-val" controlVariant="split" density="compact" hide-details
                                 :hideInput="false" :inset="false" variant="outlined" style="width:180px" />
                             </span>
@@ -447,6 +463,21 @@ function onSourceChange(idx: number, newSource: string): void {
   }
 }
 
+/** 按钮通道输出范围变更 → clamp 越界的挡位值 */
+function onBtnOutputRangeChange(idx: number, vals: number[]): void {
+  const ch = editChannels[idx]!
+  const lo = vals[0] ?? 1000
+  const hi = vals[1] ?? 2000
+  ch.output_min = lo
+  ch.output_max = hi
+  const av = ch.activate.value ?? 1500
+  const dv = ch.deactivate.value ?? 1500
+  const tv = ch.toggle.value ?? 1500
+  ch.activate.value = av < lo ? lo : av > hi ? hi : av
+  ch.deactivate.value = dv < lo ? lo : dv > hi ? hi : dv
+  ch.toggle.value = tv < lo ? lo : tv > hi ? hi : tv
+}
+
 /** 根据输入源类型返回滑块合理范围 */
 function inputRangeBounds(source: string): { min: number; max: number } {
   if (source.startsWith('IMU_')) return { min: -90, max: 90 }
@@ -465,11 +496,12 @@ const sourceOptions = computed(() =>
 
 // 按钮触发方式下拉选项 (从固件 button_triggers 动态获取，回退到硬编码)
 const triggerOptions = computed(() => {
+  const noneOption = { title: '无', value: 'NONE' }
   const list = configStore.deviceInfo?.button_triggers
   if (list && list.length > 0) {
-    return list.map(t => ({ title: TRIGGER_LABELS[t] ?? t, value: t }))
+    return [noneOption, ...list.map(t => ({ title: TRIGGER_LABELS[t] ?? t, value: t }))]
   }
-  return Object.entries(TRIGGER_LABELS).map(([v, t]) => ({ title: t, value: v }))
+  return [noneOption, ...Object.entries(TRIGGER_LABELS).map(([v, t]) => ({ title: t, value: v }))]
 })
 
 // μs → 0-100 进度 (居中映射)
@@ -503,6 +535,7 @@ function syncEditFromStore(): void {
         output_center: rawToUs(ch.output_center),
         activate: { ...ch.activate, value: rawToUs(ch.activate.value) },
         deactivate: { ...ch.deactivate, value: rawToUs(ch.deactivate.value) },
+        toggle: { ...ch.toggle, value: rawToUs(ch.toggle.value) },
       })
     }
   }
@@ -534,6 +567,7 @@ async function saveCurrentModel(): Promise<void> {
     output_center: usToRaw(ch.output_center),
     activate: { ...ch.activate, value: usToRaw(ch.activate.value) },
     deactivate: { ...ch.deactivate, value: usToRaw(ch.deactivate.value) },
+    toggle: { ...ch.toggle, value: usToRaw(ch.toggle.value) },
   }))
   await configStore.setModel(selectedSlot.value, {
     name,

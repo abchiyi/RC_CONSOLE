@@ -316,22 +316,21 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useChannelStore } from '@/stores/channels'
 import { useCalibrationStore, type CalType, type AdcCal } from '@/stores/calibration'
 
 const chStore = useChannelStore()
 const calStore = useCalibrationStore()
 
-// 模板中直接使用 store 的响应式数据（保持别名简洁）
+// reactive 对象直接引用即保持响应式
 const trigger = calStore.trigger
 const joyX = calStore.joyX
 const joyY = calStore.joyY
 const imu = calStore.imu
-const lpfAlpha = calStore.lpfAlpha
-const runningType = calStore.runningType
-const calProgress = calStore.calProgress
-const lastMessage = calStore.lastMessage
-const lastType = calStore.lastType
+
+// ref 必须通过 storeToRefs() 保持响应式绑定，否则 auto-unwrap 后变成纯值快照
+const { runningType, calProgress, lastMessage, lastType, lpfAlpha } = storeToRefs(calStore)
 
 // --- 通道映射: 从 chStore 反查 source → CH# ---
 function sourceChannel(source: string): number {
@@ -422,7 +421,7 @@ onMounted(() => {
   // 获取初始校准数据
   setTimeout(() => calStore.fetchCalData(), 300)
   // 持续轮询 cal_get 以获取实时 raw 值 (30ms ≈ 33Hz)
-  calStore.startCalDataPolling(30)
+  calStore.startCalDataPolling(100)  // 30→100ms，降低串口命令频率，避免 ESP32 栈溢出
 })
 
 onUnmounted(() => {

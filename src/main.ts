@@ -37,14 +37,14 @@ app.use(pinia)
 // 回调在 pinia 安装后才收到数据，调用 useStore 安全
 serialService.onLine((line: string) => {
   // 串口是日志+数据二合一通道，非 JSON 行已在 SerialService 中过滤
-  // 固件响应不含 cmd 字段，通过 JSON shape 区分响应类型
+  // 固件响应统一携带 cmd 字段，通过 cmd 精确匹配路由
   try {
     const json = JSON.parse(line)
+    const cmd = json.cmd as string | undefined
+    if (!cmd) return
 
-    // get_channels → 通道 Store（channels 为数组成员）
-    if (Array.isArray(json.channels)
-        && json.channels.length > 0
-        && typeof json.channels[0] === 'number') {
+    // get_channels → 通道 Store
+    if (cmd === 'get_channels') {
       useChannelStore().update({
         channels: json.channels,
         sources: json.sources ?? [],
@@ -52,36 +52,20 @@ serialService.onLine((line: string) => {
       return
     }
 
-    // cal_status / cal_get → 校准 Store
-    if (json.cmd === 'cal_status' || json.state !== undefined
-        || json.adc || json.imu || json.lpf_alpha !== undefined) {
+    // cal_* → 校准 Store
+    if (cmd.startsWith('cal_')) {
       useCalibrationStore().handleResponse(json as Record<string, unknown>)
       return
     }
 
-    // get_info / get_config / get_model → 配置 Store
-    // get_model 的 channels 是对象数组，与 get_channels 区分
-    if (
-      json.device !== undefined
-      || json.models !== undefined
-      || (json.channel_count !== undefined && json.input_sources)
-      || (Array.isArray(json.channels) && json.channels.length > 0
-          && typeof json.channels[0] === 'object')
-    ) {
-      useConfigStore().handleResponse(json as Record<string, unknown>)
-      return
-    }
-
-    // get_power_cfg / set_power_cfg / get_power_state → 电源 Store
-    if (
-      (typeof json.idle_warning_s === 'number' && typeof json.idle_shutdown_s === 'number')
-      || json.ok === true
-      || (typeof json.state === 'string' && typeof json.idle_s === 'number')
-      || typeof json.debug_mode === 'boolean'
-    ) {
+    // get_power_cfg / set_power_cfg / get_power_state / set_debug_mode / get_debug_mode → 电源 Store
+    if (cmd.includes('power') || cmd.includes('debug')) {
       usePowerStore().handleResponse(json as Record<string, unknown>)
       return
     }
+
+    // get_info / get_config / get_model / get_active / set_model / set_active / save / load / reset → 配置 Store
+    useConfigStore().handleResponse(json as Record<string, unknown>)
   } catch {
     // 忽略解析失败（日志背景噪音或截断数据）
   }

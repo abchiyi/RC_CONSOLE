@@ -92,7 +92,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
         lastMessage.value = '校准超时，请重试'
         stopTimers()
       }
-    }, 15000)
+    }, 30000)  // IMU 校准需要采集 1200 个稳定样本 (约 6s)，但设备抖动会使 stableCount 降级，需要更多时间
   }
 
   function startCalDataPolling(intervalMs = 30): void {
@@ -111,6 +111,9 @@ export const useCalibrationStore = defineStore('calibration', () => {
 
   // ---- 响应处理 ----
 
+  /** 标记死区是否已从设备加载，避免 30ms 轮询覆盖用户拖拽的滑块值 */
+  let _deadzonesLoaded = false
+
   function handleResponse(json: Record<string, unknown>): void {
     // cal_status 响应
     if (json.cmd === 'cal_status' || json.state !== undefined) {
@@ -120,6 +123,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
         lastMessage.value = (json.message as string) || '校准完成'
         lastType.value = runningType.value
         stopTimers()
+        _deadzonesLoaded = false  // 校准完成后重新拉取死区
       } else if (st === 'error' || st === 3) {
         lastMessage.value = (json.message as string) || '校准失败'
         lastType.value = runningType.value
@@ -131,8 +135,8 @@ export const useCalibrationStore = defineStore('calibration', () => {
       return
     }
 
-    // cal_get 响应
-    if (json.adc || json.imu || json.lpf_alpha !== undefined) {
+    // cal_get / cal_set_deadzone 响应 (含 ADC/IMU 数据)
+    if (json.cmd === 'cal_get' || json.adc || json.imu || json.lpf_alpha !== undefined) {
       applyCalData(json as Record<string, any>)
     }
   }
@@ -146,22 +150,26 @@ export const useCalibrationStore = defineStore('calibration', () => {
         trigger.raw_min = adc.trigger.min
         trigger.raw_center = adc.trigger.center
         trigger.raw_max = adc.trigger.max
-        if (adc.trigger.deadzone !== undefined) trigger.deadzone = adc.trigger.deadzone
+        if (!_deadzonesLoaded && adc.trigger.deadzone !== undefined)
+          trigger.deadzone = adc.trigger.deadzone
       }
       if (adc.joy_x) {
         joyX.raw = raw.joy_x
         joyX.raw_min = adc.joy_x.min
         joyX.raw_center = adc.joy_x.center
         joyX.raw_max = adc.joy_x.max
-        if (adc.joy_x.deadzone !== undefined) joyX.deadzone = adc.joy_x.deadzone
+        if (!_deadzonesLoaded && adc.joy_x.deadzone !== undefined)
+          joyX.deadzone = adc.joy_x.deadzone
       }
       if (adc.joy_y) {
         joyY.raw = raw.joy_y
         joyY.raw_min = adc.joy_y.min
         joyY.raw_center = adc.joy_y.center
         joyY.raw_max = adc.joy_y.max
-        if (adc.joy_y.deadzone !== undefined) joyY.deadzone = adc.joy_y.deadzone
+        if (!_deadzonesLoaded && adc.joy_y.deadzone !== undefined)
+          joyY.deadzone = adc.joy_y.deadzone
       }
+      _deadzonesLoaded = true
     }
     if (data.imu) {
       imu.roll = data.imu.roll

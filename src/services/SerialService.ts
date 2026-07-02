@@ -218,6 +218,10 @@ export class SerialService {
                   if (import.meta.env.DEV && cls !== 'unknown') {
                     console.debug(`[Serial][${cls}]`, line)
                   }
+                  // 崩溃信息始终传给 listeners，让 UI 可以显示 panic 日志
+                  if (cls === 'crash') {
+                    this.lineListeners.forEach(cb => { try { cb(line) } catch { /* ignore */ } })
+                  }
                   continue
                 }
                 if (import.meta.env.DEV && line.length > 2000) {
