@@ -21,6 +21,7 @@ import { useChannelStore } from '@/stores/channels'
 import { useConfigStore } from '@/stores/config'
 import { usePowerStore } from '@/stores/power'
 import { useCalibrationStore } from '@/stores/calibration'
+import { useLinkStatsStore } from '@/stores/linkStats'
 
 // Serial
 import { serialService } from '@/services/SerialService'
@@ -42,6 +43,12 @@ serialService.onLine((line: string) => {
     const json = JSON.parse(line)
     const cmd = json.cmd as string | undefined
     if (!cmd) return
+
+    // get_link_stats → 链路统计 Store
+    if (cmd === 'get_link_stats') {
+      useLinkStatsStore().update(json as Record<string, unknown>)
+      return
+    }
 
     // get_channels → 通道 Store
     if (cmd === 'get_channels') {
