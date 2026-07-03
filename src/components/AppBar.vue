@@ -34,7 +34,7 @@
           label size="x-small" variant="tonal"
         >
           <v-icon start size="14">mdi-broadcast</v-icon>
-          {{ link.txPower }}dBm
+          {{ txPwrLabel }}
         </v-chip>
       </template>
 
@@ -112,6 +112,17 @@ const link   = useLinkStatsStore()
 // LQ 颜色：>80 绿色，>50 黄色，<=50 红色
 const ulLqColor = computed(() => link.ulLq > 80 ? 'success' : link.ulLq > 50 ? 'warning' : 'error')
 const dlLqColor = computed(() => link.dlLq > 80 ? 'success' : link.dlLq > 50 ? 'warning' : 'error')
+
+// TX 功率 档位索引 → dBm
+const txPwrLabel = computed(() => {
+  const v = link.txPower
+  if (v <= 0) return '-- dBm'
+  if (v <= 7) {
+    const map = [10, 14, 17, 20, 24, 27, 30, 33]
+    return `${map[v] ?? v} dBm`
+  }
+  return `${v} dBm`
+})
 
 // 连接时自动启停轮询
 watch(() => serial.connected, (connected) => {

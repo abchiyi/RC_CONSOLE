@@ -44,9 +44,13 @@ serialService.onLine((line: string) => {
     const cmd = json.cmd as string | undefined
     if (!cmd) return
 
-    // get_link_stats → 链路统计 Store
+    // get_link_stats / elrs_list_fields / elrs_set_param → 链路统计 Store
     if (cmd === 'get_link_stats') {
       useLinkStatsStore().update(json as Record<string, unknown>)
+      return
+    }
+    if (cmd === 'elrs_list_fields' || cmd === 'elrs_set_param') {
+      useLinkStatsStore().handleElrsResponse(json as Record<string, unknown>)
       return
     }
 

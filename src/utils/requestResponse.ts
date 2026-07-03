@@ -3,11 +3,11 @@
  * 消除 config.ts / power.ts 中重复的 _waitForResponse 模式
  */
 export class RequestResponseHandler {
-  private resolve: (() => void) | null = null
+  private resolve: ((data?: unknown) => void) | null = null
   private cmd: string | null = null
 
-  /** 发起等待，返回在 tryResolve() 被调用时 resolve 的 Promise */
-  wait(cmd: string, timeoutMs = 3000): Promise<void> {
+  /** 发起等待，返回在 tryResolve() 被调用时 resolve 的 Promise（可附带数据） */
+  wait(cmd: string, timeoutMs = 3000): Promise<unknown> {
     return new Promise((resolve, reject) => {
       this.cmd = cmd
       this.resolve = resolve
@@ -21,10 +21,10 @@ export class RequestResponseHandler {
     })
   }
 
-  /** 尝试 resolve 当前等待的 Promise。匹配成功返回 true */
-  tryResolve(cmd: string): boolean {
+  /** 尝试 resolve 当前等待的 Promise，可附带任意数据给 awaiter。匹配成功返回 true */
+  tryResolve(cmd: string, data?: unknown): boolean {
     if (this.cmd === cmd && this.resolve) {
-      this.resolve()
+      this.resolve(data)
       this.resolve = null
       this.cmd = null
       return true

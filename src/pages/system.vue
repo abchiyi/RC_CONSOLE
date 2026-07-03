@@ -243,6 +243,105 @@
           </v-card-text>
         </v-card>
       </v-col>
+
+      <!-- ELRS 射频配置卡片 -->
+      <v-col cols="12" md="6">
+        <v-card rounded="lg" variant="outlined">
+          <v-card-item>
+            <template #prepend>
+              <v-icon color="primary">mdi-antenna</v-icon>
+            </template>
+            <v-card-title class="text-body-1">ELRS 射频配置</v-card-title>
+            <template #append>
+              <v-chip v-if="link.moduleAlive" color="success" size="x-small" variant="tonal">
+                {{ link.fieldCount }} 字段
+              </v-chip>
+              <v-chip v-else color="grey" size="x-small" variant="tonal">
+                未就绪
+              </v-chip>
+            </template>
+          </v-card-item>
+
+          <v-card-text>
+            <!-- 未连接或模块未就绪 -->
+            <div v-if="!serial.connected || !link.moduleAlive" class="d-flex align-center ga-2">
+              <v-icon size="20" color="grey">mdi-information</v-icon>
+              <span class="text-caption text-medium-emphasis">
+                {{ !serial.connected ? '请先连接设备' : 'ELRS 模块未响应，无法读取配置' }}
+              </span>
+            </div>
+
+            <template v-else>
+              <!-- TX 功率当前档位 -->
+              <div class="d-flex align-center mb-4">
+                <v-icon size="18" class="mr-2" :color="txPwrColor">mdi-broadcast</v-icon>
+                <span class="text-caption text-medium-emphasis">当前 TX 功率：</span>
+                <v-chip
+                  class="ml-2"
+                  :color="txPwrColor"
+                  size="x-small" variant="tonal"
+                >
+                  {{ txPowerLabel }}
+                </v-chip>
+              </div>
+
+              <!-- 动态功率开关 -->
+              <div v-if="link.dynPowerOn !== null" class="d-flex align-center">
+                <v-icon size="18" class="mr-2" :color="link.dynPowerOn ? 'warning' : 'success'">
+                  mdi-shimmer
+                </v-icon>
+                <span class="text-caption text-medium-emphasis">动态功率：</span>
+                <v-switch
+                  class="ml-2"
+                  v-model="dynPwrSwitch"
+                  :color="dynPwrSwitch ? 'warning' : 'success'"
+                  :loading="dynPwrToggling"
+                  density="compact"
+                  hide-details
+                  inset
+                  @update:model-value="toggleDynPower"
+                />
+                <v-chip
+                  class="ml-2"
+                  :color="link.dynPowerOn ? 'warning' : 'success'"
+                  size="x-small" variant="tonal"
+                >
+                  {{ link.dynPowerOn ? '开' : '关' }}
+                </v-chip>
+              </div>
+              <div v-else class="d-flex align-center ga-2">
+                <v-icon size="20" color="amber">mdi-help-circle</v-icon>
+                <span class="text-caption text-medium-emphasis">
+                  未找到动态功率字段，请刷新字段列表
+                </span>
+              </div>
+
+              <!-- 字段名 (调试用) -->
+              <div v-if="link.dynPowerField" class="mt-2">
+                <span class="text-caption text-disabled">字段名: {{ link.dynPowerField }}</span>
+              </div>
+
+              <!-- 操作反馈 -->
+              <div v-if="elrsMsg" class="mt-2">
+                <v-chip :color="elrsMsgOk ? 'success' : 'error'" size="x-small" variant="tonal">
+                  {{ elrsMsg }}
+                </v-chip>
+              </div>
+            </template>
+          </v-card-text>
+
+          <v-card-actions v-if="serial.connected" class="pa-4 pt-0">
+            <v-btn
+              color="primary" size="small" variant="tonal"
+              :loading="link.dynPwrLoading"
+              prepend-icon="mdi-refresh"
+              @click="refreshElrsFields"
+            >
+              刷新字段列表
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-col>
     </v-row>
   </div>
 </template>
@@ -251,9 +350,11 @@
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import { usePowerStore } from '@/stores/power'
+import { useLinkStatsStore } from '@/stores/linkStats'
 
 const serial = useSerialStore()
 const power = usePowerStore()
+const link   = useLinkStatsStore()
 
 // ========== 轮询 ==========
 const pollActive = ref(false)
@@ -295,9 +396,76 @@ async function toggleDebugMode(v: boolean) {
   debugLoading.value = false
 }
 
+// ========== ELRS 射频配置 ==========
+const dynPwrSwitch    = ref(link.dynPowerOn ?? false)
+const dynPwrToggling  = ref(false)
+const elrsMsg         = ref('')
+const elrsMsgOk       = ref(true)
+
+// TX 功率颜色 & 标签
+const txPwrColor = computed(() => {
+  const v = link.txPower
+  if (v >= 30) return 'error'    // 1W+
+  if (v >= 20) return 'warning'  // 100mW~
+  if (v > 0)  return 'success'   // low power
+  return 'grey'
+})
+
+const txPowerLabel = computed(() => {
+  const v = link.txPower
+  if (v <= 0) return '--'
+  // 0-7 档位索引 → dBm 映射
+  if (v <= 7) {
+    const dbmMap = [10, 14, 17, 20, 24, 27, 30, 33]
+    return `${dbmMap[v] ?? v} dBm`
+  }
+  return `${v} dBm`
+})
+
+function showElrsMsg(msg: string, ok: boolean) {
+  elrsMsg.value = msg; elrsMsgOk.value = ok
+  setTimeout(() => { elrsMsg.value = '' }, 3000)
+}
+
+async function refreshElrsFields() {
+  elrsMsg.value = ''
+  await link.fetchFields()
+  if (link.fields.value.length > 0) {
+    dynPwrSwitch.value = link.dynPowerOn ?? false
+    showElrsMsg(`已加载 ${link.fields.value.length} 个字段`, true)
+  } else {
+    showElrsMsg('字段加载超时或模块未响应', false)
+  }
+}
+
+async function toggleDynPower(v: boolean) {
+  dynPwrToggling.value = true
+  elrsMsg.value = ''
+  try {
+    const ok = await link.toggleDynPower(v)
+    if (ok) {
+      showElrsMsg(v ? '动态功率已开启' : '动态功率已关闭', true)
+    } else {
+      dynPwrSwitch.value = !v
+      showElrsMsg('设置失败，请先刷新字段列表', false)
+    }
+  } catch {
+    dynPwrSwitch.value = !v
+    showElrsMsg('设置失败', false)
+  }
+  dynPwrToggling.value = false
+}
+
 // 同步 store → switch (来自 get_power_state 轮询)
 watch(() => power.debugMode, (v) => {
   debugSwitch.value = v
+})
+
+// ELRS 模块就绪时自动刷新字段列表
+watch(() => link.moduleAlive, (alive) => {
+  if (alive && link.dynPowerOn.value === null) {
+    refreshElrsFields()
+  }
 })
 
 // 同步 store → 表单
@@ -333,6 +501,8 @@ async function reloadAll() {
     shutdownSec.value = power.cfg.idle_shutdown_s
     cfgDirty.value = false
     startPoll()
+    // 同时加载 ELRS 字段列表
+    if (link.moduleAlive) refreshElrsFields()
   } catch {
     cfgErr.value = '加载配置失败'
   }
