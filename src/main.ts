@@ -23,7 +23,7 @@ import { usePowerStore } from '@/stores/power'
 import { useCalibrationStore } from '@/stores/calibration'
 import { useLinkStatsStore } from '@/stores/linkStats'
 
-// Serial
+// Serial (自动检测 Web/Electron 环境)
 import { serialService } from '@/services/SerialService'
 
 // Styles

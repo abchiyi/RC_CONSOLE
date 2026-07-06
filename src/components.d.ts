@@ -14,7 +14,6 @@ declare module 'vue' {
     AppBar: typeof import('./components/AppBar.vue')['default']
     CalWizard: typeof import('./components/calibration/CalWizard.vue')['default']
     ChannelGrid: typeof import('./components/channel/ChannelGrid.vue')['default']
-    HelloWorld: typeof import('./components/HelloWorld.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
   }

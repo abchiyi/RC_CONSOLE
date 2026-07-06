@@ -1,15 +1,27 @@
 /**
  * 串口连接状态 Store
+ * 支持两种模式：
+ *   - Web Serial API (浏览器)
+ *   - Electron 原生串口 (桌面端)
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { serialService, SerialService } from '@/services/SerialService'
+import {
+  SerialService,
+  ElectronSerialService,
+  serialService as webSerial,
+  electronSerialService,
+} from '@/services/SerialService'
 
 export const useSerialStore = defineStore('serial', () => {
   const connected = ref(false)
   const connecting = ref(false)
-  const supported = ref(SerialService.isSupported())
+  const supported = ref(SerialService.isSupported() || ElectronSerialService.isSupported())
   const error = ref<string | null>(null)
+
+  // 运行时确定使用哪个后端
+  const isElectron = ElectronSerialService.isSupported()
+  const backend = isElectron ? electronSerialService : webSerial
 
   const statusIcon = computed(() =>
     connected.value ? 'mdi-usb' : 'mdi-usb-port',
@@ -24,26 +36,76 @@ export const useSerialStore = defineStore('serial', () => {
     return '未连接'
   })
 
-  async function connect(): Promise<boolean> {
+  /** Electron 模式下列出可用串口 */
+  async function listPorts(): Promise<SerialPortDescriptor[]> {
+    if (isElectron) {
+      return (backend as ElectronSerialService).listPorts()
+    }
+    return []
+  }
+
+  /** 连接设备（自动适配 Web Serial / Electron） */
+  async function connect(portPath?: string): Promise<boolean> {
     if (!supported.value) {
-      error.value = '当前浏览器不支持 Web Serial API，请使用 Chrome/Edge'
+      error.value = isElectron
+        ? '串口服务不可用'
+        : '当前浏览器不支持 Web Serial API，请使用 Chrome/Edge'
       return false
     }
+
     connecting.value = true
     error.value = null
 
     try {
-      const port = await serialService.requestPort()
-      if (!port) {
-        connecting.value = false
-        return false
-      }
-      const ok = await serialService.connect(port)
-      if (ok) {
-        connected.value = true
-        error.value = null
+      if (isElectron) {
+        // Electron 模式
+        let targetPath = portPath
+
+        if (!targetPath) {
+          // 自动扫描可用串口
+          const ports = await listPorts()
+          if (ports.length === 0) {
+            error.value = '未检测到串口设备，请连接 ESP32-S3 后重试'
+            return false
+          }
+          if (ports.length === 1) {
+            targetPath = ports[0].path
+          } else {
+            // 多个串口：优先选择 USB 串口设备（通常 ESP32 的 manufacturer 包含特定字符）
+            const usbPort = ports.find(p =>
+              p.manufacturer.toLowerCase().includes('espressif') ||
+              p.manufacturer.toLowerCase().includes('silicon') ||
+              p.manufacturer.toLowerCase().includes('wch') ||
+              p.path.toLowerCase().includes('usb')
+            )
+            if (usbPort) {
+              targetPath = usbPort.path
+            } else {
+              // 回退到第一个
+              targetPath = ports[0].path
+            }
+          }
+        }
+
+        const ok = await (backend as ElectronSerialService).connect(targetPath)
+        if (ok) {
+          connected.value = true
+        } else {
+          error.value = '串口打开失败'
+        }
       } else {
-        error.value = '串口打开失败'
+        // Web Serial 模式：弹出浏览器串口选择对话框
+        const port = await (backend as SerialService).requestPort()
+        if (!port) {
+          connecting.value = false
+          return false
+        }
+        const ok = await (backend as SerialService).connect(port)
+        if (ok) {
+          connected.value = true
+        } else {
+          error.value = '串口打开失败'
+        }
       }
     } catch (e: unknown) {
       error.value = `连接错误: ${String(e)}`
@@ -54,12 +116,12 @@ export const useSerialStore = defineStore('serial', () => {
   }
 
   async function disconnect(): Promise<void> {
-    await serialService.disconnect()
+    await backend.disconnect()
     connected.value = false
   }
 
   // 注册断线回调
-  serialService.onDisconnect(() => {
+  backend.onDisconnect(() => {
     connected.value = false
   })
 
@@ -68,10 +130,12 @@ export const useSerialStore = defineStore('serial', () => {
     connecting,
     supported,
     error,
+    isElectron,
     statusIcon,
     statusColor,
     statusText,
     connect,
     disconnect,
+    listPorts,
   }
 })

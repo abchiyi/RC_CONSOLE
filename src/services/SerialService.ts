@@ -7,61 +7,18 @@
  *   (sdkconfig: CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y)
  * - JSON 由 cJSON_PrintUnformatted() 生成，始终单行、{ 开头 } 结尾
  * - ESP_LOG 格式: X (timestamp) TAG: message (X∈{E,W,I,D,V})
- * - 此外还有 watchdog/backtrace/panic/boot 等系统输出
  */
+
+import { classifyLine, type LineClass } from '@/utils/serialLineClassify'
+
+// 重新导出供 ElectronSerialService 使用
+export { classifyLine, type LineClass } from '@/utils/serialLineClassify'
 
 export interface SerialOptions {
   baudRate?: number
   dataBits?: 7 | 8
   stopBits?: 1 | 2
   parity?: 'none' | 'even' | 'odd'
-}
-
-// ----------------------------------------------------------------
-// 完备的 ESP32 串口行分类
-// ----------------------------------------------------------------
-
-/** 分类结果 */
-export type LineClass = 'json' | 'esp_log' | 'crash' | 'boot' | 'unknown'
-
-const ESP_LOG_RE = /^[EWIDV] \(\d+\) \w+:/
-const HEX_ADDR_RE = /^0x4[0-9a-f]{7}/i
-const BOOT_PREFIXES = [
-  'ESP-ROM:', 'Build:', 'rst:', 'load:',
-  'entry ', 'ho ', 'SPIWP:', 'mode:',
-  'clk_drv:', 'waiting',
-]
-
-/**
- * 对固件串口输出的每一行进行分类
- * 供 read loop 使用，也可被外部调用（调试面板）
- */
-export function classifyLine(line: string): LineClass {
-  // 1) JSON 协议数据 —— { 开头 + } 结尾（cJSON_PrintUnformatted 保证）
-  if (line.startsWith('{') && line.endsWith('}')) return 'json'
-
-  // 2) ESP_LOG 标准格式 —— X (timestamp) TAG: message
-  if (ESP_LOG_RE.test(line)) return 'esp_log'
-
-  // 3) 崩溃/异常输出
-  if (
-    line.startsWith('Backtrace:')
-    || line.includes('Guru Meditation')
-    || line.includes('Panic')
-    || line.startsWith('PC ')
-    || line.startsWith('EXCVADDR:')
-    || line.startsWith('AIO:')
-    || line.startsWith('A1 ')
-    || line.startsWith('A2 ')
-    || (HEX_ADDR_RE.test(line) && line.length < 30)
-  ) return 'crash'
-
-  // 4) 启动引导信息
-  if (BOOT_PREFIXES.some(p => line.startsWith(p))) return 'boot'
-  if (line.includes('second stage bootloader')) return 'boot'
-
-  // 5) 残余未知行
-  return 'unknown'
 }
 
 export class SerialService {
@@ -268,4 +225,31 @@ export class SerialService {
   }
 }
 
-export const serialService = new SerialService()
+export const webSerialService = new SerialService()
+
+// ── 导入 Electron 后端（延迟导入避免循环依赖） ──
+import { ElectronSerialService, electronSerialService } from './ElectronSerialService'
+
+export { ElectronSerialService, electronSerialService }
+
+export function isElectronEnv(): boolean {
+  return ElectronSerialService.isSupported()
+}
+
+export function getSerialService() {
+  if (ElectronSerialService.isSupported()) {
+    return electronSerialService
+  }
+  return webSerialService
+}
+
+/**
+ * 统一导出的串口服务实例。
+ * - Electron 桌面端 → ElectronSerialService (原生 serialport)
+ * - 浏览器 → SerialService (Web Serial API)
+ * 
+ * 所有 Store 通过此导出使用，无需关心后端差异。
+ */
+export const serialService = ElectronSerialService.isSupported()
+  ? electronSerialService
+  : webSerialService
