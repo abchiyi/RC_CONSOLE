@@ -106,6 +106,7 @@ function channelColor(source: string): string {
     BUTTON_LOCK: 'red-darken-2',
     BUTTON_MH: 'red-darken-2',
     BUTTON_EC11_BTN: 'red-darken-2',
+    BUTTON_SHOT: 'red-darken-2',
     KNOB_EC11: 'teal-darken-2',
   }
   return map[source] ?? 'grey'

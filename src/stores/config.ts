@@ -19,6 +19,16 @@ export interface DeviceInfo {
   button_triggers: string[]
 }
 
+export interface ChannelCondition {
+  enabled: boolean
+  source_channel: number        // 监视的源通道 (0-15)
+  op: number                    // 0:>, 1:<, 2:>=, 3:<=, 4:==, 5:!=
+  threshold: number             // CRSF raw 阈值
+  switch_source: boolean        // false=固定值, true=切换输入源
+  value: number                 // CRSF raw, switch_source=false 时生效
+  alt_source: string            // InputSource 字符串, switch_source=true 时生效
+}
+
 export interface ModelChannel {
   source: string
   activate: {
@@ -42,6 +52,15 @@ export interface ModelChannel {
   deadzone: number
   ec11_step: number
   reverse: boolean
+  condition: ChannelCondition
+  lock_enabled: boolean         // 安全锁: 固定 CH4 > 1500μs 时解锁
+  lock_value: number            // 锁定时输出值 (μs)
+  mix_enabled: boolean          // 混合输入开关
+  mix_items: Array<{            // 混合项列表 (最多 4 项)
+    src: string                 // InputSource 字符串
+    w: number                   // 权重 -100..100
+    reverse: boolean            // 反向
+  }>
 }
 
 export interface ModelConfig {
@@ -181,6 +200,7 @@ export const useConfigStore = defineStore('config', () => {
 
     if (json.cmd === 'get_info' || json.device) {
       deviceInfo.value = json as unknown as DeviceInfo
+      console.log('[Config] input_sources:', (json as any).input_sources?.map((s: any) => s.id))
     }
     if (json.models) {
       config.value = json as unknown as AppConfig
