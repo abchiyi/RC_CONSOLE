@@ -264,7 +264,7 @@
 
           <v-card-text>
             <!-- 未连接或模块未就绪 -->
-            <div v-if="!serial.connected || !link.moduleAlive" class="d-flex align-center ga-2">
+            <div v-if="!serial.connected || (!link.valid && !link.moduleAlive)" class="d-flex align-center ga-2">
               <v-icon size="20" color="grey">mdi-information</v-icon>
               <span class="text-caption text-medium-emphasis">
                 {{ !serial.connected ? '请先连接设备' : 'ELRS 模块未响应，无法读取配置' }}
@@ -339,6 +339,14 @@
             >
               刷新字段列表
             </v-btn>
+            <v-btn
+              color="info" size="small" variant="tonal"
+              :loading="wifiStarting"
+              prepend-icon="mdi-wifi"
+              @click="startWiFi"
+            >
+              启动 WiFi 控制台
+            </v-btn>
           </v-card-actions>
         </v-card>
       </v-col>
@@ -351,6 +359,7 @@ import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import { usePowerStore } from '@/stores/power'
 import { useLinkStatsStore } from '@/stores/linkStats'
+import { serialService } from '@/services/SerialService'
 
 const serial = useSerialStore()
 const power = usePowerStore()
@@ -436,6 +445,14 @@ async function refreshElrsFields() {
   } else {
     showElrsMsg('字段加载超时或模块未响应', false)
   }
+}
+
+// ELRS WiFi 控制台启动
+const wifiStarting = ref(false)
+async function startWiFi() {
+  wifiStarting.value = true
+  try { await serialService.sendCommand('elrs_wifi_start') } catch { }
+  setTimeout(() => { wifiStarting.value = false }, 2000)
 }
 
 async function toggleDynPower(v: boolean) {
