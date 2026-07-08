@@ -18,6 +18,8 @@ export const useSerialStore = defineStore('serial', () => {
   const connecting = ref(false)
   const supported = ref(SerialService.isSupported() || ElectronSerialService.isSupported())
   const error = ref<string | null>(null)
+  const availablePorts = ref<SerialPortDescriptor[]>([])
+  const loadingPorts = ref(false)
 
   // 运行时确定使用哪个后端
   const isElectron = ElectronSerialService.isSupported()
@@ -35,6 +37,19 @@ export const useSerialStore = defineStore('serial', () => {
     if (connected.value) return '已连接'
     return '未连接'
   })
+
+  /** 刷新可用串口列表 */
+  async function refreshPorts(): Promise<void> {
+    loadingPorts.value = true
+    error.value = null
+    try {
+      availablePorts.value = await listPorts()
+    } catch {
+      availablePorts.value = []
+    } finally {
+      loadingPorts.value = false
+    }
+  }
 
   /** Electron 模式下列出可用串口 */
   async function listPorts(): Promise<SerialPortDescriptor[]> {
@@ -130,6 +145,8 @@ export const useSerialStore = defineStore('serial', () => {
     connecting,
     supported,
     error,
+    availablePorts,
+    loadingPorts,
     isElectron,
     statusIcon,
     statusColor,
@@ -137,5 +154,6 @@ export const useSerialStore = defineStore('serial', () => {
     connect,
     disconnect,
     listPorts,
+    refreshPorts,
   }
 })

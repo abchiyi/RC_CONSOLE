@@ -10,7 +10,10 @@ import { routes } from 'vue-router/auto-routes'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes,
+  routes: [
+    { path: '/', redirect: '/config' },
+    ...routes,
+  ],
 })
 
 // Workaround for https://github.com/vitejs/vite/issues/11804

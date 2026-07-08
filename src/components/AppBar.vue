@@ -62,19 +62,59 @@
 
     <v-spacer />
 
-    <!-- 串口连接按钮 -->
-    <v-btn
-      v-if="!serial.connected"
-      :color="serial.supported ? 'primary' : 'grey'"
-      :disabled="!serial.supported"
-      :loading="serial.connecting"
-      prepend-icon="mdi-usb-port"
-      size="small"
-      variant="flat"
-      @click="serial.connect()"
-    >
-      连接设备
-    </v-btn>
+    <!-- 串口选择 + 连接 -->
+    <template v-if="!serial.connected">
+      <!-- Electron：刷新 + 下拉 + 连接 -->
+      <template v-if="serial.isElectron">
+        <v-btn
+          icon="mdi-refresh"
+          size="small"
+          variant="text"
+          :loading="serial.loadingPorts"
+          @click="serial.refreshPorts()"
+        />
+
+        <v-select
+          v-model="selectedPort"
+          :items="serial.availablePorts"
+          item-title="path"
+          item-value="path"
+          label="COM"
+          hide-details
+          density="compact"
+          style="max-width: 160px"
+          class="mx-1"
+          clearable
+          :disabled="serial.availablePorts.length === 0"
+        />
+
+        <v-btn
+          color="primary"
+          prepend-icon="mdi-usb-port"
+          size="small"
+          :disabled="!selectedPort"
+          :loading="serial.connecting"
+          variant="flat"
+          @click="handleConnect"
+        >
+          连接
+        </v-btn>
+      </template>
+
+      <!-- Web：单个按钮，弹出浏览器原生串口选择对话框 -->
+      <v-btn
+        v-else
+        :color="serial.supported ? 'primary' : 'grey'"
+        :disabled="!serial.supported"
+        :loading="serial.connecting"
+        prepend-icon="mdi-usb-port"
+        size="small"
+        variant="flat"
+        @click="serial.connect()"
+      >
+        连接设备
+      </v-btn>
+    </template>
 
     <v-chip
       v-else
@@ -100,7 +140,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, watch, ref, onMounted } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import { useLinkStatsStore } from '@/stores/linkStats'
 
@@ -108,6 +148,16 @@ defineEmits<{ 'toggle-drawer': [] }>()
 
 const serial = useSerialStore()
 const link   = useLinkStatsStore()
+const selectedPort = ref<string | null>(null)
+
+// 启动时自动刷新串口列表
+onMounted(() => { serial.refreshPorts() })
+
+function handleConnect() {
+  if (selectedPort.value) {
+    serial.connect(selectedPort.value)
+  }
+}
 
 // LQ 颜色：>80 绿色，>50 黄色，<=50 红色
 const ulLqColor = computed(() => link.ulLq > 80 ? 'success' : link.ulLq > 50 ? 'warning' : 'error')

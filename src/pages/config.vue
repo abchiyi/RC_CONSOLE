@@ -13,12 +13,12 @@
       <v-spacer />
 
       <v-btn v-if="serial.connected" class="mr-2" color="primary" prepend-icon="mdi-download" size="small"
-        variant="tonal" @click="loadFromDevice">
+        variant="tonal" :loading="configStore.loading" @click="loadFromDevice">
         从设备加载
       </v-btn>
 
-      <v-btn v-if="serial.connected" class="mr-2" color="success" prepend-icon="mdi-upload" size="small" variant="tonal"
-        @click="saveToDevice">
+      <v-btn v-if="serial.connected" class="mr-2" color="success" prepend-icon="mdi-content-save" size="small" variant="tonal"
+        @click="saveModel">
         保存到设备
       </v-btn>
     </v-toolbar>
@@ -75,17 +75,6 @@
                     :disabled="selectedSlot === configStore.config.active_model" @click="activateModel">
                     激活配置
                   </v-btn>
-                  <v-btn color="info" prepend-icon="mdi-download" size="small" variant="tonal" @click="readModel"
-                    :loading="configStore.loading">
-                    读取
-                  </v-btn>
-                  <v-btn color="warning" prepend-icon="mdi-upload" size="small" variant="tonal" @click="writeModel">
-                    写入
-                  </v-btn>
-                  <v-btn color="primary" prepend-icon="mdi-content-save" size="small" variant="tonal"
-                    @click="saveModel">
-                    保存
-                  </v-btn>
                 </div>
                 <div class="fab-container">
                   <v-speed-dial transition="scale">
@@ -96,22 +85,6 @@
                       <template #activator="{ props }">
                         <v-btn v-bind="props" icon="mdi-check-circle" size="small" color="success"
                           :disabled="selectedSlot === configStore.config.active_model" @click="activateModel" />
-                      </template>
-                    </v-tooltip>
-                    <v-tooltip location="left" text="读取">
-                      <template #activator="{ props }">
-                        <v-btn v-bind="props" icon="mdi-download" size="small" color="info"
-                          :loading="configStore.loading" @click="readModel" />
-                      </template>
-                    </v-tooltip>
-                    <v-tooltip location="left" text="写入">
-                      <template #activator="{ props }">
-                        <v-btn v-bind="props" icon="mdi-upload" size="small" color="warning" @click="writeModel" />
-                      </template>
-                    </v-tooltip>
-                    <v-tooltip location="left" text="保存">
-                      <template #activator="{ props }">
-                        <v-btn v-bind="props" icon="mdi-content-save" size="small" color="primary" @click="saveModel" />
                       </template>
                     </v-tooltip>
                   </v-speed-dial>
@@ -447,7 +420,7 @@
           <v-card-text class="text-center py-8">
             <v-icon class="mb-2" color="grey" size="48">mdi-download</v-icon>
             <div class="text-body-1 text-medium-emphasis">
-              点击「从设备加载」获取配置
+              连接设备后将自动加载配置
             </div>
           </v-card-text>
         </v-card>
@@ -492,7 +465,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import { useConfigStore, type ModelChannel } from '@/stores/config'
 import { useChannelStore } from '@/stores/channels'
@@ -668,8 +641,12 @@ function togglePoll(): void {
   chStore.polling ? chStore.stopPolling() : chStore.startPolling()
 }
 
+// 防止同步时触发自动写入的标志
+let syncing = false
+
 // 将 store 中的通道数据(CRSF raw)同步到可编辑副本(μs)
 function syncEditFromStore(): void {
+  syncing = true
   editChannels.length = 0
   expandedIdx.value = null
   const src = configStore.config?.models?.[selectedSlot.value]?.channels
@@ -715,6 +692,8 @@ function syncEditFromStore(): void {
       })
     }
   }
+  // 延迟复位标志，确保 Vue 响应式更新完毕
+  nextTick(() => { syncing = false })
 }
 
 // 切换分页时同步
@@ -783,9 +762,6 @@ async function saveModel(): Promise<void> {
   await configStore.saveConfig()
 }
 
-// 工具栏按钮别名
-const saveToDevice = saveModel
-
 // 仅切换选项卡加载数据，不自动激活
 function onSlotSelect(slot: number): void {
   configStore.fetchModel(slot).then(() => syncEditFromStore())
@@ -796,10 +772,32 @@ async function activateModel(): Promise<void> {
   await configStore.setActiveModel(selectedSlot.value)
 }
 
-// 进入页面自动轮询，离开页面停止
+// 进入页面自动轮询 + 自动加载配置，离开页面停止
 onMounted(() => {
   if (serial.connected && !chStore.polling) chStore.startPolling()
+  // 已连接且未加载配置时，自动从设备拉取
+  if (serial.connected && !configStore.config) {
+    loadFromDevice()
+  }
 })
+
+// 页面打开后再连接设备时，自动加载配置
+watch(() => serial.connected, (connected) => {
+  if (connected && !configStore.config) {
+    loadFromDevice()
+  }
+})
+
+// 通道配置任一字段变更 → 防抖后自动写入设备内存 (不持久化)
+let writeTimer: ReturnType<typeof setTimeout> | null = null
+watch(editChannels, () => {
+  if (syncing) return   // 跳过程序化同步
+  if (writeTimer) clearTimeout(writeTimer)
+  writeTimer = setTimeout(() => {
+    writeModel()
+    writeTimer = null
+  }, 300)
+}, { deep: true })
 
 onUnmounted(() => {
   chStore.stopPolling()

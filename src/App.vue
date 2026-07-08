@@ -6,12 +6,6 @@
     <v-navigation-drawer v-model="drawer" width="240">
       <v-list density="compact" nav>
         <v-list-item
-          title="仪表盘"
-          prepend-icon="mdi-view-dashboard"
-          to="/"
-          exact
-        />
-        <v-list-item
           title="通道配置"
           prepend-icon="mdi-cog"
           to="/config"
