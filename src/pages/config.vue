@@ -720,6 +720,7 @@ async function saveCurrentModel(): Promise<void> {
     const { condition, activate, deactivate, toggle, ...rest } = ch
     return {
       ...rest,
+      condition,
       output_min: usToRaw(ch.output_min),
       output_max: usToRaw(ch.output_max),
       output_center: usToRaw(ch.output_center),

@@ -23,10 +23,43 @@ interface ElectronSerialAPI {
   onError(callback: (data: { message: string }) => void): () => void;
 }
 
+// Web Serial API 类型声明
+interface SerialPortInfo {
+  usbVendorId?: number;
+  usbProductId?: number;
+}
+
+interface SerialPort {
+  readable: ReadableStream<Uint8Array> | null;
+  writable: WritableStream<Uint8Array> | null;
+  open(options: SerialOptions): Promise<void>;
+  close(): Promise<void>;
+  getInfo(): SerialPortInfo;
+}
+
+interface SerialOptions {
+  baudRate: number;
+  dataBits?: 7 | 8;
+  stopBits?: 1 | 2;
+  parity?: 'none' | 'even' | 'odd';
+  bufferSize?: number;
+  flowControl?: 'none' | 'hardware';
+}
+
+interface Serial {
+  requestPort(options?: SerialPortRequestOptions): Promise<SerialPort>;
+  getPorts(): Promise<SerialPort[]>;
+}
+
+interface SerialPortRequestOptions {
+  filters?: Array<{ usbVendorId?: number; usbProductId?: number }>;
+}
+
 declare global {
+  interface Navigator {
+    serial?: Serial;
+  }
   interface Window {
     electronSerialAPI?: ElectronSerialAPI;
   }
 }
-
-export {};

@@ -117,7 +117,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
   function handleResponse(json: Record<string, unknown>): void {
     // cal_status 响应
     if (json.cmd === 'cal_status' || json.state !== undefined) {
-      const st = (json.state ?? json.type ?? '') as string
+      const st = (json.state ?? json.type ?? '') as string | number
       calProgress.value = (json.progress as number) ?? 0
       if (st === 'done' || st === 2) {
         lastMessage.value = (json.message as string) || '校准完成'

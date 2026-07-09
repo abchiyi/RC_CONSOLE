@@ -91,7 +91,7 @@ const serial = useSerialStore()
 const channelStore = useChannelStore()
 const pollEnabled = ref(false)
 
-function togglePoll(on: boolean): void {
+function togglePoll(on: boolean | null): void {
   if (on) channelStore.startPolling(50)
   else channelStore.stopPolling()
 }

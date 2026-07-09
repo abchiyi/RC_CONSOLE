@@ -84,7 +84,7 @@ export const useSerialStore = defineStore('serial', () => {
             return false
           }
           if (ports.length === 1) {
-            targetPath = ports[0].path
+            targetPath = ports[0]?.path
           } else {
             // 多个串口：优先选择 USB 串口设备（通常 ESP32 的 manufacturer 包含特定字符）
             const usbPort = ports.find(p =>
@@ -97,11 +97,12 @@ export const useSerialStore = defineStore('serial', () => {
               targetPath = usbPort.path
             } else {
               // 回退到第一个
-              targetPath = ports[0].path
+              targetPath = ports[0]?.path
             }
           }
         }
 
+        if (!targetPath) return false
         const ok = await (backend as ElectronSerialService).connect(targetPath)
         if (ok) {
           connected.value = true

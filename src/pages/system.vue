@@ -347,6 +347,14 @@
             >
               启动 WiFi 控制台
             </v-btn>
+            <v-btn
+              color="warning" size="small" variant="tonal"
+              :loading="wifiStopping"
+              prepend-icon="mdi-wifi-off"
+              @click="stopWiFi"
+            >
+              关闭 WiFi
+            </v-btn>
           </v-card-actions>
         </v-card>
       </v-col>
@@ -395,10 +403,10 @@ const stateError = ref('')
 const debugSwitch = ref(power.debugMode)
 const debugLoading = ref(false)
 
-async function toggleDebugMode(v: boolean) {
+async function toggleDebugMode(v: boolean | null) {
   debugLoading.value = true
   try {
-    await power.setDebugMode(v)
+    await power.setDebugMode(v ?? false)
   } catch {
     debugSwitch.value = !v  // 失败回滚
   }
@@ -439,9 +447,9 @@ function showElrsMsg(msg: string, ok: boolean) {
 async function refreshElrsFields() {
   elrsMsg.value = ''
   await link.fetchFields()
-  if (link.fields.value.length > 0) {
+  if (link.fields.length > 0) {
     dynPwrSwitch.value = link.dynPowerOn ?? false
-    showElrsMsg(`已加载 ${link.fields.value.length} 个字段`, true)
+    showElrsMsg(`已加载 ${link.fields.length} 个字段`, true)
   } else {
     showElrsMsg('字段加载超时或模块未响应', false)
   }
@@ -455,11 +463,19 @@ async function startWiFi() {
   setTimeout(() => { wifiStarting.value = false }, 2000)
 }
 
-async function toggleDynPower(v: boolean) {
+// ELRS WiFi 控制台关闭
+const wifiStopping = ref(false)
+async function stopWiFi() {
+  wifiStopping.value = true
+  try { await serialService.sendCommand('elrs_wifi_stop') } catch { }
+  setTimeout(() => { wifiStopping.value = false }, 2000)
+}
+
+async function toggleDynPower(v: boolean | null) {
   dynPwrToggling.value = true
   elrsMsg.value = ''
   try {
-    const ok = await link.toggleDynPower(v)
+    const ok = await link.toggleDynPower(v ?? false)
     if (ok) {
       showElrsMsg(v ? '动态功率已开启' : '动态功率已关闭', true)
     } else {
@@ -480,7 +496,7 @@ watch(() => power.debugMode, (v) => {
 
 // ELRS 模块就绪时自动刷新字段列表
 watch(() => link.moduleAlive, (alive) => {
-  if (alive && link.dynPowerOn.value === null) {
+  if (alive && link.dynPowerOn === null) {
     refreshElrsFields()
   }
 })

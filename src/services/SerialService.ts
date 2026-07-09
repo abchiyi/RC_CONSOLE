@@ -34,6 +34,7 @@ export class SerialService {
   }
 
   async requestPort(): Promise<SerialPort | null> {
+    if (!navigator.serial) return null
     try {
       const port = await navigator.serial.requestPort()
       this.port = port
@@ -153,6 +154,7 @@ export class SerialService {
   private startReadLoop(): void {
     if (!this.port?.readable) return
     const port = this.port
+    if (!port.readable) return
     this.reader = port.readable.getReader()
     const capturedReader = this.reader
 
@@ -160,6 +162,7 @@ export class SerialService {
       let buf = ''
       try {
         while (true) {
+          if (!capturedReader) return
           const { value, done } = await capturedReader.read()
           if (done) break
           if (value) {
@@ -194,7 +197,9 @@ export class SerialService {
         // 设备断开或端口关闭
       } finally {
         // 清理 reader
-        try { capturedReader.releaseLock() } catch { /* ignore */ }
+        if (capturedReader) {
+          try { capturedReader.releaseLock() } catch { /* ignore */ }
+        }
 
         // 清理 writer
         if (this.writer) {
