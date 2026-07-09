@@ -164,16 +164,23 @@ export const useConfigStore = defineStore('config', () => {
     loading.value = false
   }
 
-  async function setActiveModel(slot: number): Promise<void> {
+  async function setActiveModel(slot: number): Promise<boolean> {
+    const p = rr.wait('set_active', 2000)
     await serialService.sendCommand('set_active', { slot })
+    try { const ok = await p; return ok !== false } catch { error.value = '激活模型超时'; return false }
   }
 
-  async function setModel(slot: number, data: ModelConfig): Promise<void> {
+  async function setModel(slot: number, data: ModelConfig): Promise<boolean> {
+    const tag = `set_model_${slot}`
+    const p = rr.wait(tag, 3000)
     await serialService.sendCommand('set_model', { slot, data })
+    try { const ok = await p; return ok !== false } catch { error.value = '模型写入超时'; return false }
   }
 
-  async function saveConfig(): Promise<void> {
+  async function saveConfig(): Promise<boolean> {
+    const p = rr.wait('save', 3000)
     await serialService.sendCommand('save')
+    try { const ok = await p; return ok !== false } catch { error.value = '保存配置超时'; return false }
   }
 
   async function loadConfig(): Promise<void> {
@@ -185,6 +192,24 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   function handleResponse(json: Record<string, unknown>): void {
+    const cmd = json.cmd as string | undefined
+
+    // 通用错误响应 (无 cmd 字段): 匹配当前等待中的请求并记录错误
+    if (json.error && !cmd) {
+      error.value = json.error as string
+      const pending = rr.pendingCmd
+      if (pending) rr.tryResolve(pending, false)
+      return
+    }
+
+    // set_model 响应: 使用 slot 匹配等待中的请求
+    if (cmd === 'set_model' && json.slot !== undefined) {
+      const tag = `set_model_${json.slot}`
+      rr.tryResolve(tag, json.ok ? true : false)
+      if (!json.ok) error.value = (json.error as string) || '模型写入失败'
+      return
+    }
+
     // 单个模型响应 (get_model) — channels 在顶层且无 models/device
     if (
       Array.isArray(json.channels)
@@ -209,9 +234,8 @@ export const useConfigStore = defineStore('config', () => {
       deviceInfo.value = json as unknown as DeviceInfo
     }
 
-    // 匹配等待中的请求，resolve 对应 Promise
-    const cmd = json.cmd as string | undefined
-    if (cmd) rr.tryResolve(cmd)
+    // 匹配等待中的请求，resolve 对应 Promise (复用顶部的 cmd 变量)
+    if (cmd) rr.tryResolve(cmd, json.ok)
   }
 
   return {

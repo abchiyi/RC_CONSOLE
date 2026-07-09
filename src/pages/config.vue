@@ -758,8 +758,15 @@ async function writeModel(): Promise<void> {
 
 // 保存：写入内存 + 持久化到 NVS
 async function saveModel(): Promise<void> {
-  await saveCurrentModel()
-  await configStore.saveConfig()
+  try {
+    await saveCurrentModel()
+    const ok = await configStore.saveConfig()
+    snackbarMsg.value = ok ? '配置已保存到设备' : '保存失败'
+    snackbarVisible.value = true
+  } catch {
+    snackbarMsg.value = '保存过程中发生错误'
+    snackbarVisible.value = true
+  }
 }
 
 // 仅切换选项卡加载数据，不自动激活
@@ -769,7 +776,9 @@ function onSlotSelect(slot: number): void {
 
 // 激活当前模型为设备主配置
 async function activateModel(): Promise<void> {
-  await configStore.setActiveModel(selectedSlot.value)
+  const ok = await configStore.setActiveModel(selectedSlot.value)
+  snackbarMsg.value = ok ? '模型已激活' : '激活失败'
+  snackbarVisible.value = true
 }
 
 // 进入页面自动轮询 + 自动加载配置，离开页面停止
