@@ -130,6 +130,17 @@
     <v-btn
       v-if="serial.connected"
       class="ml-2"
+      color="warning"
+      icon="mdi-restart"
+      size="small"
+      variant="text"
+      :loading="resetLoading"
+      @click="handleReset"
+    />
+
+    <v-btn
+      v-if="serial.connected"
+      class="ml-2"
       color="error"
       icon="mdi-power-plug-off"
       size="small"
@@ -143,12 +154,14 @@
 import { computed, watch, ref, onMounted } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import { useLinkStatsStore } from '@/stores/linkStats'
+import { serialService } from '@/services/SerialService'
 
 defineEmits<{ 'toggle-drawer': [] }>()
 
 const serial = useSerialStore()
 const link   = useLinkStatsStore()
 const selectedPort = ref<string | null>(null)
+const resetLoading = ref(false)
 
 // 启动时自动刷新串口列表
 onMounted(() => { serial.refreshPorts() })
@@ -173,6 +186,15 @@ const txPwrLabel = computed(() => {
   }
   return `${v} dBm`
 })
+
+async function handleReset() {
+  resetLoading.value = true
+  try {
+    await serialService.resetDevice()
+  } finally {
+    resetLoading.value = false
+  }
+}
 
 // 连接时自动启停轮询
 watch(() => serial.connected, (connected) => {

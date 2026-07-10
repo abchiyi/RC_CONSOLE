@@ -94,6 +94,13 @@ export class ElectronSerialService {
     this.disconnectCallback = cb;
   }
 
+  /** 通过 DTR 信号复位设备（硬件复位，适用于设备跑飞时） */
+  async resetDevice(): Promise<boolean> {
+    if (!this._connected) return false;
+    const result = await this.api.reset();
+    return result.success;
+  }
+
   get portInfo(): { vid?: number; pid?: number } | null {
     // Electron serialport 模式下暂无 USB VID/PID
     return null;

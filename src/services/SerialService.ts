@@ -124,6 +124,17 @@ export class SerialService {
     }
   }
 
+  /** 通过 DTR 信号复位设备（硬件复位，适用于设备跑飞时） */
+  async resetDevice(): Promise<boolean> {
+    if (!this.port) return false
+    try {
+      await this.port.setSignals({ dataTerminalReady: true })
+      await this.delay(100)
+      await this.port.setSignals({ dataTerminalReady: false })
+      return true
+    } catch { return false }
+  }
+
   onLine(cb: (line: string) => void): void {
     this.addLineListener(cb)
   }

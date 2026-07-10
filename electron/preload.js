@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld('electronSerialAPI', {
   /** 查询连接状态 */
   isConnected: () => ipcRenderer.invoke('serial:isConnected'),
 
+  /** 通过 DTR 信号复位设备（用于设备跑飞时硬件复位） */
+  reset: () => ipcRenderer.invoke('serial:reset'),
+
   /** 注册数据行监听（固件发送的每一行，含 JSON 和日志） */
   onLine: (callback) => {
     const handler = (_event, line) => callback(line);

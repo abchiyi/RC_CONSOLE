@@ -122,6 +122,24 @@ function isConnected() {
   return !!(serialPort && serialPort.isOpen);
 }
 
+function resetPort() {
+  return new Promise((resolve, reject) => {
+    if (!serialPort || !serialPort.isOpen) {
+      reject(new Error('串口未连接'));
+      return;
+    }
+    serialPort.set({ dtr: true }, (err) => {
+      if (err) { reject(new Error(`DTR 置位失败: ${err.message}`)); return; }
+      setTimeout(() => {
+        serialPort.set({ dtr: false }, (err2) => {
+          if (err2) { reject(new Error(`DTR 复位失败: ${err2.message}`)); return; }
+          resolve({ success: true });
+        });
+      }, 100);
+    });
+  });
+}
+
 // ── IPC 转发 ──
 function sendToRenderer(channel, data) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -179,6 +197,11 @@ function setupIPC() {
   });
 
   ipcMain.handle('serial:isConnected', () => isConnected());
+
+  ipcMain.handle('serial:reset', async () => {
+    try { return await resetPort(); }
+    catch (err) { return { success: false, error: err.message }; }
+  });
 }
 
 // ── 应用生命周期 ──

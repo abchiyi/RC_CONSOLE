@@ -17,6 +17,7 @@ interface ElectronSerialAPI {
   disconnect(): Promise<{ success: boolean }>;
   send(line: string): Promise<{ success: boolean; error?: string }>;
   isConnected(): Promise<boolean>;
+  reset(): Promise<{ success: boolean; error?: string }>;
   onLine(callback: (line: string) => void): () => void;
   onConnected(callback: (data: { path: string }) => void): () => void;
   onDisconnected(callback: () => void): () => void;
