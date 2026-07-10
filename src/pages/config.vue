@@ -17,8 +17,8 @@
         从设备加载
       </v-btn>
 
-      <v-btn v-if="serial.connected" class="mr-2" color="success" prepend-icon="mdi-content-save" size="small" variant="tonal"
-        @click="saveModel">
+      <v-btn v-if="serial.connected" class="mr-2" color="success" prepend-icon="mdi-content-save" size="small"
+        variant="tonal" :loading="savingModel" @click="saveModel">
         保存到设备
       </v-btn>
     </v-toolbar>
@@ -483,6 +483,7 @@ const editChannels = reactive<ModelChannel[]>([])
 const expandedIdx = ref<number | null>(null)
 const snackbarMsg = ref('')
 const snackbarVisible = ref(false)
+const savingModel = ref(false)
 
 function toggleExpand(idx: number): void {
   expandedIdx.value = expandedIdx.value === idx ? null : idx
@@ -759,6 +760,7 @@ async function writeModel(): Promise<void> {
 
 // 保存：写入内存 + 持久化到 NVS
 async function saveModel(): Promise<void> {
+  savingModel.value = true
   try {
     await saveCurrentModel()
     const ok = await configStore.saveConfig()
@@ -767,6 +769,8 @@ async function saveModel(): Promise<void> {
   } catch {
     snackbarMsg.value = '保存过程中发生错误'
     snackbarVisible.value = true
+  } finally {
+    savingModel.value = false
   }
 }
 
