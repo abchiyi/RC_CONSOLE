@@ -20,9 +20,16 @@ export interface LinkStats {
 
 export interface ElrsFieldInfo {
   id: number
+  parent?: number
+  hidden?: boolean
+  value_valid?: boolean
   name: string
   type: number
   unit: string
+  min?: number
+  max?: number
+  step?: number
+  options?: string[]
   value?: number
   text?: string
 }
@@ -41,18 +48,18 @@ function looksLikeDynPower(name: string): boolean {
 }
 
 export const useLinkStatsStore = defineStore('linkStats', () => {
-  const valid      = ref(false)
+  const valid = ref(false)
   const fieldCount = ref(0)
-  const ulRssi     = ref(0)
-  const ulLq       = ref(0)
-  const dlRssi     = ref(0)
-  const dlLq       = ref(0)
-  const rfMode     = ref(0)
-  const txPower    = ref(0)
+  const ulRssi = ref(0)
+  const ulLq = ref(0)
+  const dlRssi = ref(0)
+  const dlLq = ref(0)
+  const rfMode = ref(0)
+  const txPower = ref(0)
 
   // ELRS 字段列表
-  const fields        = ref<ElrsFieldInfo[]>([])
-  const dynPowerOn    = ref<boolean | null>(null)  // null = 未找到字段
+  const fields = ref<ElrsFieldInfo[]>([])
+  const dynPowerOn = ref<boolean | null>(null)  // null = 未找到字段
   const dynPowerField = ref<string>('')            // 缓存找到的字段名 (精确)
   const dynPwrLoading = ref(false)
 
@@ -93,11 +100,11 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
     fieldCount.value = (json.field_count as number) ?? 0
     valid.value = !!json.valid
     if (!valid.value) return
-    ulRssi.value  = (json.ul_rssi  as number) ?? 0
-    ulLq.value    = (json.ul_lq    as number) ?? 0
-    dlRssi.value  = (json.dl_rssi  as number) ?? 0
-    dlLq.value    = (json.dl_lq    as number) ?? 0
-    rfMode.value  = (json.rf_mode  as number) ?? 0
+    ulRssi.value = (json.ul_rssi as number) ?? 0
+    ulLq.value = (json.ul_lq as number) ?? 0
+    dlRssi.value = (json.dl_rssi as number) ?? 0
+    dlLq.value = (json.dl_lq as number) ?? 0
+    rfMode.value = (json.rf_mode as number) ?? 0
     txPower.value = (json.tx_power as number) ?? 0
   }
 
@@ -117,9 +124,13 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
   }
 
   /** 设置 ELRS 参数字段 */
-  async function setParam(field: string, value: number): Promise<boolean> {
+  async function setParam(field: string | number, value: number): Promise<boolean> {
     const p = rr.wait('elrs_set_param', 3000)
-    await serialService.sendCommand('elrs_set_param', { field, value })
+    if (typeof field === 'number') {
+      await serialService.sendCommand('elrs_set_param', { field_id: field, value })
+    } else {
+      await serialService.sendCommand('elrs_set_param', { field, value })
+    }
     try {
       const resp = (await p) as Record<string, unknown>
       return !!resp.ok
@@ -155,6 +166,7 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
 
     if (cmd === 'elrs_list_fields') {
       fields.value = (json.fields as ElrsFieldInfo[]) ?? []
+      fieldCount.value = fields.value.length
       updateDynPowerFromFields(fields.value)
       rr.tryResolve('elrs_list_fields')
       return

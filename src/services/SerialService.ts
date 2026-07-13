@@ -128,9 +128,12 @@ export class SerialService {
   async resetDevice(): Promise<boolean> {
     if (!this.port) return false
     try {
-      await this.port.setSignals({ dataTerminalReady: true })
+      const serialPort = this.port as SerialPort & {
+        setSignals?: (signals: { dataTerminalReady: boolean }) => Promise<void>
+      }
+      await serialPort.setSignals?.({ dataTerminalReady: true })
       await this.delay(100)
-      await this.port.setSignals({ dataTerminalReady: false })
+      await serialPort.setSignals?.({ dataTerminalReady: false })
       return true
     } catch { return false }
   }
@@ -263,7 +266,7 @@ export function getSerialService() {
  * 统一导出的串口服务实例。
  * - Electron 桌面端 → ElectronSerialService (原生 serialport)
  * - 浏览器 → SerialService (Web Serial API)
- * 
+ *
  * 所有 Store 通过此导出使用，无需关心后端差异。
  */
 export const serialService = ElectronSerialService.isSupported()
