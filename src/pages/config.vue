@@ -713,7 +713,7 @@ async function loadFromDevice(): Promise<void> {
   if (!chStore.polling) chStore.startPolling()
 }
 
-async function saveCurrentModel(): Promise<void> {
+async function saveCurrentModel(): Promise<boolean> {
   const name = configStore.config?.models?.[selectedSlot.value]?.name || ''
   // 将 μs 转回 CRSF raw 再发送到固件
   // 条件字段需扁平化并映射到固件缩写的 JSON key
@@ -741,7 +741,7 @@ async function saveCurrentModel(): Promise<void> {
       mix_items: ch.mix_items?.map(mi => ({ src: mi.src, w: mi.w, reverse: mi.reverse })) ?? [],
     }
   })
-  await configStore.setModel(selectedSlot.value, {
+  return await configStore.setModel(selectedSlot.value, {
     name,
     channels: rawChannels,
   })
@@ -762,9 +762,11 @@ async function writeModel(): Promise<void> {
 async function saveModel(): Promise<void> {
   savingModel.value = true
   try {
-    await saveCurrentModel()
-    const ok = await configStore.saveConfig()
-    snackbarMsg.value = ok ? '配置已保存到设备' : '保存失败'
+    const setOk = await saveCurrentModel()
+    // 等待 150ms 确保 ESP32 完成前面 JSON 数据的存储和处理
+    await new Promise(r => setTimeout(r, 150))
+    const saveOk = await configStore.saveConfig()
+    snackbarMsg.value = (setOk !== false && saveOk) ? '配置已固化保存到设备' : '保存失败，请重试'
     snackbarVisible.value = true
   } catch {
     snackbarMsg.value = '保存过程中发生错误'
