@@ -697,13 +697,9 @@ function syncEditFromStore(): void {
   nextTick(() => { syncing = false })
 }
 
-// 切换分页时同步
-watch(selectedSlot, () => {
-  syncEditFromStore()
-})
-
 async function loadFromDevice(): Promise<void> {
   await configStore.fetchDeviceInfo()
+  await configStore.fetchActiveModel()
   await configStore.fetchAllModels()
   if (configStore.config) {
     selectedSlot.value = configStore.config.active_model
@@ -776,9 +772,19 @@ async function saveModel(): Promise<void> {
   }
 }
 
-// 仅切换选项卡加载数据，不自动激活
-function onSlotSelect(slot: number): void {
-  configStore.fetchModel(slot).then(() => syncEditFromStore())
+// 切换选项卡时只切换运行槽位，不修改持久激活槽位
+async function onSlotSelect(slot: number): Promise<void> {
+  syncing = true
+  editChannels.length = 0
+  expandedIdx.value = null
+
+  try {
+    await configStore.fetchModel(slot)
+    await configStore.setRuntimeModel(slot)
+    syncEditFromStore()
+  } catch {
+    syncing = false
+  }
 }
 
 // 激活当前模型为设备主配置

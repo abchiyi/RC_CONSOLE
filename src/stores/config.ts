@@ -117,6 +117,19 @@ export const useConfigStore = defineStore('config', () => {
     loading.value = false
   }
 
+  async function fetchActiveModel(): Promise<void> {
+    loading.value = true
+    error.value = null
+    const promise = rr.wait('get_active')
+    await serialService.sendCommand('get_active')
+    try {
+      await promise
+    } catch (e) {
+      error.value = (e as Error).message
+    }
+    loading.value = false
+  }
+
   // 逐个拉取所有模型（避免大数据截断）
   async function fetchAllModels(activeSlot?: number): Promise<void> {
     const count = deviceInfo.value?.model_count ?? 0
@@ -128,7 +141,7 @@ export const useConfigStore = defineStore('config', () => {
     // 初始化 config，占位 models 数组
     config.value = {
       radio_mode: 0,
-      active_model: activeSlot ?? 0,
+      active_model: activeSlot ?? config.value?.active_model ?? 0,
       lpf_alpha: 0,
       models: new Array(count).fill(null).map(() => ({ name: '', channels: [] })),
     }
@@ -170,6 +183,12 @@ export const useConfigStore = defineStore('config', () => {
     try { const ok = await p; return ok !== false } catch { error.value = '激活模型超时'; return false }
   }
 
+  async function setRuntimeModel(slot: number): Promise<boolean> {
+    const p = rr.wait('set_runtime_model', 2000)
+    await serialService.sendCommand('set_runtime_model', { slot })
+    try { const ok = await p; return ok !== false } catch { error.value = '切换运行模型超时'; return false }
+  }
+
   async function setModel(slot: number, data: ModelConfig): Promise<boolean> {
     const tag = `set_model_${slot}`
     const p = rr.wait(tag, 3000)
@@ -202,11 +221,44 @@ export const useConfigStore = defineStore('config', () => {
       return
     }
 
-    // set_model 响应: 使用 slot 匹配等待中的请求
-    if (cmd === 'set_model' && json.slot !== undefined) {
-      const tag = `set_model_${json.slot}`
-      rr.tryResolve(tag, json.ok ? true : false)
-      if (!json.ok) error.value = (json.error as string) || '模型写入失败'
+    // set_model 响应: 优先使用 slot 匹配；兼容旧固件无 slot 时回退到 pendingCmd
+    if (cmd === 'set_model') {
+      const ok = json.ok ? true : false
+      if (json.slot !== undefined) {
+        const tag = `set_model_${json.slot}`
+        rr.tryResolve(tag, ok)
+      } else {
+        const pending = rr.pendingCmd
+        if (pending && pending.startsWith('set_model_')) {
+          rr.tryResolve(pending, ok)
+        }
+      }
+      if (!ok) error.value = (json.error as string) || '模型写入失败'
+      return
+    }
+
+    if (cmd === 'set_active' && json.slot !== undefined) {
+      if (json.ok && config.value) {
+        config.value.active_model = Number(json.slot)
+      }
+      rr.tryResolve('set_active', json.ok ? true : false)
+      if (!json.ok) error.value = (json.error as string) || '激活模型失败'
+      return
+    }
+
+    if (cmd === 'get_active' && json.active_model !== undefined) {
+      const activeModel = Number(json.active_model)
+      if (!config.value) {
+        config.value = {
+          radio_mode: 0,
+          active_model: activeModel,
+          lpf_alpha: 0,
+          models: [],
+        }
+      } else {
+        config.value.active_model = activeModel
+      }
+      rr.tryResolve('get_active', activeModel)
       return
     }
 
@@ -248,9 +300,11 @@ export const useConfigStore = defineStore('config', () => {
     activeModel,
     fetchDeviceInfo,
     fetchConfig,
+    fetchActiveModel,
     fetchAllModels,
     fetchModel,
     setActiveModel,
+    setRuntimeModel,
     setModel,
     saveConfig,
     loadConfig,
