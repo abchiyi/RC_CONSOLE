@@ -21,6 +21,18 @@ export interface SerialOptions {
   parity?: 'none' | 'even' | 'odd'
 }
 
+export interface FirmwareFlashPayload {
+  portPath: string
+  fileName: string
+  data: ArrayBuffer
+}
+
+export interface FirmwareFlashResult {
+  success: boolean
+  message?: string
+  error?: string
+}
+
 export class SerialService {
   private port: SerialPort | null = null
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null
@@ -138,6 +150,10 @@ export class SerialService {
     } catch { return false }
   }
 
+  async flashFirmware(): Promise<FirmwareFlashResult> {
+    return { success: false, error: '浏览器模式不支持在线升级，请使用桌面版应用' }
+  }
+
   onLine(cb: (line: string) => void): void {
     this.addLineListener(cb)
   }
@@ -152,6 +168,10 @@ export class SerialService {
 
   onDisconnect(cb: () => void): void {
     this.disconnectCallback = cb
+  }
+
+  onFirmwareLog(): () => void {
+    return () => { }
   }
 
   async sendCommand(cmd: string, params?: Record<string, unknown>): Promise<void> {

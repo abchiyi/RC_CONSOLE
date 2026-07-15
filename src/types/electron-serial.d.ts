@@ -18,10 +18,12 @@ interface ElectronSerialAPI {
   send(line: string): Promise<{ success: boolean; error?: string }>;
   isConnected(): Promise<boolean>;
   reset(): Promise<{ success: boolean; error?: string }>;
+  flashFirmware(payload: { portPath: string; fileName: string; data: ArrayBuffer | Uint8Array }): Promise<{ success: boolean; message?: string; error?: string }>;
   onLine(callback: (line: string) => void): () => void;
   onConnected(callback: (data: { path: string }) => void): () => void;
   onDisconnected(callback: () => void): () => void;
   onError(callback: (data: { message: string }) => void): () => void;
+  onFirmwareLog(callback: (line: string) => void): () => void;
 }
 
 // Web Serial API 类型声明

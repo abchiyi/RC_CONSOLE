@@ -20,6 +20,7 @@ export const useSerialStore = defineStore('serial', () => {
   const error = ref<string | null>(null)
   const availablePorts = ref<SerialPortDescriptor[]>([])
   const loadingPorts = ref(false)
+  const lastPortPath = ref('')
 
   // 运行时确定使用哪个后端
   const isElectron = ElectronSerialService.isSupported()
@@ -106,6 +107,7 @@ export const useSerialStore = defineStore('serial', () => {
         const ok = await (backend as ElectronSerialService).connect(targetPath)
         if (ok) {
           connected.value = true
+          lastPortPath.value = targetPath
         } else {
           error.value = '串口打开失败'
         }
@@ -148,6 +150,7 @@ export const useSerialStore = defineStore('serial', () => {
     error,
     availablePorts,
     loadingPorts,
+    lastPortPath,
     isElectron,
     statusIcon,
     statusColor,
