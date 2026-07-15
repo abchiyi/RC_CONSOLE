@@ -20,7 +20,9 @@ declare module 'vue-router/auto-routes' {
   export interface RouteNamedMap {
     '/calibration': RouteRecordInfo<'/calibration', '/calibration', Record<never, never>, Record<never, never>>,
     '/config': RouteRecordInfo<'/config', '/config', Record<never, never>, Record<never, never>>,
+    '/elrs': RouteRecordInfo<'/elrs', '/elrs', Record<never, never>, Record<never, never>>,
     '/system': RouteRecordInfo<'/system', '/system', Record<never, never>, Record<never, never>>,
+    '/upgrade': RouteRecordInfo<'/upgrade', '/upgrade', Record<never, never>, Record<never, never>>,
   }
 
   /**
@@ -42,8 +44,16 @@ declare module 'vue-router/auto-routes' {
       routes: '/config'
       views: never
     }
+    'src/pages/elrs.vue': {
+      routes: '/elrs'
+      views: never
+    }
     'src/pages/system.vue': {
       routes: '/system'
+      views: never
+    }
+    'src/pages/upgrade.vue': {
+      routes: '/upgrade'
       views: never
     }
   }

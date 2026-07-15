@@ -20,6 +20,16 @@
           prepend-icon="mdi-cog"
           to="/system"
         />
+        <v-list-item
+          title="ELRS"
+          prepend-icon="mdi-antenna"
+          to="/elrs"
+        />
+        <v-list-item
+          title="升级"
+          prepend-icon="mdi-upload-network"
+          to="/upgrade"
+        />
       </v-list>
 
       <template #append>
