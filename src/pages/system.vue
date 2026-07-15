@@ -243,7 +243,70 @@
           </v-card-text>
         </v-card>
       </v-col>
+
+      <!-- 恢复出厂设置卡片 -->
+      <v-col cols="12" md="6">
+        <v-card rounded="lg" variant="outlined" color="error">
+          <v-card-item>
+            <template #prepend>
+              <v-icon color="error">mdi-alert-octagram</v-icon>
+            </template>
+            <v-card-title class="text-body-1">恢复出厂设置</v-card-title>
+          </v-card-item>
+
+          <v-card-text>
+            <v-alert color="error" variant="tonal" density="compact" class="mb-2">
+              此操作会直接抹除 NVS 分区全部数据（模型配置、校准、电源设置等），且不可恢复。
+            </v-alert>
+            <p class="text-caption text-medium-emphasis mb-0">
+              执行后设备将自动重启，你需要重新连接并重新配置设备。
+            </p>
+
+            <v-alert v-if="factoryResetError" color="error" variant="tonal" density="compact" class="mt-3">
+              {{ factoryResetError }}
+            </v-alert>
+            <v-alert v-else-if="factoryResetMsg" color="success" variant="tonal" density="compact" class="mt-3">
+              {{ factoryResetMsg }}
+            </v-alert>
+          </v-card-text>
+
+          <v-card-actions class="pa-4 pt-0">
+            <v-btn
+              color="error"
+              size="small"
+              variant="tonal"
+              prepend-icon="mdi-delete-alert"
+              :disabled="!serial.connected || factoryResetBusy"
+              :loading="factoryResetBusy"
+              @click="factoryResetDialog = true"
+            >
+              抹除 NVS 并重启
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-col>
     </v-row>
+
+    <v-dialog v-model="factoryResetDialog" max-width="460" persistent>
+      <v-card>
+        <v-card-title class="text-body-1">确认恢复出厂设置</v-card-title>
+        <v-card-text>
+          确认后将抹除 NVS 分区全部数据并自动重启设备。该操作不可撤销。
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="factoryResetBusy" @click="factoryResetDialog = false">取消</v-btn>
+          <v-btn
+            color="error"
+            variant="tonal"
+            :loading="factoryResetBusy"
+            @click="startFactoryResetNvs"
+          >
+            确认抹除
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -251,6 +314,7 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import { usePowerStore } from '@/stores/power'
+import { serialService } from '@/services/SerialService'
 
 const serial = useSerialStore()
 const power = usePowerStore()
@@ -284,6 +348,74 @@ const stateError = ref('')
 // ========== 调试模式 ==========
 const debugSwitch = ref(power.debugMode)
 const debugLoading = ref(false)
+
+// ========== 恢复出厂设置（抹除 NVS） ==========
+const factoryResetBusy = ref(false)
+const factoryResetDialog = ref(false)
+const factoryResetMsg = ref('')
+const factoryResetError = ref('')
+
+function waitFactoryResetResponse(timeoutMs = 8000): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error('等待设备响应超时: factory_reset_nvs'))
+    }, timeoutMs)
+
+    const handler = (line: string) => {
+      try {
+        const json = JSON.parse(line) as Record<string, unknown>
+        if (json.cmd !== 'factory_reset_nvs') return
+        cleanup()
+        resolve(json)
+      } catch {
+        // ignore non JSON lines
+      }
+    }
+
+    const cleanup = () => {
+      clearTimeout(timer)
+      serialService.removeLineListener(handler)
+    }
+
+    serialService.addLineListener(handler)
+  })
+}
+
+async function startFactoryResetNvs() {
+  if (!serial.connected) {
+    factoryResetError.value = '请先连接设备'
+    return
+  }
+
+  factoryResetBusy.value = true
+  factoryResetMsg.value = ''
+  factoryResetError.value = ''
+
+  try {
+    const pending = waitFactoryResetResponse()
+    await serialService.sendCommand('factory_reset_nvs')
+    const resp = await pending
+    if (resp.ok === true) {
+      factoryResetMsg.value = '已抹除 NVS，设备正在重启，请稍后重新连接'
+      factoryResetDialog.value = false
+      stopPoll()
+      setTimeout(async () => {
+        try {
+          if (serial.connected) await serial.disconnect()
+        } catch {
+          // ignore
+        }
+      }, 1300)
+    } else {
+      factoryResetError.value = `恢复失败: ${String(resp.error || '未知错误')}`
+    }
+  } catch (e: unknown) {
+    factoryResetError.value = `恢复失败: ${e instanceof Error ? e.message : String(e)}`
+  } finally {
+    factoryResetBusy.value = false
+  }
+}
 
 async function toggleDebugMode(v: boolean | null) {
   debugLoading.value = true
