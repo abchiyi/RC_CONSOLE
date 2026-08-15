@@ -268,27 +268,51 @@ export const webSerialService = new SerialService()
 
 // ── 导入 Electron 后端（延迟导入避免循环依赖） ──
 import { ElectronSerialService, electronSerialService } from './ElectronSerialService'
+// ── WebSocket 后端（Web 控制台模式） ──
+import { WebSocketService, webSocketService } from './WebSocketService'
+// ── BLE 后端（Web Bluetooth NUS） ──
+import { BleService, bleService } from './BleService'
 
 export { ElectronSerialService, electronSerialService }
+export { WebSocketService, webSocketService }
+export { BleService, bleService }
 
 export function isElectronEnv(): boolean {
   return ElectronSerialService.isSupported()
 }
 
-export function getSerialService() {
+/** 当前页面是否运行在固件 Web 控制台中（页面由 ESP32 提供） */
+export function isWebConsoleEnv(): boolean {
+  return WebSocketService.isWebConsolePage()
+}
+
+export type SerialBackend = SerialService | ElectronSerialService | WebSocketService | BleService
+
+export function getSerialService(): SerialBackend {
   if (ElectronSerialService.isSupported()) {
     return electronSerialService
+  }
+  if (WebSocketService.isWebConsolePage()) {
+    return webSocketService
   }
   return webSerialService
 }
 
 /**
- * 统一导出的串口服务实例。
- * - Electron 桌面端 → ElectronSerialService (原生 serialport)
- * - 浏览器 → SerialService (Web Serial API)
+ * 统一导出的活动后端实例。
+ * - 默认按环境选择：Electron 桌面端 → ElectronSerialService；固件 Web 控制台 → WebSocketService；浏览器 → SerialService
+ * - 可通过 setSerialBackend() 切换为 BleService（蓝牙 NUS）
  *
- * 所有 Store 通过此导出使用，无需关心后端差异。
+ * 所有 Store 与页面通过此导出使用，无需关心后端差异。
  */
-export const serialService = ElectronSerialService.isSupported()
-  ? electronSerialService
-  : webSerialService
+export let serialService: SerialBackend = getSerialService()
+
+/** 切换当前活动后端（如切到 BLE）。所有 import 该实例的模块自动跟随。 */
+export function setSerialBackend(svc: SerialBackend): void {
+  serialService = svc
+}
+
+/** 切回默认后端（按当前环境自动选择） */
+export function resetSerialBackend(): void {
+  serialService = getSerialService()
+}

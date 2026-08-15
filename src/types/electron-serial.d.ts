@@ -58,9 +58,53 @@ interface SerialPortRequestOptions {
   filters?: Array<{ usbVendorId?: number; usbProductId?: number }>;
 }
 
+// Web Bluetooth API 最小类型声明（Electron 渲染进程 / Chromium 内核）
+interface BluetoothRemoteGATTCharacteristic extends EventTarget {
+  readonly value: DataView | null;
+  writeValueWithResponse(value: BufferSource): Promise<void>;
+  writeValueWithoutResponse(value: BufferSource): Promise<void>;
+  readValue(): Promise<DataView>;
+  startNotifications(): Promise<BluetoothRemoteGATTCharacteristic>;
+  stopNotifications(): Promise<BluetoothRemoteGATTCharacteristic>;
+}
+
+interface BluetoothRemoteGATTService {
+  getCharacteristic(characteristic: string): Promise<BluetoothRemoteGATTCharacteristic>;
+  getCharacteristics(characteristic?: string): Promise<BluetoothRemoteGATTCharacteristic[]>;
+}
+
+interface BluetoothRemoteGATTServer {
+  readonly connected: boolean;
+  connect(): Promise<BluetoothRemoteGATTServer>;
+  disconnect(): void;
+  getPrimaryService(service: string): Promise<BluetoothRemoteGATTService>;
+}
+
+interface BluetoothDevice extends EventTarget {
+  readonly name?: string;
+  readonly gatt?: BluetoothRemoteGATTServer;
+}
+
+interface BluetoothRequestDeviceFilter {
+  services?: string[];
+  name?: string;
+  namePrefix?: string;
+}
+
+interface RequestDeviceOptions {
+  filters?: BluetoothRequestDeviceFilter[];
+  optionalServices?: string[];
+  acceptAllDevices?: boolean;
+}
+
+interface Bluetooth {
+  requestDevice(options?: RequestDeviceOptions): Promise<BluetoothDevice>;
+}
+
 declare global {
   interface Navigator {
     serial?: Serial;
+    bluetooth?: Bluetooth;
   }
   interface Window {
     electronSerialAPI?: ElectronSerialAPI;

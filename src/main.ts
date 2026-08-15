@@ -24,20 +24,25 @@ import { useCalibrationStore } from '@/stores/calibration'
 import { useLinkStatsStore } from '@/stores/linkStats'
 
 // Serial (自动检测 Web/Electron 环境)
-import { serialService } from '@/services/SerialService'
-
-// Styles
-import 'unfonts.css'
+import {
+  serialService,
+  webSerialService,
+  electronSerialService,
+  webSocketService,
+  bleService,
+} from '@/services/SerialService'
 
 const app = createApp(App)
 
 const pinia = createPinia()
 app.use(pinia)
 
-// 注册串口 JSON 响应路由
-// 回调在 pinia 安装后才收到数据，调用 useStore 安全
-serialService.onLine((line: string) => {
-  // 串口是日志+数据二合一通道，非 JSON 行已在 SerialService 中过滤
+/**
+ * 串口/BLE JSON 响应路由
+ * 回调在 pinia 安装后才收到数据，调用 useStore 安全
+ */
+function routeJsonLine(line: string): void {
+  // 通道是日志+数据二合一，非 JSON 行已在各后端中过滤
   // 固件响应统一携带 cmd 字段，通过 cmd 精确匹配路由
   try {
     const json = JSON.parse(line)
@@ -56,6 +61,7 @@ serialService.onLine((line: string) => {
 
     // get_channels → 通道 Store
     if (cmd === 'get_channels') {
+      console.log('[Channels]', json.channels) // 调试：打印收到的通道数据
       useChannelStore().update({
         channels: json.channels,
         sources: json.sources ?? [],
@@ -80,7 +86,15 @@ serialService.onLine((line: string) => {
   } catch {
     // 忽略解析失败（日志背景噪音或截断数据）
   }
-})
+}
+
+// 注册 JSON 路由到全部后端实例。
+// 注意：setSerialBackend() 只替换 serialService 引用、不迁移 onLine 监听器，
+// 因此必须对每个后端单独注册，否则切换到 BLE 后收到的 notify 数据无人消费。
+;[webSerialService, electronSerialService, webSocketService, bleService]
+  .forEach(svc => svc.onLine(routeJsonLine))
+// 活动后端引用兜底（若未来新增后端实例未在上面枚举）
+serialService.onLine(routeJsonLine)
 
 registerPlugins(app)
 

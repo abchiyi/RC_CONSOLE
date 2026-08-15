@@ -5,7 +5,7 @@
  * 保留完整的 JSON 行协议 + ESP_LOG 噪声过滤逻辑（同 Web 端）
  */
 
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, session } = require("electron");
 const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
@@ -351,6 +351,22 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
 
+  // Web Bluetooth：必须处理设备选择，否则 navigator.bluetooth.requestDevice 无弹窗
+  mainWindow.webContents.on("select-bluetooth-device", (event, deviceList, callback) => {
+    event.preventDefault();
+    if (deviceList.length === 0) {
+      callback("");
+      return;
+    }
+    const name = (d) => (d.deviceName || "").toLowerCase();
+    // 优先选择 GamePad2RC，其次包含 "rc" 的设备，最后回退第一个
+    const target =
+      deviceList.find((d) => name(d).includes("gamepad")) ||
+      deviceList.find((d) => name(d).includes("rc")) ||
+      deviceList[0];
+    callback(target.deviceId);
+  });
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -402,6 +418,11 @@ function setupIPC() {
 
 // ── 应用生命周期 ──
 app.whenReady().then(() => {
+  // 允许 Web Bluetooth 权限请求（设备选择由 select-bluetooth-device 事件控制）
+  session.defaultSession.setBluetoothPermissionHandler((_req, callback) => {
+    callback(true);
+  });
+
   setupIPC();
   createWindow();
 

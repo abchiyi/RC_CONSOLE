@@ -1,0 +1,7 @@
+
+> rc-app@0.1.0 type-check
+> vue-tsc --build --force
+
+src/services/BleService.ts(56,38): error TS2339: Property 'bluetooth' does not exist on type 'Navigator'.
+src/services/BleService.ts(75,7): error TS2531: Object is possibly 'null'.
+src/services/BleService.ts(76,13): error TS2531: Object is possibly 'null'.

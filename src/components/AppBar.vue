@@ -114,6 +114,20 @@
       >
         连接设备
       </v-btn>
+
+      <!-- 蓝牙连接（Web Bluetooth NUS） -->
+      <v-btn
+        v-if="serial.bluetoothSupported"
+        class="ml-2"
+        color="primary"
+        prepend-icon="mdi-bluetooth"
+        size="small"
+        variant="tonal"
+        :loading="serial.connecting"
+        @click="serial.connectBLE()"
+      >
+        蓝牙
+      </v-btn>
     </template>
 
     <v-chip
@@ -123,12 +137,12 @@
       size="small"
       variant="tonal"
     >
-      <v-icon start size="16">mdi-usb</v-icon>
-      已连接
+      <v-icon start size="16">{{ serial.isBluetooth ? 'mdi-bluetooth' : 'mdi-usb' }}</v-icon>
+      {{ serial.isBluetooth ? '蓝牙已连接' : '已连接' }}
     </v-chip>
 
     <v-btn
-      v-if="serial.connected"
+      v-if="serial.connected && !serial.isBluetooth"
       class="ml-2"
       color="warning"
       icon="mdi-restart"
@@ -155,6 +169,7 @@ import { computed, watch, ref, onMounted } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import { useLinkStatsStore } from '@/stores/linkStats'
 import { serialService } from '@/services/SerialService'
+import { CHANNEL_LINK_ONLY } from '@/utils/debugFlags'
 
 defineEmits<{ 'toggle-drawer': [] }>()
 
@@ -198,6 +213,7 @@ async function handleReset() {
 
 // 连接时自动启停轮询
 watch(() => serial.connected, (connected) => {
+  if (CHANNEL_LINK_ONLY) return  // 调试: 暂停 get_link_stats 轮询
   if (connected) link.startPolling(100)
   else link.stopPolling()
 }, { immediate: true })

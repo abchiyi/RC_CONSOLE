@@ -162,6 +162,16 @@ export const useConfigStore = defineStore('config', () => {
     loading.value = false
   }
 
+  // 只拉当前激活 model 的数据（避免逐个拉取全部模型在 BLE 低带宽下超时）
+  async function fetchActiveModelData(): Promise<void> {
+    const count = deviceInfo.value?.model_count ?? 0
+    if (count === 0 || !config.value) return
+
+    // 重建占位 models 数组（长度 = model_count，仅当前激活槽位有真实数据）
+    config.value.models = new Array(count).fill(null).map(() => ({ name: '', channels: [] }))
+    await fetchModel(config.value.active_model)
+  }
+
   async function fetchModel(slot: number): Promise<void> {
     loading.value = true
     const tag = `get_model_${slot}`
@@ -302,6 +312,7 @@ export const useConfigStore = defineStore('config', () => {
     fetchConfig,
     fetchActiveModel,
     fetchAllModels,
+    fetchActiveModelData,
     fetchModel,
     setActiveModel,
     setRuntimeModel,

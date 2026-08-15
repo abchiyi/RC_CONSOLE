@@ -61,6 +61,11 @@ export const useCalibrationStore = defineStore('calibration', () => {
     await serialService.sendCommand('cal_get')
   }
 
+  /** 轻量轮询：只拉实时 raw + IMU 角度（cal_get_raw ~90B） */
+  async function fetchCalRaw(): Promise<void> {
+    await serialService.sendCommand('cal_get_raw')
+  }
+
   async function setDeadzone(type: string, deadzone: number): Promise<void> {
     await serialService.sendCommand('cal_set_deadzone', { type, deadzone })
   }
@@ -96,7 +101,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
   }
 
   function startCalDataPolling(intervalMs = 30): void {
-    calDataTimer = setInterval(() => { fetchCalData() }, intervalMs)
+    calDataTimer = setInterval(() => { fetchCalRaw() }, intervalMs)
   }
 
   function stopTimers(): void {
@@ -115,6 +120,12 @@ export const useCalibrationStore = defineStore('calibration', () => {
   let _deadzonesLoaded = false
 
   function handleResponse(json: Record<string, unknown>): void {
+    // cal_get_raw 轻量响应：只刷新实时值，不覆盖静态校准参数
+    if (json.cmd === 'cal_get_raw') {
+      applyCalRaw(json as Record<string, any>)
+      return
+    }
+
     // cal_status 响应
     if (json.cmd === 'cal_status' || json.state !== undefined) {
       const st = (json.state ?? json.type ?? '') as string | number
@@ -184,6 +195,21 @@ export const useCalibrationStore = defineStore('calibration', () => {
     }
   }
 
+  /** 轻量实时数据解析：仅 raw + IMU 角度 */
+  function applyCalRaw(data: Record<string, any>): void {
+    const raw = data.raw
+    if (raw) {
+      if (raw.trigger !== undefined) trigger.raw = raw.trigger
+      if (raw.joy_x !== undefined) joyX.raw = raw.joy_x
+      if (raw.joy_y !== undefined) joyY.raw = raw.joy_y
+    }
+    if (data.imu) {
+      if (data.imu.roll !== undefined) imu.roll = data.imu.roll
+      if (data.imu.pitch !== undefined) imu.pitch = data.imu.pitch
+      if (data.imu.yaw !== undefined) imu.yaw = data.imu.yaw
+    }
+  }
+
   return {
     trigger,
     joyX,
@@ -198,6 +224,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
     cancelCal,
     pollStatus,
     fetchCalData,
+    fetchCalRaw,
     setDeadzone,
     setLpf,
     zeroIMU,

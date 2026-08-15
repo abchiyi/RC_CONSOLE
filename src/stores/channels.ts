@@ -49,7 +49,9 @@ export const useChannelStore = defineStore('channels', () => {
     })),
   )
 
-  function startPolling(intervalMs = 50): void {
+  // 默认 100ms (10fps): BLE 下 get_channels 响应 ~2 片 notify 需 ~60ms,
+  // 20ms 请求会超过链路能力导致积压丢帧 (卡顿→流畅→卡顿)
+  function startPolling(intervalMs = 100): void {
     if (pollTimer) return
     polling.value = true
     pollTimer = setInterval(async () => {

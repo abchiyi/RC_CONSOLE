@@ -470,6 +470,7 @@ import { useSerialStore } from '@/stores/serial'
 import { useConfigStore, type ModelChannel } from '@/stores/config'
 import { useChannelStore } from '@/stores/channels'
 import { rawToUs, usToRaw } from '@/utils/crsf'
+import { CHANNEL_LINK_ONLY } from '@/utils/debugFlags'
 
 const serial = useSerialStore()
 const configStore = useConfigStore()
@@ -698,15 +699,21 @@ function syncEditFromStore(): void {
 }
 
 async function loadFromDevice(): Promise<void> {
-  await configStore.fetchDeviceInfo()
-  await configStore.fetchActiveModel()
-  await configStore.fetchAllModels()
-  if (configStore.config) {
-    selectedSlot.value = configStore.config.active_model
+  // 拉取大 JSON (get_model) 前暂停 20ms 通道轮询, 避免抢占 BLE 响应带宽
+  chStore.stopPolling()
+  try {
+    await configStore.fetchDeviceInfo()
+    await configStore.fetchActiveModel()
+    // 只拉当前激活 model, 不再串行拉取全部 8 个
+    await configStore.fetchActiveModelData()
+    if (configStore.config) {
+      selectedSlot.value = configStore.config.active_model
+    }
+    syncEditFromStore()
+  } finally {
+    // 自动开启通道轮询
+    if (!chStore.polling) chStore.startPolling()
   }
-  syncEditFromStore()
-  // 自动开启通道轮询
-  if (!chStore.polling) chStore.startPolling()
 }
 
 async function saveCurrentModel(): Promise<boolean> {
@@ -774,6 +781,7 @@ async function saveModel(): Promise<void> {
 
 // 切换选项卡时只切换运行槽位，不修改持久激活槽位
 async function onSlotSelect(slot: number): Promise<void> {
+  if (CHANNEL_LINK_ONLY) return  // 调试: 暂停切换槽位同步
   syncing = true
   editChannels.length = 0
   expandedIdx.value = null
@@ -797,6 +805,7 @@ async function activateModel(): Promise<void> {
 // 进入页面自动轮询 + 自动加载配置，离开页面停止
 onMounted(() => {
   if (serial.connected && !chStore.polling) chStore.startPolling()
+  if (CHANNEL_LINK_ONLY) return  // 调试: 仅保留通道监视, 暂停自动加载
   // 已连接且未加载配置时，自动从设备拉取
   if (serial.connected && !configStore.config) {
     loadFromDevice()
@@ -805,6 +814,7 @@ onMounted(() => {
 
 // 页面打开后再连接设备时，自动加载配置
 watch(() => serial.connected, (connected) => {
+  if (CHANNEL_LINK_ONLY) return  // 调试: 暂停连接时自动加载
   if (connected && !configStore.config) {
     loadFromDevice()
   }
@@ -813,6 +823,7 @@ watch(() => serial.connected, (connected) => {
 // 通道配置任一字段变更 → 防抖后自动写入设备内存 (不持久化)
 let writeTimer: ReturnType<typeof setTimeout> | null = null
 watch(editChannels, () => {
+  if (CHANNEL_LINK_ONLY) return  // 调试: 暂停编辑自动写
   if (syncing) return   // 跳过程序化同步
   if (writeTimer) clearTimeout(writeTimer)
   writeTimer = setTimeout(() => {

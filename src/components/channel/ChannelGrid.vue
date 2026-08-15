@@ -92,7 +92,7 @@ const channelStore = useChannelStore()
 const pollEnabled = ref(false)
 
 function togglePoll(on: boolean | null): void {
-  if (on) channelStore.startPolling(50)
+  if (on) channelStore.startPolling(20)
   else channelStore.stopPolling()
 }
 
