@@ -61,11 +61,6 @@ export const useCalibrationStore = defineStore('calibration', () => {
     await serialService.sendCommand('cal_get')
   }
 
-  /** 轻量轮询：只拉实时 raw + IMU 角度（cal_get_raw ~90B） */
-  async function fetchCalRaw(): Promise<void> {
-    await serialService.sendCommand('cal_get_raw')
-  }
-
   async function setDeadzone(type: string, deadzone: number): Promise<void> {
     await serialService.sendCommand('cal_set_deadzone', { type, deadzone })
   }
@@ -100,8 +95,10 @@ export const useCalibrationStore = defineStore('calibration', () => {
     }, 30000)  // IMU 校准需要采集 1200 个稳定样本 (约 6s)，但设备抖动会使 stableCount 降级，需要更多时间
   }
 
-  function startCalDataPolling(intervalMs = 30): void {
-    calDataTimer = setInterval(() => { fetchCalRaw() }, intervalMs)
+  /** 实时 raw+IMU 数据：由 STREAM content_type=1 推送（原 cal_get_raw 30ms 轮询已并入流式） */
+  function startCalDataPolling(intervalMs = 10): void {
+    if (!serialService.isConnected) return
+    serialService.sendCommand('stream_start', { content_type: 1, interval_ms: intervalMs, flags: 0 })
   }
 
   function stopTimers(): void {
@@ -111,7 +108,8 @@ export const useCalibrationStore = defineStore('calibration', () => {
   }
 
   function stopCalDataPolling(): void {
-    if (calDataTimer) { clearInterval(calDataTimer); calDataTimer = null }
+    calDataTimer = null
+    serialService.sendCommand('stream_stop')
   }
 
   // ---- 响应处理 ----
@@ -120,11 +118,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
   let _deadzonesLoaded = false
 
   function handleResponse(json: Record<string, unknown>): void {
-    // cal_get_raw 轻量响应：只刷新实时值，不覆盖静态校准参数
-    if (json.cmd === 'cal_get_raw') {
-      applyCalRaw(json as Record<string, any>)
-      return
-    }
+    // 注：实时 raw+IMU 已并入流式推送（STREAM content_type=1 → applyCalRaw）
 
     // cal_status 响应
     if (json.cmd === 'cal_status' || json.state !== undefined) {
@@ -224,7 +218,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
     cancelCal,
     pollStatus,
     fetchCalData,
-    fetchCalRaw,
+    applyCalRaw,
     setDeadzone,
     setLpf,
     zeroIMU,

@@ -123,13 +123,18 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
     dynPwrLoading.value = false
   }
 
-  /** 设置 ELRS 参数字段 */
+  /** 设置 ELRS 参数字段（二进制协议仅接受 field_id，字符串名从字段列表解析） */
   async function setParam(field: string | number, value: number): Promise<boolean> {
     const p = rr.wait('elrs_set_param', 3000)
     if (typeof field === 'number') {
       await serialService.sendCommand('elrs_set_param', { field_id: field, value })
     } else {
-      await serialService.sendCommand('elrs_set_param', { field, value })
+      const f = fields.value.find(x => x.name === field)
+      if (!f) {
+        rr.tryResolve('elrs_set_param', { ok: false })
+        return false
+      }
+      await serialService.sendCommand('elrs_set_param', { field_id: f.id, value })
     }
     try {
       const resp = (await p) as Record<string, unknown>

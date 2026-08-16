@@ -15,8 +15,8 @@ contextBridge.exposeInMainWorld("electronSerialAPI", {
   /** 断开串口 */
   disconnect: () => ipcRenderer.invoke("serial:disconnect"),
 
-  /** 发送一行数据（不含换行符） */
-  send: (line) => ipcRenderer.invoke("serial:send", line),
+  /** 发送原始字节（二进制帧） */
+  send: (data) => ipcRenderer.invoke("serial:send", data),
 
   /** 查询连接状态 */
   isConnected: () => ipcRenderer.invoke("serial:isConnected"),
@@ -27,11 +27,19 @@ contextBridge.exposeInMainWorld("electronSerialAPI", {
   /** 刷写固件（仅桌面端） */
   flashFirmware: (payload) => ipcRenderer.invoke("firmware:flash", payload),
 
-  /** 注册数据行监听（固件发送的每一行，含 JSON 和日志） */
-  onLine: (callback) => {
-    const handler = (_event, line) => callback(line);
-    ipcRenderer.on("serial:line", handler);
-    return () => ipcRenderer.removeListener("serial:line", handler);
+  /** 注册原始字节流监听（二进制帧 + ESP_LOG 混流） */
+  onData: (callback) => {
+    const handler = (_event, data) => {
+      if (data instanceof ArrayBuffer) {
+        callback(new Uint8Array(data));
+      } else if (ArrayBuffer.isView(data)) {
+        callback(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+      } else if (typeof data === "string") {
+        callback(new TextEncoder().encode(data));
+      }
+    };
+    ipcRenderer.on("serial:data", handler);
+    return () => ipcRenderer.removeListener("serial:data", handler);
   },
 
   /** 注册连接事件 */

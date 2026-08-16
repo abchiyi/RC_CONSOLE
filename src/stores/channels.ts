@@ -18,7 +18,8 @@ export const useChannelStore = defineStore('channels', () => {
   const sources = ref<string[]>(Array(16).fill('NONE'))
   const polling = ref(false)
   const lastUpdate = ref(0)
-  let pollTimer: ReturnType<typeof setInterval> | null = null
+  // 通道数据已并入 STREAM content_type=0：固件按 interval_ms 定时推送，无需轮询定时器
+  let started = false
 
   function update(data: ChannelSnapshot): void {
     if (data.channels) channels.value = [...data.channels]
@@ -49,23 +50,28 @@ export const useChannelStore = defineStore('channels', () => {
     })),
   )
 
-  // 默认 100ms (10fps): BLE 下 get_channels 响应 ~2 片 notify 需 ~60ms,
-  // 20ms 请求会超过链路能力导致积压丢帧 (卡顿→流畅→卡顿)
-  function startPolling(intervalMs = 100): void {
-    if (pollTimer) return
+  // 默认 50ms (20fps): 更流畅；MTU=23 平台限制下用小帧减少拆包。
+  // flags.bit0=1 附加每通道 source 名称；bit1=1 开启 11-bit 压缩（帧 61B→51B，拆包 4→3）。
+  async function startPolling(intervalMs = 50): Promise<void> {
+    if (started) return
+    if (!serialService.isConnected) return
+    started = true
     polling.value = true
-    pollTimer = setInterval(async () => {
-      if (!serialService.isConnected) {
-        stopPolling()
-        return
-      }
-      await serialService.sendCommand('get_channels')
-    }, intervalMs)
+    await serialService.sendCommand('stream_start', { content_type: 0, interval_ms: intervalMs, flags: 0x03 })
   }
 
-  function stopPolling(): void {
-    if (pollTimer) clearInterval(pollTimer)
-    pollTimer = null
+  async function stopPolling(): Promise<void> {
+    if (!started) return
+    started = false
+    polling.value = false
+    if (serialService.isConnected) {
+      await serialService.sendCommand('stream_stop')
+    }
+  }
+
+  /** 断开场景：纯重置标志，不发命令，避免重连后 startPolling 静默 return */
+  function resetPolling(): void {
+    started = false
     polling.value = false
   }
 
@@ -80,5 +86,6 @@ export const useChannelStore = defineStore('channels', () => {
     channelLabel,
     startPolling,
     stopPolling,
+    resetPolling,
   }
 })

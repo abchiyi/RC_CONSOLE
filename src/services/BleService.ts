@@ -11,7 +11,8 @@
  *  - requestDevice() 必须在用户手势（点击）中调用
  *  - Electron 主进程需处理 'select-bluetooth-device' 事件，否则无设备选择弹窗
  */
-import { classifyLine } from '@/utils/serialLineClassify'
+import { BinaryHandler } from '@/utils/binaryHandler'
+import { encodeRequest } from '@/utils/commands'
 import type { FirmwareFlashResult } from './SerialService'
 
 /** Nordic UART Service (NUS) */
@@ -27,10 +28,23 @@ export class BleService {
   private rx: BluetoothRemoteGATTCharacteristic | null = null
   private tx: BluetoothRemoteGATTCharacteristic | null = null
   private lineListeners: Set<(line: string) => void> = new Set()
+  private objListeners: Set<(obj: Record<string, unknown>) => void> = new Set()
   private disconnectCallback: (() => void) | null = null
+  private handler = new BinaryHandler()
   private _connected = false
   private _deviceName = ''
-  private buf = ''
+  // 调试日志节流: 50fps 推流下逐帧打印会拖慢主线程 (100 log/s), 节流到 1s 一次
+  private lastRxLog = 0
+  private rxFrameCount = 0
+
+  constructor() {
+    this.handler.onObject(obj => {
+      this.objListeners.forEach(cb => { try { cb(obj) } catch { /* ignore */ } })
+    })
+    this.handler.onLog(line => {
+      this.lineListeners.forEach(cb => { try { cb(line) } catch { /* ignore */ } })
+    })
+  }
 
   static isSupported(): boolean {
     return typeof navigator !== 'undefined' && 'bluetooth' in navigator
@@ -53,7 +67,11 @@ export class BleService {
     await this.disconnect()
 
     try {
-      const device = await navigator.bluetooth.requestDevice({
+      // Web Bluetooth 类型未随 DOM lib 提供，这里就地声明
+      const bt = navigator as Navigator & {
+        bluetooth: { requestDevice(options: object): Promise<any> }
+      }
+      const device = await bt.bluetooth.requestDevice({
         filters: [{ services: [NUS_SERVICE_UUID] }],
         optionalServices: [NUS_SERVICE_UUID],
       })
@@ -68,12 +86,35 @@ export class BleService {
       const server = await device.gatt!.connect()
       this.server = server
 
-      const service = await server.getPrimaryService(NUS_SERVICE_UUID)
+      const service = await this.getServiceWithRetry(server, NUS_SERVICE_UUID)
+
+      // 调试：打印设备实际广播的所有 GATT 服务
+      // （Web Bluetooth 类型未随 DOM lib 提供，用 any 断言访问）
+      const btServer = server as unknown as any
+      const svcs = (await btServer.getPrimaryServices()) as Array<{ uuid: string }>
+      console.log('[BLE] primary services:', svcs.map(s => s.uuid).join(', '))
+      const anyService = service as unknown as any
+      console.log('[BLE] NUS service found:', anyService.uuid)
+      // 调试：打印 NUS 服务下所有特征及属性
+      const chrs = (await anyService.getCharacteristics()) as Array<{
+        uuid: string
+        properties: Record<string, boolean>
+      }>
+      for (const c of chrs) {
+        const props: string[] = []
+        if (c.properties.read) props.push('read')
+        if (c.properties.write) props.push('write')
+        if (c.properties.writeWithoutResponse) props.push('writeWithoutResponse')
+        if (c.properties.notify) props.push('notify')
+        if (c.properties.indicate) props.push('indicate')
+        console.log(`[BLE]   char ${c.uuid} → ${props.join(', ')}`)
+      }
+
       this.rx = await service.getCharacteristic(NUS_RX_UUID)
       this.tx = await service.getCharacteristic(NUS_TX_UUID)
 
-      this.tx.addEventListener('characteristicvaluechanged', ev => this.handleNotify(ev))
-      await this.tx.startNotifications()
+      this.tx!.addEventListener('characteristicvaluechanged', ev => this.handleNotify(ev))
+      await this.tx!.startNotifications()
 
       this._connected = true
       return true
@@ -98,20 +139,43 @@ export class BleService {
     this.device = null
   }
 
-  /** 发送 JSON 命令（自动添加换行符，UTF-8 写入 NUS RX） */
+  /** 发送二进制命令帧（自动按 20B 切块写入 NUS RX，队列满时降块重试） */
   async sendCommand(cmd: string, params?: Record<string, unknown>): Promise<void> {
     if (!this.isConnected || !this.rx) return
-    const json = JSON.stringify(params ? { cmd, ...params } : { cmd })
-    const data = new TextEncoder().encode(json + '\n')
+    let frames: Uint8Array[]
     try {
-      // 固件 RX 特征属性 = WRITE | WRITE_NR，优先无响应写
-      await this.rx.writeValueWithoutResponse(data)
-    } catch {
-      try { await this.rx.writeValueWithResponse(data) } catch { /* ignore */ }
+      frames = encodeRequest(cmd, params)
+    } catch (e) {
+      console.error('[BLE] 未知命令:', cmd, e)
+      return
     }
+    if (cmd === 'stream_start') {
+      this.handler.setStreamFlags(Number(params?.flags ?? 0))
+    }
+    // 调试：打印实际写入 BLE 的帧字节
+    const hex = frames.map(f =>
+      Array.from(f).map(b => b.toString(16).padStart(2, '0')).join(' '),
+    ).join(' | ')
+    console.log(`[BLE TX] ${cmd} (${frames.length} frame): ${hex}`)
+    try {
+      const CHUNK = 20
+      for (const f of frames) {
+        for (let i = 0; i < f.length; i += CHUNK) {
+          const chunk = f.subarray(i, i + CHUNK)
+          const ab = new Uint8Array(chunk).buffer
+          try {
+            await this.rx!.writeValueWithoutResponse(ab)
+          } catch {
+            // 特征队列满 / 状态异常：稍候降块重试一次
+            await new Promise(resolve => setTimeout(resolve, 20))
+            try { await this.rx!.writeValueWithoutResponse(ab) } catch { /* ignore */ }
+          }
+        }
+      }
+    } catch { /* ignore */ }
   }
 
-  /** 注册行监听器（JSON + crash 行） */
+  /** 注册行监听器（crash 日志行） */
   onLine(cb: (line: string) => void): void {
     this.addLineListener(cb)
   }
@@ -122,6 +186,15 @@ export class BleService {
 
   removeLineListener(cb: (line: string) => void): void {
     this.lineListeners.delete(cb)
+  }
+
+  /** 注册解析后的响应/事件对象回调 */
+  onObject(cb: (obj: Record<string, unknown>) => void): void {
+    this.objListeners.add(cb)
+  }
+
+  removeObjectListener(cb: (obj: Record<string, unknown>) => void): void {
+    this.objListeners.delete(cb)
   }
 
   /** 注册断开回调 */
@@ -144,33 +217,45 @@ export class BleService {
 
   // ── 内部方法 ──
 
+  /**
+   * 首次连接竞态修复：Windows/Chromium 在 requestDevice 后可能已建立隐藏 ACL，
+   * 紧接着的 getPrimaryService 会因连接被挤断而抛 "GATT Server is disconnected"。
+   * 失败时等待 300ms，若 server 已断开则重新 gatt.connect() 后重试。
+   */
+  private async getServiceWithRetry(
+    server: BluetoothRemoteGATTServer,
+    uuid: string,
+    retries = 1,
+  ): Promise<BluetoothRemoteGATTService> {
+    for (let i = 0; i <= retries; i++) {
+      try {
+        return await server.getPrimaryService(uuid)
+      } catch (e) {
+        if (i === retries) throw e
+        await new Promise(r => setTimeout(r, 300))
+        if (!server.connected) await server.connect()
+      }
+    }
+    throw new Error('getPrimaryService failed')
+  }
+
   private handleNotify(ev: Event): void {
     const char = ev.target as BluetoothRemoteGATTCharacteristic
     const value = char.value
     if (!value) return
     const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
-    this.buf += new TextDecoder().decode(bytes)
-    let nl: number
-    while ((nl = this.buf.indexOf('\n')) !== -1) {
-      const line = this.buf.substring(0, nl).trim()
-      this.buf = this.buf.substring(nl + 1)
-      if (line) this.dispatchLine(line)
+    // 调试日志节流: 50fps 下逐帧打印拖慢主线程, 节流到 1s 一次并累计帧数
+    this.rxFrameCount++
+    const now = Date.now()
+    if (now - this.lastRxLog >= 1000) {
+      console.log(
+        `[BLE RX ${bytes.length}B x${this.rxFrameCount}@${now - this.lastRxLog}ms]`,
+        Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' '),
+      )
+      this.lastRxLog = now
+      this.rxFrameCount = 0
     }
-  }
-
-  private dispatchLine(line: string): void {
-    const cls = classifyLine(line)
-    if (cls !== 'json') {
-      if (import.meta.env.DEV && cls !== 'unknown') {
-        console.debug(`[BLE][${cls}]`, line)
-      }
-      // 崩溃信息始终传给 listeners，让 UI 可以显示 panic 日志
-      if (cls === 'crash') {
-        this.lineListeners.forEach(cb => { try { cb(line) } catch { /* ignore */ } })
-      }
-      return
-    }
-    this.lineListeners.forEach(cb => { try { cb(line) } catch { /* ignore */ } })
+    this.handler.feed(bytes)
   }
 }
 

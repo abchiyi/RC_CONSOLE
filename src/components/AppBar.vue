@@ -168,6 +168,7 @@
 import { computed, watch, ref, onMounted } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import { useLinkStatsStore } from '@/stores/linkStats'
+import { useChannelStore } from '@/stores/channels'
 import { serialService } from '@/services/SerialService'
 import { CHANNEL_LINK_ONLY } from '@/utils/debugFlags'
 
@@ -175,6 +176,7 @@ defineEmits<{ 'toggle-drawer': [] }>()
 
 const serial = useSerialStore()
 const link   = useLinkStatsStore()
+const chStore = useChannelStore()
 const selectedPort = ref<string | null>(null)
 const resetLoading = ref(false)
 
@@ -214,7 +216,12 @@ async function handleReset() {
 // 连接时自动启停轮询
 watch(() => serial.connected, (connected) => {
   if (CHANNEL_LINK_ONLY) return  // 调试: 暂停 get_link_stats 轮询
-  if (connected) link.startPolling(100)
-  else link.stopPolling()
+  if (connected) {
+    link.startPolling(100)
+    chStore.startPolling()
+  } else {
+    link.stopPolling()
+    chStore.resetPolling()  // 断开清除 started 残留，重连后可再次自动开流
+  }
 }, { immediate: true })
 </script>

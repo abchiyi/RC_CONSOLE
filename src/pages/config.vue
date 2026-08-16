@@ -438,8 +438,13 @@
               <v-icon :color="chStore.polling ? 'success' : 'grey'" size="10">
                 mdi-circle
               </v-icon>
-              <v-btn :color="chStore.polling ? 'error' : 'success'" :icon="chStore.polling ? 'mdi-stop' : 'mdi-play'"
-                density="compact" size="x-small" variant="text" @click="togglePoll" />
+              <v-btn
+                :color="chStore.polling ? 'error' : 'success'"
+                :prepend-icon="chStore.polling ? 'mdi-stop' : 'mdi-play'"
+                size="small" variant="tonal" @click="togglePoll"
+              >
+                {{ chStore.polling ? '停止传输' : '开始传输' }}
+              </v-btn>
             </template>
           </v-card-item>
 
@@ -959,10 +964,15 @@ onUnmounted(() => {
   left: 0;
   height: 100%;
   background: rgba(var(--v-theme-primary), 0.3);
-  transition: width 0.2s ease;
+  transition: none;
   pointer-events: none;
   z-index: 0;
   border-radius: inherit;
+}
+
+/* 移除 v-progress-linear 内置过渡, 消除前端渲染滞后 */
+:deep(.v-progress-linear__bar__determinate) {
+  transition: none;
 }
 
 .chan-header-row,

@@ -8,17 +8,11 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { routes } from 'vue-router/auto-routes'
 
-// 临时: 仅保留通道配置页, 其它页面禁用 (直接访问 URL 也会被重定向回 /config)
-const ALLOWED_PATHS = new Set(['/config'])
-const activeRoutes = routes.filter(r => ALLOWED_PATHS.has(r.path))
-
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/', redirect: '/config' },
-    ...activeRoutes,
-    // 禁用页面兜底: 其它路径一律回到通道配置页
-    { path: '/:pathMatch(.*)*', redirect: '/config' },
+    ...routes,
   ],
 })
 

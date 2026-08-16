@@ -18,6 +18,7 @@ export class WebSocketService {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectDelay = 1000
   private lineListeners: Set<(line: string) => void> = new Set()
+  private objListeners: Set<(obj: Record<string, unknown>) => void> = new Set()
   private disconnectCallback: (() => void) | null = null
   private statusCallbacks: Set<(connected: boolean) => void> = new Set()
   private readonly url: string
@@ -98,6 +99,15 @@ export class WebSocketService {
 
   removeLineListener(cb: (line: string) => void): void {
     this.lineListeners.delete(cb)
+  }
+
+  /** 对象回调（WebSocket 遗留服务不触发，仅为 SerialBackend 接口兼容） */
+  onObject(cb: (obj: Record<string, unknown>) => void): void {
+    this.objListeners.add(cb)
+  }
+
+  removeObjectListener(cb: (obj: Record<string, unknown>) => void): void {
+    this.objListeners.delete(cb)
   }
 
   onDisconnect(cb: () => void): void {

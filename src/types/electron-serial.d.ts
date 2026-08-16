@@ -15,11 +15,13 @@ interface ElectronSerialAPI {
   list(): Promise<SerialPortDescriptor[]>;
   connect(portPath: string, baudRate?: number): Promise<{ success: boolean; path?: string; error?: string }>;
   disconnect(): Promise<{ success: boolean }>;
-  send(line: string): Promise<{ success: boolean; error?: string }>;
+  /** 发送原始字节（二进制帧） */
+  send(data: Uint8Array): Promise<{ success: boolean; error?: string }>;
   isConnected(): Promise<boolean>;
   reset(): Promise<{ success: boolean; error?: string }>;
   flashFirmware(payload: { portPath: string; fileName: string; data: ArrayBuffer | Uint8Array }): Promise<{ success: boolean; message?: string; error?: string }>;
-  onLine(callback: (line: string) => void): () => void;
+  /** 接收原始字节流（二进制帧 + ESP_LOG 混流） */
+  onData(callback: (data: Uint8Array) => void): () => void;
   onConnected(callback: (data: { path: string }) => void): () => void;
   onDisconnected(callback: () => void): () => void;
   onError(callback: (data: { message: string }) => void): () => void;

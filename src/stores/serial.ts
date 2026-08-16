@@ -22,6 +22,7 @@ import {
   electronSerialService,
   webSocketService,
 } from '@/services/SerialService'
+import { useChannelStore } from './channels'
 
 export const useSerialStore = defineStore('serial', () => {
   const connected = ref(false)
@@ -205,6 +206,8 @@ export const useSerialStore = defineStore('serial', () => {
       const ok = await bleService.connect()
       if (ok) {
         connected.value = true
+        // 连接成功即开启通道实时传输（BLE 无 onMounted 自动触发）
+        useChannelStore().startPolling()
       } else {
         error.value = '蓝牙连接失败或已取消'
       }

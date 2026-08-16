@@ -6,15 +6,27 @@
  * 保持与 Web Serial 模式一致的行为。
  */
 
-import { classifyLine, type LineClass } from '@/utils/serialLineClassify';
+import { BinaryHandler } from '@/utils/binaryHandler';
+import { encodeRequest } from '@/utils/commands';
 import type { FirmwareFlashPayload, FirmwareFlashResult } from './SerialService';
 
 export class ElectronSerialService {
   private lineListeners: Set<(line: string) => void> = new Set();
+  private objListeners: Set<(obj: Record<string, unknown>) => void> = new Set();
   private disconnectCallback: (() => void) | null = null;
+  private handler = new BinaryHandler();
   private cleanups: (() => void)[] = [];
   private _connected = false;
   private _portPath = '';
+
+  constructor() {
+    this.handler.onObject(obj => {
+      this.objListeners.forEach(cb => { try { cb(obj) } catch { /* ignore */ } });
+    });
+    this.handler.onLog(line => {
+      this.lineListeners.forEach(cb => { try { cb(line) } catch { /* ignore */ } });
+    });
+  }
 
   static isSupported(): boolean {
     return !!window.electronSerialAPI;
@@ -66,18 +78,29 @@ export class ElectronSerialService {
     return this._connected;
   }
 
-  /** 发送 JSON 命令（自动添加换行符） */
+  /** 发送二进制命令帧 */
   async sendCommand(cmd: string, params?: Record<string, unknown>): Promise<void> {
     if (!this._connected) return;
-    const json = JSON.stringify(params ? { cmd, ...params } : { cmd });
-    const line = json + '\n';
-    const result = await this.api.send(line);
-    if (!result.success) {
-      console.error('[ElectronSerial] send error:', result.error);
+    let frames: Uint8Array[];
+    try {
+      frames = encodeRequest(cmd, params);
+    } catch (e) {
+      console.error('[ElectronSerial] 未知命令:', cmd, e);
+      return;
+    }
+    if (cmd === 'stream_start') {
+      this.handler.setStreamFlags(Number(params?.flags ?? 0));
+    }
+    for (const f of frames) {
+      const result = await this.api.send(f);
+      if (!result.success) {
+        console.error('[ElectronSerial] send error:', result.error);
+        break;
+      }
     }
   }
 
-  /** 注册行监听器（JSON + crash 行，过滤后的） */
+  /** 注册行监听器（crash 日志行） */
   onLine(cb: (line: string) => void): void {
     this.addLineListener(cb);
   }
@@ -88,6 +111,15 @@ export class ElectronSerialService {
 
   removeLineListener(cb: (line: string) => void): void {
     this.lineListeners.delete(cb);
+  }
+
+  /** 注册解析后的响应/事件对象回调 */
+  onObject(cb: (obj: Record<string, unknown>) => void): void {
+    this.objListeners.add(cb);
+  }
+
+  removeObjectListener(cb: (obj: Record<string, unknown>) => void): void {
+    this.objListeners.delete(cb);
   }
 
   /** 注册断开回调 */
@@ -121,26 +153,9 @@ export class ElectronSerialService {
     this.cleanupListeners();
 
     this.cleanups.push(
-      this.api.onLine((line: string) => {
-        if (!line) return;
-        const cls: LineClass = classifyLine(line);
-
-        if (cls !== 'json') {
-          if (import.meta.env.DEV && cls !== 'unknown') {
-            console.debug(`[Serial][${cls}]`, line);
-          }
-          // 崩溃信息始终传给 listeners
-          if (cls === 'crash') {
-            this.lineListeners.forEach(cb => { try { cb(line) } catch { /* ignore */ } });
-          }
-          return;
-        }
-
-        if (import.meta.env.DEV && line.length > 2000) {
-          console.debug('[Serial] large line:', line.length, 'B',
-            'preview:', line.substring(0, 80));
-        }
-        this.lineListeners.forEach(cb => { try { cb(line) } catch { /* ignore */ } });
+      this.api.onData((bytes: Uint8Array) => {
+        // 原始字节流 → 二进制帧解码（内部同步帧头/校验 CRC/过滤 ESP_LOG）
+        this.handler.feed(bytes);
       })
     );
 

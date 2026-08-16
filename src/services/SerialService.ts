@@ -10,6 +10,8 @@
  */
 
 import { classifyLine, type LineClass } from '@/utils/serialLineClassify'
+import { BinaryHandler } from '@/utils/binaryHandler'
+import { encodeRequest } from '@/utils/commands'
 
 // 重新导出供 ElectronSerialService 使用
 export { classifyLine, type LineClass } from '@/utils/serialLineClassify'
@@ -39,7 +41,19 @@ export class SerialService {
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null
   private closing = false
   private lineListeners: Set<(line: string) => void> = new Set()
+  private objListeners: Set<(obj: Record<string, unknown>) => void> = new Set()
   private disconnectCallback: (() => void) | null = null
+  private handler = new BinaryHandler()
+
+  constructor() {
+    // 二进制帧 → 对象分发；ESP_LOG 混流中的 crash 行 → lineListeners
+    this.handler.onObject(obj => {
+      this.objListeners.forEach(cb => { try { cb(obj) } catch { /* ignore */ } })
+    })
+    this.handler.onLog(line => {
+      this.lineListeners.forEach(cb => { try { cb(line) } catch { /* ignore */ } })
+    })
+  }
 
   static isSupported(): boolean {
     return 'serial' in navigator
@@ -166,6 +180,15 @@ export class SerialService {
     this.lineListeners.delete(cb)
   }
 
+  /** 注册解析后的响应/事件对象回调 */
+  onObject(cb: (obj: Record<string, unknown>) => void): void {
+    this.objListeners.add(cb)
+  }
+
+  removeObjectListener(cb: (obj: Record<string, unknown>) => void): void {
+    this.objListeners.delete(cb)
+  }
+
   onDisconnect(cb: () => void): void {
     this.disconnectCallback = cb
   }
@@ -176,10 +199,18 @@ export class SerialService {
 
   async sendCommand(cmd: string, params?: Record<string, unknown>): Promise<void> {
     if (this.closing || !this.writer) return
-    const json = JSON.stringify(params ? { cmd, ...params } : { cmd })
-    const data = new TextEncoder().encode(json + '\n')
+    let frames: Uint8Array[]
     try {
-      await this.writer.write(data)
+      frames = encodeRequest(cmd, params)
+    } catch (e) {
+      console.error('[Serial] 未知命令:', cmd, e)
+      return
+    }
+    if (cmd === 'stream_start') {
+      this.handler.setStreamFlags(Number(params?.flags ?? 0))
+    }
+    try {
+      for (const f of frames) await this.writer.write(f)
     } catch {
       // write 失败说明设备断开，触发清理
     }
@@ -193,38 +224,14 @@ export class SerialService {
     const capturedReader = this.reader
 
     const read = async () => {
-      let buf = ''
       try {
         while (true) {
           if (!capturedReader) return
           const { value, done } = await capturedReader.read()
           if (done) break
           if (value) {
-            buf += new TextDecoder().decode(value)
-            let nl: number
-            while ((nl = buf.indexOf('\n')) !== -1) {
-              const line = buf.substring(0, nl).trim()
-              buf = buf.substring(nl + 1)
-              if (line) {
-                const cls = classifyLine(line)
-                if (cls !== 'json') {
-                  // 开发环境输出过滤掉的非 JSON 行，方便调试
-                  if (import.meta.env.DEV && cls !== 'unknown') {
-                    console.debug(`[Serial][${cls}]`, line)
-                  }
-                  // 崩溃信息始终传给 listeners，让 UI 可以显示 panic 日志
-                  if (cls === 'crash') {
-                    this.lineListeners.forEach(cb => { try { cb(line) } catch { /* ignore */ } })
-                  }
-                  continue
-                }
-                if (import.meta.env.DEV && line.length > 2000) {
-                  console.debug('[Serial] large line:', line.length, 'B',
-                    'preview:', line.substring(0, 80))
-                }
-                this.lineListeners.forEach(cb => { try { cb(line) } catch { /* ignore */ } })
-              }
-            }
+            // 字节流 → 二进制帧解码（内部同步帧头/校验 CRC/过滤 ESP_LOG）
+            this.handler.feed(value)
           }
         }
       } catch {

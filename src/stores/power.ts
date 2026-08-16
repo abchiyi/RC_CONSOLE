@@ -73,6 +73,12 @@ export const usePowerStore = defineStore('power', () => {
       return
     }
 
+    // set_debug_mode 响应 { cmd, ok: true }（先于通用 ok 分支，避免误判）
+    if (json.cmd === 'set_debug_mode' && json.ok === true) {
+      rr.tryResolve('set_debug_mode')
+      return
+    }
+
     // set_power_cfg 响应 { ok: true }
     if (json.ok === true) {
       rr.tryResolve('set_power_cfg')

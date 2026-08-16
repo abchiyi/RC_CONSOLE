@@ -120,8 +120,9 @@ export const useConfigStore = defineStore('config', () => {
   async function fetchActiveModel(): Promise<void> {
     loading.value = true
     error.value = null
-    const promise = rr.wait('get_active')
-    await serialService.sendCommand('get_active')
+    // 固件二进制协议无 get_active；active_model 由 get_config 响应提供
+    const promise = rr.wait('get_config')
+    await serialService.sendCommand('get_config')
     try {
       await promise
     } catch (e) {

@@ -362,23 +362,18 @@ function waitFactoryResetResponse(timeoutMs = 8000): Promise<Record<string, unkn
       reject(new Error('等待设备响应超时: factory_reset_nvs'))
     }, timeoutMs)
 
-    const handler = (line: string) => {
-      try {
-        const json = JSON.parse(line) as Record<string, unknown>
-        if (json.cmd !== 'factory_reset_nvs') return
-        cleanup()
-        resolve(json)
-      } catch {
-        // ignore non JSON lines
-      }
+    const handler = (obj: Record<string, unknown>) => {
+      if (obj.cmd !== 'factory_reset_nvs') return
+      cleanup()
+      resolve(obj)
     }
 
     const cleanup = () => {
       clearTimeout(timer)
-      serialService.removeLineListener(handler)
+      serialService.removeObjectListener(handler)
     }
 
-    serialService.addLineListener(handler)
+    serialService.onObject(handler)
   })
 }
 

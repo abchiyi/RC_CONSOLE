@@ -11,14 +11,12 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { SerialPort } = require("serialport");
-const { ReadlineParser } = require("@serialport/parser-readline");
 
 const fsp = fs.promises;
 
 // ── 全局状态 ──
 let mainWindow = null;
 let serialPort = null;
-let parser = null;
 let firmwareFlashProcess = null;
 
 // ── 串口操作 ──
@@ -63,13 +61,11 @@ function connectPort(portPath, baudRate = 115200) {
           return;
         }
 
-        // 使用 Readline 解析器逐行读取（固件每行以 \n 结尾）
-        parser = serialPort.pipe(new ReadlineParser({ delimiter: "\n" }));
-
-        parser.on("data", (line) => {
-          const trimmed = line.toString().trim();
-          if (!trimmed) return;
-          sendToRenderer("serial:line", trimmed);
+        // 透传原始字节流（二进制帧 + ESP_LOG 混流，渲染进程统一解码）
+        serialPort.on("data", (chunk) => {
+          const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+          sendToRenderer("serial:data", ab);
         });
 
         serialPort.on("error", (err) => {
@@ -79,7 +75,6 @@ function connectPort(portPath, baudRate = 115200) {
 
         serialPort.on("close", () => {
           console.log("[Serial] closed");
-          parser = null;
           sendToRenderer("serial:disconnected");
         });
 
@@ -94,10 +89,6 @@ function connectPort(portPath, baudRate = 115200) {
 
 function disconnectPort() {
   return new Promise((resolve) => {
-    if (parser) {
-      parser.removeAllListeners("data");
-      parser = null;
-    }
     if (serialPort && serialPort.isOpen) {
       serialPort.close((err) => {
         if (err) console.error("[Serial] close error:", err.message);
@@ -111,13 +102,20 @@ function disconnectPort() {
   });
 }
 
-function sendLine(line) {
+function sendBytes(data) {
   return new Promise((resolve, reject) => {
     if (!serialPort || !serialPort.isOpen) {
       reject(new Error("串口未连接"));
       return;
     }
-    serialPort.write(line + "\n", (err) => {
+    const bytes =
+      data instanceof Uint8Array
+        ? data
+        : data instanceof ArrayBuffer
+          ? new Uint8Array(data)
+          : new Uint8Array(0);
+    const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    serialPort.write(buf, (err) => {
       if (err) reject(new Error(`写入失败: ${err.message}`));
       else resolve({ success: true });
     });
@@ -389,9 +387,9 @@ function setupIPC() {
 
   ipcMain.handle("serial:disconnect", disconnectPort);
 
-  ipcMain.handle("serial:send", async (_e, line) => {
+  ipcMain.handle("serial:send", async (_e, data) => {
     try {
-      return await sendLine(line);
+      return await sendBytes(data);
     } catch (err) {
       return { success: false, error: err.message };
     }

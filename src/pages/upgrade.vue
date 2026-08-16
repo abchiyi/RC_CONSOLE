@@ -114,16 +114,6 @@ function clearFirmwareSelection() {
   firmwareProgress.value = 0
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = ''
-  const step = 0x2000
-  for (let index = 0; index < bytes.length; index += step) {
-    const chunk = bytes.subarray(index, index + step)
-    binary += String.fromCharCode(...chunk)
-  }
-  return btoa(binary)
-}
-
 function waitForCommand(cmd: string, timeoutMs = 10000): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -131,23 +121,18 @@ function waitForCommand(cmd: string, timeoutMs = 10000): Promise<Record<string, 
       reject(new Error(`等待设备响应超时: ${cmd}`))
     }, timeoutMs)
 
-    const handler = (line: string) => {
-      try {
-        const json = JSON.parse(line) as Record<string, unknown>
-        if (json.cmd !== cmd) return
-        cleanup()
-        resolve(json)
-      } catch {
-        // ignore non JSON lines
-      }
+    const handler = (obj: Record<string, unknown>) => {
+      if (obj.cmd !== cmd) return
+      cleanup()
+      resolve(obj)
     }
 
     const cleanup = () => {
       clearTimeout(timer)
-      serialService.removeLineListener(handler)
+      serialService.removeObjectListener(handler)
     }
 
-    serialService.addLineListener(handler)
+    serialService.onObject(handler)
   })
 }
 
@@ -180,7 +165,6 @@ async function startFirmwareUpdate() {
     const data = new Uint8Array(await selectedFile.arrayBuffer())
     const beginResp = await sendCommandAndWait('ota_begin', {
       size: data.byteLength,
-      name: selectedFile.name,
     })
 
     if (beginResp.ok !== true) {
@@ -197,8 +181,8 @@ async function startFirmwareUpdate() {
       const start = index * uploadChunkSize
       const end = Math.min(start + uploadChunkSize, data.byteLength)
       const chunk = data.subarray(start, end)
-      const payload = bytesToBase64(chunk)
-      const chunkResp = await sendCommandAndWait('ota_chunk', { index, data: payload }, 10000)
+      // 二进制协议 ota_chunk 直传原始字节（无 index/base64）
+      const chunkResp = await sendCommandAndWait('ota_chunk', { data: chunk }, 10000)
 
       if (chunkResp.ok !== true) {
         throw new Error(String(chunkResp.error || `分片写入失败: ${index}`))
@@ -213,7 +197,7 @@ async function startFirmwareUpdate() {
     }
 
     firmwareProgress.value = 100
-    firmwareStatus.value = `OTA 上传完成，已写入 ${String(finishResp.bytes_written ?? data.byteLength)} 字节，设备将重启`
+    firmwareStatus.value = `OTA 上传完成，已写入 ${String(finishResp.total_written ?? data.byteLength)} 字节，设备将重启`
 
     setTimeout(async () => {
       try {
