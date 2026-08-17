@@ -95,7 +95,16 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
       break
     case CMD.SET_MODEL:
       w.u8(Number(params.slot ?? 0))
-      if (params.data) w.bytes(encodeModelTlv(params.data as ModelConfig))
+      if (params.diff) {
+        // 差分同步: flags=0x01 (FLAG_PARTIAL), 固件按现有 RAM 模型合并缺失字段
+        w.u8(1)
+        const d = params.diff as { name: string | null; channels: Map<number, ModelChannel> }
+        w.bytes(encodeModelDiffTlv(d.name, d.channels))
+      } else {
+        // 全量覆盖: flags=0x00 (兼容旧语义, 缺失字段恢复默认)
+        w.u8(0)
+        if (params.data) w.bytes(encodeModelTlv(params.data as ModelConfig))
+      }
       break
     case CMD.CAL_START:
       w.u8(calTypeToId(String(params.type ?? 'none')))
@@ -187,7 +196,24 @@ export function encodeModelTlv(model: ModelConfig): Uint8Array {
   return w.toBytes()
 }
 
-function encodeChannelTlv(ch: ModelChannel): Uint8Array {
+/**
+ * 差分模型 TLV: 仅发送变化的 name (null=未变, 不发送) 与指定的通道索引集合。
+ * 固件收到 flags=FLAG_PARTIAL 时按现有 RAM 模型合并: 未提及的字段/通道保持原值。
+ */
+export function encodeModelDiffTlv(
+  name: string | null,
+  channels: Map<number, ModelChannel>,
+): Uint8Array {
+  const w = new Writer()
+  // name 有变化就发送 (即使空串, 用于清空模型名)
+  if (name !== null) w.tlv(0x01, new Writer().str(name).toBytes())
+  for (const [idx, ch] of channels) {
+    if (idx >= 0 && idx < 16) w.tlv(0x02 + idx, encodeChannelTlv(ch))
+  }
+  return w.toBytes()
+}
+
+export function encodeChannelTlv(ch: ModelChannel): Uint8Array {
   const w = new Writer()
   w.tlv(0x01, new Writer().u8(sourceToId(ch.source ?? 'NONE')).toBytes())
   if (ch.activate) {
@@ -231,10 +257,21 @@ export function decodeModelTlv(data: Uint8Array): ModelConfig {
   const model: ModelConfig = { name: '', channels: [] }
   for (const { tag, value } of parseTlvList(data)) {
     if (tag === 0x01) {
-      model.name = new Reader(value).str()
+      // 防御: name 字段数据异常(如长度越界)时降级为空名, 不让整个响应丢失
+      try {
+        model.name = new Reader(value).str()
+      } catch {
+        model.name = ''
+      }
     } else if (tag >= 0x02 && tag <= 0x11) {
       const idx = tag - 0x02
-      if (idx < 16) model.channels[idx] = decodeChannelTlv(value)
+      if (idx < 16) {
+        try {
+          model.channels[idx] = decodeChannelTlv(value)
+        } catch {
+          // 单个通道解析失败不致命, 保留默认通道
+        }
+      }
     }
   }
   const channels: ModelChannel[] = []
@@ -368,7 +405,8 @@ function decodeGetConfig(r: Reader, name: string): Record<string, unknown> {
     else if (tag === 0x04) cfg.runtime_model = rr.i32()
     else if (tag >= 0x10 && tag <= 0x17) {
       const slot = tag - 0x10
-      ;(cfg.models as ModelConfig[])[slot] = decodeModelTlv(value)
+      // 固件仅回模型名 str（完整通道数据经 GET_MODEL 按需拉取）
+      ;(cfg.models as ModelConfig[])[slot] = { name: new Reader(value).str(), channels: [] }
     }
   }
   return cfg
@@ -487,8 +525,11 @@ export function decodeEvent(payload: Uint8Array, streamFlags = 0): Record<string
   const dataBytes = payload.subarray(r.offset)
   try {
     switch (contentType) {
-      case STREAM_CHANNELS:
-        return { evt: eventId, contentType, data: decodeChannels(dataBytes, streamFlags) }
+      case STREAM_CHANNELS: {
+        // 帧内首字节为 START 回显的 flags（文档 §5.11），覆盖本地缓存
+        const frameFlags = dataBytes.length > 0 ? new Reader(dataBytes).u8() : streamFlags
+        return { evt: eventId, contentType, data: decodeChannels(dataBytes.subarray(1), frameFlags) }
+      }
       case STREAM_RAW_IMU:
         return { evt: eventId, contentType, data: decodeRawImu(dataBytes) }
       case STREAM_POWER:

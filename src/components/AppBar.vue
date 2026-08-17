@@ -217,10 +217,10 @@ async function handleReset() {
 watch(() => serial.connected, (connected) => {
   if (CHANNEL_LINK_ONLY) return  // 调试: 暂停 get_link_stats 轮询
   if (connected) {
-    link.startPolling(100)
+    // link.startPolling(100)  // ELRS 链路数据刷新待重构，暂时停用
     chStore.startPolling()
   } else {
-    link.stopPolling()
+    // link.stopPolling()      // ELRS 链路数据刷新待重构，暂时停用
     chStore.resetPolling()  // 断开清除 started 残留，重连后可再次自动开流
   }
 }, { immediate: true })

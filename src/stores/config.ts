@@ -5,6 +5,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { serialService } from '@/services/SerialService'
 import { RequestResponseHandler } from '@/utils/requestResponse'
+import { encodeChannelTlv } from '@/utils/commands'
 
 export interface InputSourceInfo {
   id: string
@@ -84,6 +85,54 @@ export const useConfigStore = defineStore('config', () => {
   const rr = new RequestResponseHandler()
   let _pendingModelSlot: number | null = null
 
+  // 已同步到固件 RAM 的模型 baseline (差分同步对比基准)
+  const syncedModels = ref<Record<number, ModelConfig>>({})
+
+  // ---- 差分同步辅助 ----
+
+  function cloneModel(m: ModelConfig): ModelConfig {
+    return JSON.parse(JSON.stringify(m)) as ModelConfig
+  }
+
+  function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false
+    }
+    return true
+  }
+
+  /**
+   * 对比前端数据与已同步 baseline, 返回差分描述:
+   *  - name: null=未变(不发送); 否则为最新 name (即使空串, 用于清空)
+   *  - channels: Map<通道索引, 最新通道>, 仅包含变化的通道
+   * 无 baseline (槽位从未拉取/从未同步过) 时视为全量变化。
+   * 返回 null 表示无任何变化。
+   */
+  function diffModel(
+    data: ModelConfig,
+    base: ModelConfig | undefined,
+  ): { name: string | null; channels: Map<number, ModelChannel> } | null {
+    if (!base) {
+      const channels = new Map<number, ModelChannel>()
+      for (let i = 0; i < data.channels.length && i < 16; i++) {
+        const ch = data.channels[i]
+        if (ch) channels.set(i, ch)
+      }
+      return { name: data.name, channels }
+    }
+    const nameChanged = String(data.name) !== String(base.name)
+    const changed = new Map<number, ModelChannel>()
+    for (let i = 0; i < 16; i++) {
+      const a = data.channels[i]
+      const b = base.channels[i]
+      if (!a) continue
+      if (!b || !bytesEqual(encodeChannelTlv(a), encodeChannelTlv(b))) changed.set(i, a)
+    }
+    if (!nameChanged && changed.size === 0) return null
+    return { name: nameChanged ? data.name : null, channels: changed }
+  }
+
   const activeModelIndex = computed(() => config.value?.active_model ?? 0)
   const modelCount = computed(() => config.value?.models?.length ?? 0)
 
@@ -107,7 +156,8 @@ export const useConfigStore = defineStore('config', () => {
   async function fetchConfig(): Promise<void> {
     loading.value = true
     error.value = null
-    const promise = rr.wait('get_config')
+    // get_config 响应含全部模型名; 8s 超时兜底旧固件 12KB 大响应在 BLE 分片下的慢传输
+    const promise = rr.wait('get_config', 8000)
     await serialService.sendCommand('get_config')
     try {
       await promise
@@ -121,7 +171,8 @@ export const useConfigStore = defineStore('config', () => {
     loading.value = true
     error.value = null
     // 固件二进制协议无 get_active；active_model 由 get_config 响应提供
-    const promise = rr.wait('get_config')
+    // get_config 响应含全部模型名; 8s 超时兜底旧固件 12KB 大响应在 BLE 分片下的慢传输
+    const promise = rr.wait('get_config', 8000)
     await serialService.sendCommand('get_config')
     try {
       await promise
@@ -169,14 +220,19 @@ export const useConfigStore = defineStore('config', () => {
     if (count === 0 || !config.value) return
 
     // 重建占位 models 数组（长度 = model_count，仅当前激活槽位有真实数据）
-    config.value.models = new Array(count).fill(null).map(() => ({ name: '', channels: [] }))
+    // 保留已从 get_config 拿到的模型名, 避免切换槽位前名字被清空
+    config.value.models = new Array(count).fill(null).map((_, i) => ({
+      name: config.value?.models?.[i]?.name ?? '',
+      channels: [],
+    }))
     await fetchModel(config.value.active_model)
   }
 
   async function fetchModel(slot: number): Promise<void> {
     loading.value = true
     const tag = `get_model_${slot}`
-    const p = rr.wait(tag, 2000)
+    // 5000ms: BLE 下 get_model 响应 ~1.5KB 需多帧通知, 2s 过短导致 baseline 拉取失败 → 差分退化为全量
+    const p = rr.wait(tag, 5000)
     _pendingModelSlot = slot
     await serialService.sendCommand('get_model', { slot })
     try {
@@ -201,10 +257,21 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   async function setModel(slot: number, data: ModelConfig): Promise<boolean> {
+    // 差分同步: 与已同步 baseline 对比, 无变化则跳过发送 (视为成功)
+    const diff = diffModel(data, syncedModels.value[slot])
+    if (!diff) return true
     const tag = `set_model_${slot}`
     const p = rr.wait(tag, 3000)
-    await serialService.sendCommand('set_model', { slot, data })
-    try { const ok = await p; return ok !== false } catch { error.value = '模型写入超时'; return false }
+    await serialService.sendCommand('set_model', { slot, diff })
+    try {
+      const ok = await p
+      // 成功后更新 baseline, 作为下一次差分的基准
+      if (ok) syncedModels.value[slot] = cloneModel(data)
+      return ok !== false
+    } catch {
+      error.value = '模型写入超时'
+      return false
+    }
   }
 
   async function saveConfig(): Promise<boolean> {
@@ -248,6 +315,14 @@ export const useConfigStore = defineStore('config', () => {
       return
     }
 
+    // get_model 解析失败响应 (ok:false, 解码异常被 decodeResponse 捕获):
+    // 用 pending slot 立即 resolve 对应 promise, 避免静默等 2s 超时
+    if (cmd === 'get_model' && json.ok === false && _pendingModelSlot !== null) {
+      console.warn(`[Config] model ${_pendingModelSlot} 响应解析失败: ${json.error}`)
+      rr.tryResolve(`get_model_${_pendingModelSlot}`, null)
+      return
+    }
+
     if (cmd === 'set_active' && json.slot !== undefined) {
       if (json.ok && config.value) {
         config.value.active_model = Number(json.slot)
@@ -282,6 +357,8 @@ export const useConfigStore = defineStore('config', () => {
       && config.value
     ) {
       config.value.models[_pendingModelSlot] = json as unknown as ModelConfig
+      // 记录已同步 baseline, 作为后续差分同步的对比基准
+      syncedModels.value[_pendingModelSlot] = cloneModel(json as unknown as ModelConfig)
       rr.tryResolve(`get_model_${_pendingModelSlot}`)
       return
     }
@@ -290,8 +367,28 @@ export const useConfigStore = defineStore('config', () => {
       deviceInfo.value = json as unknown as DeviceInfo
       console.log('[Config] input_sources:', (json as any).input_sources?.map((s: any) => s.id))
     }
-    if (json.models) {
-      config.value = json as unknown as AppConfig
+    if (json.models && Array.isArray(json.models)) {
+      const incoming = json as unknown as AppConfig
+      const prev = config.value
+      // 合并响应: 标量直接覆盖; 模型槽位只更新 name, 保留已由 get_model 拉取的完整 channels
+      // (固件 get_config 现仅返回模型名, 不整体覆盖以免清空已加载的通道数据)
+      config.value = {
+        radio_mode: incoming.radio_mode ?? prev?.radio_mode ?? 0,
+        active_model: incoming.active_model ?? prev?.active_model ?? 0,
+        lpf_alpha: incoming.lpf_alpha ?? prev?.lpf_alpha ?? 0,
+        models: incoming.models.map((m, i) => {
+          const name = m.name || prev?.models?.[i]?.name || ''
+          // 固件返回的权威 name 同步到 baseline, 避免后续差分误报 name 变化
+          const synced = syncedModels.value[i]
+          if (synced) synced.name = name
+          return {
+            name,
+            channels: prev?.models?.[i]?.channels?.length
+              ? prev.models[i]!.channels
+              : (m.channels ?? []),
+          }
+        }),
+      }
     }
     if (json.channel_count !== undefined && json.input_sources) {
       deviceInfo.value = json as unknown as DeviceInfo

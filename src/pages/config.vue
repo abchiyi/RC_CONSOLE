@@ -715,6 +715,14 @@ async function loadFromDevice(): Promise<void> {
       selectedSlot.value = configStore.config.active_model
     }
     syncEditFromStore()
+    // 加载完成后校验: 配置或激活模型缺失 → 提示用户, 不再静默空白
+    if (!configStore.config || !configStore.activeModel) {
+      snackbarMsg.value = '配置加载不完整，请点击「从设备加载」重试'
+      snackbarVisible.value = true
+    }
+  } catch (e) {
+    snackbarMsg.value = `配置加载失败: ${(e as Error).message || '未知错误'}`
+    snackbarVisible.value = true
   } finally {
     // 自动开启通道轮询
     if (!chStore.polling) chStore.startPolling()
@@ -727,9 +735,15 @@ async function saveCurrentModel(): Promise<boolean> {
   // 条件字段需扁平化并映射到固件缩写的 JSON key
   const rawChannels = editChannels.map(ch => {
     const { condition, activate, deactivate, toggle, ...rest } = ch
+    // 嵌套 condition 也要转 raw (encodeChannelTlv 直接用嵌套对象编码 0x0e)
+    const condRaw = {
+      ...condition,
+      threshold: usToRaw(condition.threshold),
+      value: usToRaw(condition.value),
+    }
     return {
       ...rest,
-      condition,
+      condition: condRaw,
       output_min: usToRaw(ch.output_min),
       output_max: usToRaw(ch.output_max),
       output_center: usToRaw(ch.output_center),
@@ -739,9 +753,9 @@ async function saveCurrentModel(): Promise<boolean> {
       cond_enabled: condition.enabled,
       cond_src: condition.source_channel,
       cond_op: condition.op,
-      cond_thr: usToRaw(condition.threshold),
+      cond_thr: condRaw.threshold,
       cond_switch: condition.switch_source,
-      cond_val: usToRaw(condition.value),
+      cond_val: condRaw.value,
       cond_alt: condition.alt_source,
       lock_enabled: ch.lock_enabled,
       lock_value: usToRaw(ch.lock_value),

@@ -33,9 +33,6 @@ export class BleService {
   private handler = new BinaryHandler()
   private _connected = false
   private _deviceName = ''
-  // 调试日志节流: 50fps 推流下逐帧打印会拖慢主线程 (100 log/s), 节流到 1s 一次
-  private lastRxLog = 0
-  private rxFrameCount = 0
 
   constructor() {
     this.handler.onObject(obj => {
@@ -152,14 +149,17 @@ export class BleService {
     if (cmd === 'stream_start') {
       this.handler.setStreamFlags(Number(params?.flags ?? 0))
     }
-    // 调试：打印实际写入 BLE 的帧字节
+    // 调试：打印实际写入 BLE 的帧字节（链路统计暂走轮询, 高频打印无意义; 后续迁移至 STREAM content_type=3 后移除）
     const hex = frames.map(f =>
       Array.from(f).map(b => b.toString(16).padStart(2, '0')).join(' '),
     ).join(' | ')
-    console.log(`[BLE TX] ${cmd} (${frames.length} frame): ${hex}`)
+    if (cmd !== 'get_link_stats') console.log(`[BLE TX] ${cmd} (${frames.length} frame): ${hex}`)
     try {
       const CHUNK = 20
+      // 节流对齐 BLE 连接间隔(12×1.25=15ms), 避免瞬时打爆固件 NimBLE RX mbuf
+      const PACE_MS = 15
       for (const f of frames) {
+        const multiChunk = f.length > CHUNK
         for (let i = 0; i < f.length; i += CHUNK) {
           const chunk = f.subarray(i, i + CHUNK)
           const ab = new Uint8Array(chunk).buffer
@@ -170,7 +170,13 @@ export class BleService {
             await new Promise(resolve => setTimeout(resolve, 20))
             try { await this.rx!.writeValueWithoutResponse(ab) } catch { /* ignore */ }
           }
+          // 块间节流(仅当还有后续块): 对齐连接间隔
+          if (multiChunk && i + CHUNK < f.length)
+            await new Promise(resolve => setTimeout(resolve, PACE_MS))
         }
+        // 帧间节流(多分片帧时): 分片帧间无间隔是打爆 mbuf 的主因之一
+        if (f !== frames[frames.length - 1])
+          await new Promise(resolve => setTimeout(resolve, PACE_MS))
       }
     } catch { /* ignore */ }
   }
@@ -244,17 +250,6 @@ export class BleService {
     const value = char.value
     if (!value) return
     const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
-    // 调试日志节流: 50fps 下逐帧打印拖慢主线程, 节流到 1s 一次并累计帧数
-    this.rxFrameCount++
-    const now = Date.now()
-    if (now - this.lastRxLog >= 1000) {
-      console.log(
-        `[BLE RX ${bytes.length}B x${this.rxFrameCount}@${now - this.lastRxLog}ms]`,
-        Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' '),
-      )
-      this.lastRxLog = now
-      this.rxFrameCount = 0
-    }
     this.handler.feed(bytes)
   }
 }

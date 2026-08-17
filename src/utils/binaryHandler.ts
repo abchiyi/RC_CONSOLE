@@ -60,11 +60,16 @@ export class BinaryHandler {
       }
       this.lastStreamSeq = frame.seq
     }
-    // 调试日志节流: 正常帧 1s 打一次; seq 跳号立即打 (丢帧是异常, 需实时可见)
+    // 调试日志节流: 仅打印指令/配置同步 RESPONSE 帧 (1s 节流);
+    // STREAM 通道推送 (EVENT) 与链路统计轮询响应 (GET_LINK_STATS, 后续迁移流式) 不打印
     const now = Date.now()
-    if (seqJump || now - this.lastPktLog >= 1000) {
+    const isLinkStatsResp =
+      frame.type === FRAME_RESPONSE &&
+      frame.payload.length >= 3 &&
+      frame.payload[1] === 0x01 && frame.payload[2] === 0x06 // cmd_id=GET_LINK_STATS (0x0601, LE)
+    if (frame.type === FRAME_RESPONSE && !isLinkStatsResp && now - this.lastPktLog >= 1000) {
       console.log(
-        `[PKT] type=${frame.type} flags=${frame.flags} seq=${frame.seq} len=${frame.len} data=${Array.from(frame.payload).map(b => b.toString(16).padStart(2, '0')).join(' ')}${seqJump ? '  ← SEQ JUMP (丢帧?)' : ''}`,
+        `[PKT] type=${frame.type} flags=${frame.flags} seq=${frame.seq} len=${frame.len} data=${Array.from(frame.payload).map(b => b.toString(16).padStart(2, '0')).join(' ')}`,
       )
       this.lastPktLog = now
     }
