@@ -415,18 +415,20 @@ function fmtBias(v?: number): string {
 }
 
 // --- 生命周期 ---
-onMounted(() => {
-  // 自动开启通道轮询
-  if (!chStore.polling) chStore.startPolling()
+onMounted(async () => {
+  // 先停通道流，让校准流独占流会话（固件单流会话，后发覆盖先发，避免 ct=0/ct=1 互相覆盖）
+  await chStore.stopPolling()
   // 获取初始校准数据
   setTimeout(() => calStore.fetchCalData(), 300)
-  // 持续轮询 cal_get 以获取实时 raw 值 (30ms ≈ 33Hz)
+  // 持续推送实时 raw/IMU 值 (STREAM content_type=1)
   calStore.startCalDataPolling(100)  // 30→100ms，降低串口命令频率，避免 ESP32 栈溢出
 })
 
-onUnmounted(() => {
+onUnmounted(async () => {
   calStore.stopTimers()
   calStore.stopCalDataPolling()
+  // 离开校准页，恢复通道流
+  await chStore.startPolling()
 })
 </script>
 

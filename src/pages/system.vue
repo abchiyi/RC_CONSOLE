@@ -501,7 +501,7 @@ function fmtSeconds(s: number): string {
 }
 
 function battPct(raw: number): number {
-  return Math.round(raw / 255 * 100)
+  return Math.min(100, Math.max(0, Math.round(raw)))
 }
 
 function battColor(raw: number): string {

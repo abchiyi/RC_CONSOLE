@@ -858,8 +858,12 @@ async function activateModel(): Promise<void> {
 onMounted(() => {
   if (serial.connected && !chStore.polling) chStore.startPolling()
   if (CHANNEL_LINK_ONLY) return  // 调试: 仅保留通道监视, 暂停自动加载
-  // 已连接且未加载配置时，自动从设备拉取
-  if (serial.connected && !configStore.config) {
+  if (!serial.connected) return
+  if (configStore.config) {
+    // store 中已有配置（组件重建导致 editChannels 丢失）→ 直接恢复显示
+    selectedSlot.value = configStore.config.active_model
+    syncEditFromStore()
+  } else {
     loadFromDevice()
   }
 })
@@ -867,7 +871,12 @@ onMounted(() => {
 // 页面打开后再连接设备时，自动加载配置
 watch(() => serial.connected, (connected) => {
   if (CHANNEL_LINK_ONLY) return  // 调试: 暂停连接时自动加载
-  if (connected && !configStore.config) {
+  if (!connected) return
+  if (configStore.config) {
+    // store 中已有配置 → 直接恢复显示
+    selectedSlot.value = configStore.config.active_model
+    syncEditFromStore()
+  } else {
     loadFromDevice()
   }
 })

@@ -129,6 +129,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
         lastType.value = runningType.value
         stopTimers()
         _deadzonesLoaded = false  // 校准完成后重新拉取死区
+        fetchCalData()            // 拉取最终 min/center/max + deadzone
       } else if (st === 'error' || st === 3) {
         lastMessage.value = (json.message as string) || '校准失败'
         lastType.value = runningType.value
@@ -136,6 +137,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
       } else if (st === 'running' || st === 1) {
         lastMessage.value = (json.message as string) || '校准进行中…'
         lastType.value = runningType.value
+        fetchCalData()            // 校准过程中随 500ms cal_status 轮询持续刷新 min/center/max
       }
       return
     }

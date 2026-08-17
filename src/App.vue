@@ -5,11 +5,11 @@
     <!-- 侧边导航 -->
     <v-navigation-drawer v-model="drawer" width="240">
       <v-list density="compact" nav>
-        <v-list-item
-          title="通道配置"
-          prepend-icon="mdi-cog"
-          to="/config"
-        />
+        <v-list-item title="通道配置" prepend-icon="mdi-cog" to="/config" />
+        <v-list-item title="校准" prepend-icon="mdi-target" to="/calibration" />
+        <v-list-item title="ELRS" prepend-icon="mdi-antenna" to="/elrs" />
+        <v-list-item title="系统" prepend-icon="mdi-monitor-dashboard" to="/system" />
+        <v-list-item title="升级" prepend-icon="mdi-upload-network" to="/upgrade" />
       </v-list>
 
       <template #append>
