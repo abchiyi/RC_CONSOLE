@@ -259,45 +259,36 @@
                           </v-expand-transition>
                         </v-sheet>
 
-                        <!-- 按钮通道: 触发配置 -->
+                        <!-- 按钮通道: 触发配置 (动态添加, 最多 3 挡位) -->
                         <v-sheet v-if="isButtonSource(effectiveSource(ch))" rounded="lg" border class="pa-3">
-                          <div class="param-group">
-                            <span class="text-caption font-weight-bold">激活触发</span>
-                            <span class="param-controls">
-                              <v-select v-model="ch.activate.trigger" :items="triggerOptions(ch.source)" class="param-select"
-                                density="compact" hide-details variant="outlined" />
-                              <v-icon class="mx-1" size="16">mdi-arrow-right</v-icon>
-                              <v-number-input v-model="ch.activate.value" :reverse="false" :min="ch.output_min ?? 1000"
-                                :max="ch.output_max ?? 2000" :step="1" class="param-val" controlVariant="split"
-                                density="compact" hide-details :hideInput="false" :inset="false" variant="outlined"
-                                style="width:180px" />
-                            </span>
+                          <div class="text-caption text-medium-emphasis mb-2">
+                            多挡触发：1 挡时选择触发方式，触发后在输出最小/最大值间切换；2 挡及以上每条指定触发方式与输出值，同一种触发方式绑定多个挡位时循环切换，最多 3 挡。
                           </div>
-                          <v-divider class="my-2" />
-                          <div class="param-group">
-                            <span class="text-caption font-weight-bold">关闭触发</span>
-                            <span class="param-controls">
-                              <v-select v-model="ch.deactivate.trigger" :items="triggerOptions(ch.source)" class="param-select"
-                                density="compact" hide-details variant="outlined" />
-                              <v-icon class="mx-1" size="16">mdi-arrow-right</v-icon>
-                              <v-number-input v-model="ch.deactivate.value" :reverse="false"
-                                :min="ch.output_min ?? 1000" :max="ch.output_max ?? 2000" :step="1" class="param-val"
-                                controlVariant="split" density="compact" hide-details :hideInput="false" :inset="false"
-                                variant="outlined" style="width:180px" />
-                            </span>
-                          </div>
-                          <v-divider class="my-2" />
-                          <div class="param-group">
-                            <span class="text-caption font-weight-bold">循环挡位</span>
-                            <span class="param-controls">
-                              <v-select v-model="ch.toggle.trigger" :items="triggerOptions(ch.source)" class="param-select"
-                                density="compact" hide-details variant="outlined" />
-                              <v-icon class="mx-1" size="16">mdi-arrow-right</v-icon>
-                              <v-number-input v-model="ch.toggle.value" :reverse="false" :min="ch.output_min ?? 1000"
-                                :max="ch.output_max ?? 2000" :step="1" class="param-val" controlVariant="split"
-                                density="compact" hide-details :hideInput="false" :inset="false" variant="outlined"
-                                style="width:180px" />
-                            </span>
+                          <template v-for="(entry, i) in btnEntries(ch)" :key="i">
+                            <v-divider v-if="i > 0" class="my-2" />
+                            <div class="param-group">
+                              <span class="text-caption font-weight-bold">挡位 {{ i + 1 }}</span>
+                              <span class="param-controls">
+                                <v-select v-model="entry.trigger" :items="triggerOptionsNoNone(ch.source)"
+                                  class="param-select" density="compact" hide-details variant="outlined" />
+                                <template v-if="btnEntryCount(ch) >= 2">
+                                  <v-icon class="mx-1" size="16">mdi-arrow-right</v-icon>
+                                  <v-number-input v-model="entry.value" :reverse="false"
+                                    :min="ch.output_min ?? 1000" :max="ch.output_max ?? 2000" :step="1" class="param-val"
+                                    controlVariant="split" density="compact" hide-details :hideInput="false"
+                                    :inset="false" variant="outlined" style="width:180px" />
+                                </template>
+                                <span v-else class="text-caption text-medium-emphasis ml-2">
+                                  触发时在输出最小↔最大间切换
+                                </span>
+                                <v-btn v-if="btnEntryCount(ch) > 1" icon="mdi-close" size="x-small" variant="text"
+                                  color="error" @click="removeBtnEntry(ch, i)" />
+                              </span>
+                            </div>
+                          </template>
+                          <div v-if="btnEntryCount(ch) < 3" class="mt-2">
+                            <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-plus"
+                              @click="addBtnEntry(ch)">添加按钮</v-btn>
                           </div>
                         </v-sheet>
                         <!-- 连续量通道: 死区/反向/输出中心 -->
@@ -554,14 +545,51 @@ function effectiveSource(ch: ModelChannel): string {
 
 // 来源变更时：EC11 互斥，自动从旧通道移除
 function onSourceChange(idx: number, newSource: string): void {
-  if (newSource !== 'KNOB_EC11') return
-  for (let i = 0; i < editChannels.length; i++) {
-    if (i !== idx && editChannels[i]!.source === 'KNOB_EC11') {
-      editChannels[i]!.source = 'NONE'
-      snackbarMsg.value = `EC11 已从 CH${i} 移动到 CH${idx}`
-      snackbarVisible.value = true
+  if (newSource === 'KNOB_EC11') {
+    for (let i = 0; i < editChannels.length; i++) {
+      if (i !== idx && editChannels[i]!.source === 'KNOB_EC11') {
+        editChannels[i]!.source = 'NONE'
+        snackbarMsg.value = `EC11 已从 CH${i} 移动到 CH${idx}`
+        snackbarVisible.value = true
+      }
     }
   }
+  // 切到按钮输入源且尚无触发挡位时, 自动添加默认挡位 (单挡位任意触发)
+  if (isButtonSource(newSource)) {
+    const ch = editChannels[idx]!
+    if (btnEntryCount(ch) === 0) addBtnEntry(ch)
+  }
+}
+
+// ── 按钮触发: 动态挡位条目 (activate/deactivate/toggle 对应挡位 1/2/3) ──
+const BTN_SLOT_KEYS = ['activate', 'deactivate', 'toggle'] as const
+
+/** 当前已激活的触发挡位条目 (trigger != NONE) */
+function btnEntries(ch: ModelChannel) {
+  return BTN_SLOT_KEYS.map(k => ch[k]).filter(e => e && e.trigger !== 'NONE')
+}
+
+function btnEntryCount(ch: ModelChannel): number {
+  return btnEntries(ch).length
+}
+
+/** 添加一个触发挡位 (最多 3 个) */
+function addBtnEntry(ch: ModelChannel): void {
+  const n = btnEntryCount(ch)
+  if (n >= 3) return
+  const entry = ch[BTN_SLOT_KEYS[n]!]
+  entry.trigger = 'SINGLE_CLICK'
+  entry.value = ch.output_center ?? 1500
+}
+
+/** 删除第 idx 个触发挡位, 后续挡位紧凑前移 */
+function removeBtnEntry(ch: ModelChannel, idx: number): void {
+  const entries = BTN_SLOT_KEYS.map(k => ch[k])
+  entries.splice(idx, 1)
+  entries.push({ trigger: 'NONE', value: 1500 })
+  ch.activate = entries[0]!
+  ch.deactivate = entries[1]!
+  ch.toggle = entries[2]!
 }
 
 /** 按钮通道输出范围变更 → clamp 越界的挡位值 */
@@ -629,6 +657,11 @@ function triggerOptions(source?: string) {
     items = items.filter(item => item.value !== 'SINGLE_CLICK')
   }
   return [noneOption, ...items]
+}
+
+// 动态挡位条目的触发方式选项 (不含 NONE; 条目存在即必须有触发方式)
+function triggerOptionsNoNone(source?: string) {
+  return triggerOptions(source).filter(o => o.value !== 'NONE')
 }
 
 // μs → 0-100 进度 (居中映射)

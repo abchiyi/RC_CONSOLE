@@ -50,11 +50,13 @@ function sourceFromId(id: number): string {
 }
 
 function triggerToId(t: string): number {
+  if (t === 'NONE') return 0xFF
   const idx = TRIGGER_NAMES.indexOf(t)
   return idx >= 0 ? idx : 0
 }
 
 function triggerFromId(id: number): string {
+  if (id === 0xFF) return 'NONE'
   return TRIGGER_NAMES[id] ?? 'SINGLE_CLICK'
 }
 
@@ -162,9 +164,9 @@ function buildFragmented(payload: Uint8Array): Uint8Array[] {
 
 const DEFAULT_CHANNEL: ModelChannel = {
   source: 'NONE',
-  activate: { trigger: 'SINGLE_CLICK', value: 1500 },
-  deactivate: { trigger: 'SINGLE_CLICK', value: 1500 },
-  toggle: { trigger: 'DOUBLE_CLICK', value: 1500 },
+  activate: { trigger: 'NONE', value: 1500 },
+  deactivate: { trigger: 'NONE', value: 1500 },
+  toggle: { trigger: 'NONE', value: 1500 },
   input_min: 0,
   input_center: 0,
   input_max: 0,
