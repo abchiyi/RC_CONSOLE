@@ -19,22 +19,20 @@
   display: inline-block;
 }
 .mdi-alert:before { content: "\F0026"; }
-.mdi-alert-circle-outline:before { content: "\F05D6"; }
 .mdi-alert-octagram:before { content: "\F0767"; }
 .mdi-antenna:before { content: "\F1119"; }
 .mdi-arrow-down-bold:before { content: "\F072E"; }
 .mdi-arrow-right:before { content: "\F0054"; }
-.mdi-arrow-up:before { content: "\F005D"; }
 .mdi-arrow-up-bold:before { content: "\F0737"; }
 .mdi-axis-arrow:before { content: "\F0D49"; }
 .mdi-axis-x-arrow:before { content: "\F0D4C"; }
 .mdi-axis-y-arrow:before { content: "\F0D51"; }
 .mdi-bell:before { content: "\F009A"; }
+.mdi-bluetooth:before { content: "\F00AF"; }
 .mdi-broadcast:before { content: "\F1720"; }
 .mdi-bug:before { content: "\F00E4"; }
 .mdi-check-circle:before { content: "\F05E0"; }
 .mdi-chevron-down:before { content: "\F0140"; }
-.mdi-chevron-right:before { content: "\F0142"; }
 .mdi-chevron-up:before { content: "\F0143"; }
 .mdi-chip:before { content: "\F061A"; }
 .mdi-circle:before { content: "\F0765"; }
@@ -43,21 +41,24 @@
 .mdi-content-save:before { content: "\F0193"; }
 .mdi-controller-classic:before { content: "\F0B82"; }
 .mdi-crosshairs-gps:before { content: "\F01A4"; }
+.mdi-database-refresh:before { content: "\F05C2"; }
 .mdi-delete-alert:before { content: "\F10A5"; }
 .mdi-delete-outline:before { content: "\F09E7"; }
 .mdi-dots-vertical:before { content: "\F01D9"; }
 .mdi-download:before { content: "\F01DA"; }
+.mdi-file:before { content: "\F0214"; }
 .mdi-file-tree:before { content: "\F0645"; }
 .mdi-file-upload-outline:before { content: "\F0A4E"; }
 .mdi-folder:before { content: "\F024B"; }
-.mdi-folder-open:before { content: "\F0770"; }
 .mdi-form-select:before { content: "\F1401"; }
 .mdi-gamepad-right:before { content: "\F0E3B"; }
+.mdi-gamepad-variant:before { content: "\F0297"; }
 .mdi-gesture-tap-button:before { content: "\F12A8"; }
 .mdi-help-circle:before { content: "\F02D7"; }
-.mdi-home:before { content: "\F02DC"; }
 .mdi-information:before { content: "\F02FC"; }
 .mdi-information-outline:before { content: "\F02FD"; }
+.mdi-link-variant:before { content: "\F0339"; }
+.mdi-menu:before { content: "\F035C"; }
 .mdi-monitor-dashboard:before { content: "\F0A07"; }
 .mdi-numeric:before { content: "\F03A0"; }
 .mdi-play:before { content: "\F040A"; }
@@ -68,7 +69,7 @@
 .mdi-reload:before { content: "\F0453"; }
 .mdi-restart:before { content: "\F0709"; }
 .mdi-shimmer:before { content: "\F1545"; }
-.mdi-signal-cellular-outline:before { content: "\F08BF"; }
+.mdi-speedometer:before { content: "\F04C5"; }
 .mdi-stop:before { content: "\F04DB"; }
 .mdi-target:before { content: "\F04FE"; }
 .mdi-timer-cog:before { content: "\F1925"; }
@@ -80,4 +81,3 @@
 .mdi-view-dashboard:before { content: "\F056E"; }
 .mdi-view-list:before { content: "\F0572"; }
 .mdi-wifi:before { content: "\F05A9"; }
-.mdi-wifi-off:before { content: "\F05AA"; }

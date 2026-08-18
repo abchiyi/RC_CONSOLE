@@ -34,7 +34,7 @@
         variant="outlined"
         hide-details="auto"
         label="选择固件文件"
-        prepend-icon="mdi-file-binary"
+        prepend-icon="mdi-file"
         show-size
         :disabled="firmwareBusy || !serial.connected"
         @update:model-value="onFirmwareFileChange"

@@ -1,6 +1,6 @@
 <template>
   <v-app-bar color="surface" density="compact" elevation="1">
-    <v-app-bar-nav-icon @click="$emit('toggle-drawer')" />
+    <v-app-bar-nav-icon icon="mdi-menu" @click="$emit('toggle-drawer')" />
 
     <v-app-bar-title class="text-h6 font-weight-bold">
       RC Controller
