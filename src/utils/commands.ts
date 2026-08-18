@@ -366,12 +366,16 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
 
 function statusText(status: number): string {
   switch (status) {
+    case 0: return 'OK'
     case 1: return '未知命令'
     case 2: return '参数错误'
-    case 3: return '设备忙'
-    case 4: return 'NVS 读写失败'
-    case 5: return 'OTA 错误'
-    case 6: return '不支持'
+    case 3: return 'NVS 读写失败'
+    case 4: return '设备忙' // 字段未就绪/未找到
+    case 5: return 'CRC 错误'
+    case 6: return '序号错误'
+    case 7: return '大小错误'
+    case 8: return '不支持'
+    case 9: return '内部错误'
     default: return `设备错误(${status})`
   }
 }

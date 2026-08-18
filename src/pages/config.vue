@@ -854,31 +854,30 @@ async function activateModel(): Promise<void> {
   snackbarVisible.value = true
 }
 
-// 进入页面自动轮询 + 自动加载配置，离开页面停止
-onMounted(() => {
-  if (serial.connected && !chStore.polling) chStore.startPolling()
-  if (CHANNEL_LINK_ONLY) return  // 调试: 仅保留通道监视, 暂停自动加载
+/** 进入页面/连接建立后：恢复配置显示或从设备加载（含通道流启停） */
+async function enterPage(): Promise<void> {
   if (!serial.connected) return
   if (configStore.config) {
     // store 中已有配置（组件重建导致 editChannels 丢失）→ 直接恢复显示
     selectedSlot.value = configStore.config.active_model
     syncEditFromStore()
   } else {
-    loadFromDevice()
+    await loadFromDevice()
   }
+}
+
+// 进入页面自动轮询 + 自动加载配置，离开页面停止
+onMounted(() => {
+  if (serial.connected && !chStore.polling) chStore.startPolling()
+  if (CHANNEL_LINK_ONLY) return  // 调试: 仅保留通道监视, 暂停自动加载
+  enterPage()
 })
 
 // 页面打开后再连接设备时，自动加载配置
 watch(() => serial.connected, (connected) => {
   if (CHANNEL_LINK_ONLY) return  // 调试: 暂停连接时自动加载
   if (!connected) return
-  if (configStore.config) {
-    // store 中已有配置 → 直接恢复显示
-    selectedSlot.value = configStore.config.active_model
-    syncEditFromStore()
-  } else {
-    loadFromDevice()
-  }
+  enterPage()
 })
 
 // 通道配置任一字段变更 → 防抖后自动写入设备内存 (不持久化)

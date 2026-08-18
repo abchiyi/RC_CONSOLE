@@ -1,6 +1,6 @@
 /**
  * ELRS 链路统计 Store
- * 通过 get_link_stats 串口命令轮询上行/下行 RSSI、LQ、发射功率
+ * 通过 STREAM content_type=3 流式推送上行/下行 RSSI、LQ、发射功率
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
@@ -59,6 +59,8 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
 
   // ELRS 字段列表
   const fields = ref<ElrsFieldInfo[]>([])
+  // 字段列表版本号：rescan 完成后递增，用于强制下游重建字段树（规避 v-list-group 渲染不同步）
+  const fieldsVersion = ref(0)
   const dynPowerOn = ref<boolean | null>(null)  // null = 未找到字段
   const dynPowerField = ref<string>('')            // 缓存找到的字段名 (精确)
   const dynPwrLoading = ref(false)
@@ -110,17 +112,60 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
 
   const rr = new RequestResponseHandler()
 
-  /** 从固件拉取 ELRS 字段列表 */
-  async function fetchFields(): Promise<void> {
+  /** 从固件拉取 ELRS 字段列表；缓存为空时固件异步触发发现，连续两次结果一致视为稳定完整缓存 */
+  async function fetchFields(timeoutMs = 5000): Promise<void> {
     dynPwrLoading.value = true
-    const p = rr.wait('elrs_list_fields', 3000)
-    await serialService.sendCommand('elrs_list_fields')
+    const deadline = Date.now() + timeoutMs
+    let lastCount = -1
     try {
-      await p
-    } catch {
-      /* timeout */
+      do {
+        const p = rr.wait('elrs_list_fields', 2000)
+        await serialService.sendCommand('elrs_list_fields')
+        try {
+          await p
+        } catch {
+          /* 单次超时：继续轮询直到总超时 */
+        }
+        const n = fields.value.length
+        if (n > 0 && n === lastCount) return  // 连续两次一致 → 发现已稳定，返回完整缓存
+        lastCount = n
+        if (Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+      } while (Date.now() < deadline)
+    } finally {
+      dynPwrLoading.value = false
     }
-    dynPwrLoading.value = false
+  }
+
+  /** 强制重新发现字段：无条件清空固件缓存并异步重建，轮询拉取新缓存直至非空或超时 */
+  async function rescanFields(): Promise<void> {
+    dynPwrLoading.value = true
+    try {
+      const p = rr.wait('elrs_rescan_fields', 3000)
+      await serialService.sendCommand('elrs_rescan_fields')
+      try {
+        await p
+      } catch {
+        /* timeout */
+      }
+      // 固件发现是异步的（逐字段队列读取，需数秒），fetchFields 内部轮询直至连续两次结果一致
+      await fetchFields(12000)
+      fieldsVersion.value++  // 强制下游重建字段树，规避 v-list-group 渲染不同步
+    } finally {
+      dynPwrLoading.value = false
+    }
+  }
+
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** 写后联动刷新：固件会后台重读父文件夹/同层级/自身字段（对齐 Lua reloadRelatedFields），稍候重拉缓存以同步 UI */
+  function scheduleFieldRefresh(delayMs = 800): void {
+    if (refreshTimer) clearTimeout(refreshTimer)
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null
+      void fetchFields(8000)
+    }, delayMs)
   }
 
   /** 设置 ELRS 参数字段（二进制协议仅接受 field_id，字符串名从字段列表解析） */
@@ -138,7 +183,9 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
     }
     try {
       const resp = (await p) as Record<string, unknown>
-      return !!resp.ok
+      const ok = !!resp.ok
+      if (ok) scheduleFieldRefresh()
+      return ok
     } catch {
       return false
     }
@@ -165,6 +212,26 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
     return ok
   }
 
+  // ---- ELRS 常用指令（直发命令，无状态机）----
+
+  /** 发送单个 ELRS 指令命令，返回是否执行成功（命令下发成功即 ok） */
+  async function sendElrsCommand(cmd: string): Promise<boolean> {
+    try {
+      const p = rr.wait(cmd, 3000)
+      await serialService.sendCommand(cmd)
+      const resp = (await p) as Record<string, unknown>
+      return !!resp.ok
+    } catch {
+      return false
+    }
+  }
+
+  function wifiStart(): Promise<boolean> { return sendElrsCommand('elrs_wifi_start') }
+  function wifiStop(): Promise<boolean> { return sendElrsCommand('elrs_wifi_stop') }
+  function bleStart(): Promise<boolean> { return sendElrsCommand('elrs_ble_start') }
+  function bleStop(): Promise<boolean> { return sendElrsCommand('elrs_ble_stop') }
+  function bindStart(): Promise<boolean> { return sendElrsCommand('elrs_bind_start') }
+
   function handleElrsResponse(json: Record<string, unknown>): void {
     const cmd = json.cmd as string | undefined
     if (!cmd) return
@@ -181,30 +248,43 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
       rr.tryResolve('elrs_set_param', json)
       return
     }
+
+    if (cmd === 'elrs_rescan_fields') {
+      rr.tryResolve('elrs_rescan_fields', json)
+      return
+    }
+
+    // 快捷指令（wifi/ble/bind）：仅 resolve，无状态回读
+    if (cmd === 'elrs_wifi_start' || cmd === 'elrs_wifi_stop' ||
+        cmd === 'elrs_ble_start' || cmd === 'elrs_ble_stop' ||
+        cmd === 'elrs_bind_start') {
+      rr.tryResolve(cmd, json)
+      return
+    }
   }
 
-  // ---- 定时轮询 ----
+  // ---- 流式链路统计（STREAM content_type=3）----
 
-  let timer: ReturnType<typeof setInterval> | null = null
-
-  /** 启动轮询 (ELRS 每 ~100ms 推送一次，10Hz 为自然上限) */
-  function startPolling(intervalMs = 100): void {
-    stopPolling()
-    timer = setInterval(async () => {
-      if (!serialService.isConnected) return
-      await serialService.sendCommand('get_link_stats')
-    }, intervalMs)
+  /** 启动链路统计流（固件单流会话：需先停其他流再启动） */
+  async function startLinkStream(intervalMs = 100): Promise<void> {
+    await serialService.sendCommand('stream_start', {
+      content_type: 3,
+      interval_ms: intervalMs,
+      flags: 0,
+    })
   }
 
-  function stopPolling(): void {
-    if (timer) { clearInterval(timer); timer = null }
+  /** 停止链路统计流（恢复通道流前调用） */
+  async function stopLinkStream(): Promise<void> {
+    await serialService.sendCommand('stream_stop')
   }
 
   return {
     valid, fieldCount, moduleAlive,
     ulRssi, ulLq, dlRssi, dlLq, rfMode, txPower,
-    fields, dynPowerOn, dynPowerField, dynPwrLoading,
-    update, fetchFields, setParam, toggleDynPower, handleElrsResponse,
-    startPolling, stopPolling,
+    fields, fieldsVersion, dynPowerOn, dynPowerField, dynPwrLoading,
+    update, fetchFields, rescanFields, setParam, toggleDynPower, handleElrsResponse,
+    wifiStart, wifiStop, bleStart, bleStop, bindStart,
+    startLinkStream, stopLinkStream,
   }
 })

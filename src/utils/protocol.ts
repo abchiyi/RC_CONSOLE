@@ -28,14 +28,17 @@ export const FLAG_FRAGMENTED = 0x01
 export const FLAG_NEED_ACK = 0x02
 export const FLAG_RESERVED = 0x04
 
-/** 状态码 */
+/** 状态码（与固件 protocol.h 的 Status 枚举一致） */
 export const STATUS_OK = 0
 export const STATUS_UNKNOWN_CMD = 1
 export const STATUS_BAD_PARAM = 2
-export const STATUS_BUSY = 3
-export const STATUS_NVS_ERR = 4
-export const STATUS_OTA_ERR = 5
-export const STATUS_NOT_SUPPORTED = 6
+export const STATUS_NVS_ERR = 3
+export const STATUS_BUSY = 4
+export const STATUS_CRC_ERR = 5
+export const STATUS_SEQ_ERR = 6
+export const STATUS_SIZE_ERR = 7
+export const STATUS_NOT_SUPPORTED = 8
+export const STATUS_INTERNAL = 9
 
 /** 命令表（与固件 Cmd 枚举一致） */
 export const CMD = {
@@ -72,6 +75,10 @@ export const CMD = {
   ELRS_SET_PARAM: 0x0702,
   ELRS_WIFI_START: 0x0703,
   ELRS_WIFI_STOP: 0x0704,
+  ELRS_RESCAN_FIELDS: 0x0705,
+  ELRS_BIND_START: 0x0708,
+  ELRS_BLE_START: 0x0709,
+  ELRS_BLE_STOP: 0x070A,
 } as const
 
 /** 事件 ID */
@@ -118,6 +125,10 @@ export const CMD_NAME_TO_ID: Record<string, number> = {
   elrs_set_param: CMD.ELRS_SET_PARAM,
   elrs_wifi_start: CMD.ELRS_WIFI_START,
   elrs_wifi_stop: CMD.ELRS_WIFI_STOP,
+  elrs_rescan_fields: CMD.ELRS_RESCAN_FIELDS,
+  elrs_bind_start: CMD.ELRS_BIND_START,
+  elrs_ble_start: CMD.ELRS_BLE_START,
+  elrs_ble_stop: CMD.ELRS_BLE_STOP,
 }
 
 const CMD_ID_TO_NAME: Record<number, string> = Object.fromEntries(
@@ -137,10 +148,13 @@ export function statusMessage(status: number): string {
     case STATUS_OK: return 'OK'
     case STATUS_UNKNOWN_CMD: return '未知命令'
     case STATUS_BAD_PARAM: return '参数错误'
-    case STATUS_BUSY: return '设备忙'
     case STATUS_NVS_ERR: return 'NVS 读写失败'
-    case STATUS_OTA_ERR: return 'OTA 错误'
+    case STATUS_BUSY: return '设备忙'
+    case STATUS_CRC_ERR: return 'CRC 错误'
+    case STATUS_SEQ_ERR: return '序号错误'
+    case STATUS_SIZE_ERR: return '大小错误'
     case STATUS_NOT_SUPPORTED: return '不支持'
+    case STATUS_INTERNAL: return '内部错误'
     default: return `错误(${status})`
   }
 }

@@ -149,11 +149,11 @@ export class BleService {
     if (cmd === 'stream_start') {
       this.handler.setStreamFlags(Number(params?.flags ?? 0))
     }
-    // 调试：打印实际写入 BLE 的帧字节（链路统计暂走轮询, 高频打印无意义; 后续迁移至 STREAM content_type=3 后移除）
+    // 调试：打印实际写入 BLE 的帧字节
     const hex = frames.map(f =>
       Array.from(f).map(b => b.toString(16).padStart(2, '0')).join(' '),
     ).join(' | ')
-    if (cmd !== 'get_link_stats') console.log(`[BLE TX] ${cmd} (${frames.length} frame): ${hex}`)
+    console.log(`[BLE TX] ${cmd} (${frames.length} frame): ${hex}`)
     try {
       const CHUNK = 20
       // 节流对齐 BLE 连接间隔(12×1.25=15ms), 避免瞬时打爆固件 NimBLE RX mbuf

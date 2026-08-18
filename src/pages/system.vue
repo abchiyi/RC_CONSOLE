@@ -443,10 +443,15 @@ watch([warnSec, shutdownSec], () => {
   cfgErr.value = ''
 })
 
+/** 进入页面/连接建立后：拉取配置并启动轮询 */
+function enterPage(): void {
+  reloadAll()
+}
+
 // 串口状态监听
 watch(() => serial.connected, (connected) => {
   if (connected) {
-    reloadAll()
+    enterPage()
   } else {
     stopPoll()
     power.state = null
@@ -528,7 +533,7 @@ function chargeLabel(c: string): string {
 }
 
 onMounted(() => {
-  if (serial.connected) reloadAll()
+  if (serial.connected) enterPage()
 })
 
 onUnmounted(() => {
