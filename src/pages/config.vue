@@ -28,15 +28,19 @@
                   style="position:relative; overflow:visible; background: #1e1e1e;">
                   <!-- 头部行 -->
                   <div class="chan-header-row" style="cursor:pointer" @click="toggleExpand(idx)">
-                    <!-- 宽屏布局: 左右两栏 (左=通道编号+名称+输入源, 右=输出范围) -->
+                    <!-- 布局: 左右两栏 (左=通道信息分组, 右=输出范围); 分组: CH号 | 输入源; 点击头部行任意处展开/收起 -->
                     <div class="chan-header-wide">
                       <div class="chan-head-left">
+                        <!-- 组1: 通道编号 -->
                         <div class="chan-id-row">
                           <span class="text-caption font-weight-bold chan-id">CH{{ idx }}</span>
                         </div>
-                        <v-select v-model="ch.source" :items="sourceOptions" density="compact" hide-details
-                          variant="solo" class="chan-source-select"
-                          @update:model-value="(val: string) => onSourceChange(idx, val)" @click.stop />
+                        <!-- 组2: 输入源选择 -->
+                        <div class="chan-source-row">
+                          <v-select v-model="ch.source" :items="sourceOptions" density="compact" hide-details
+                            variant="solo" class="chan-source-select"
+                            @update:model-value="(val: string) => onSourceChange(idx, val)" @click.stop />
+                        </div>
                       </div>
                       <template v-if="ch.source !== 'NONE'">
                         <div class="chan-head-right" @click.stop>
@@ -86,8 +90,6 @@
                               </div>
                             </div>
                           </template>
-                          <v-btn :icon="expandedIdx === idx ? 'mdi-chevron-up' : 'mdi-chevron-down'" density="compact"
-                            size="x-small" variant="text" @click.stop="toggleExpand(idx)" />
                         </div>
                       </template>
                     </div>
@@ -311,21 +313,20 @@
 
     </v-row>
 
-    <!-- 全宽悬浮底栏: 模型切换 + 加载/保存 -->
-    <div v-if="serial.connected" class="model-bottom-bar">
+    <!-- 底栏: 行为/宽度与顶栏一致 (自动避开抽屉, 抽屉开合时跟随) -->
+    <v-app-bar v-if="serial.connected" location="bottom" color="surface" density="compact" elevation="1"
+      class="px-3">
       <template v-if="(configStore.modelCount ?? 0) > 1">
-        <v-icon color="primary">mdi-controller-classic</v-icon>
-        <span class="text-subtitle-2 font-weight-medium ml-1 mr-2">模型</span>
-        <v-select v-model="selectedSlot" class="model-select" :items="modelOptions" item-title="title"
+        <v-select v-model="selectedSlot" class="model-select ml-3" :items="modelOptions" item-title="title"
           item-value="value" density="compact" variant="outlined" hide-details
           @update:model-value="onSlotSelect" />
       </template>
       <v-spacer />
-      <v-btn v-if="configStore.config" class="btn-secondary" prepend-icon="mdi-check-circle" size="small"
+      <v-btn v-if="configStore.config" class="btn-secondary me-2" prepend-icon="mdi-check-circle" size="small"
         rounded="lg" :disabled="selectedSlot === configStore.config.active_model" @click="activateModel">
         <span class="btn-text">设为默认</span>
       </v-btn>
-      <v-btn class="btn-secondary" prepend-icon="mdi-download" size="small" rounded="lg"
+      <v-btn class="btn-secondary me-2" prepend-icon="mdi-download" size="small" rounded="lg"
         :loading="configStore.loading" @click="loadFromDevice">
         <span class="btn-text">从设备加载</span>
       </v-btn>
@@ -333,7 +334,7 @@
         rounded="lg" :loading="savingModel" @click="saveModel">
         <span class="btn-text">保存到设备</span>
       </v-btn>
-    </div>
+    </v-app-bar>
   </div>
 </template>
 
@@ -1023,7 +1024,8 @@ onUnmounted(() => {
 .chan-header-wide {
   display: flex;
   align-items: center;
-  gap: 16px;
+  justify-content: space-between; /* 左栏靠左、右栏靠右, 中间留白 */
+  gap: 24px;
 }
 
 /* 左栏: 通道编号 + 名称 + 输入源 */
@@ -1032,7 +1034,7 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 4px;
   flex-shrink: 0;
-  width: 170px;
+  width: 190px;
   background: #262626;
   padding: 8px;
   border-radius: 8px;
@@ -1051,7 +1053,21 @@ onUnmounted(() => {
   text-align: center;
 }
 
-/* 右栏: 输出范围滑块 + 展开按钮 */
+/* 组2: 输入源选择 */
+.chan-source-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.chan-source-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 右栏: 输出范围滑块 */
 .chan-head-right {
   display: flex;
   align-items: center;
@@ -1059,22 +1075,40 @@ onUnmounted(() => {
   flex: 1;
   min-width: 0;
   position: relative;
+  padding: 0 24px 0 16px; /* 左 16px, 右 24px (右侧 ×1.5), 给左右手柄留安全距离 */
 }
 
-/* 窄卡片: 左右布局退回单行换行 (基于卡片实际宽度) */
+/* 消除 Vuetify 滑块默认左右缩进, 轨道在 16px 内边距内占满整行 */
+:deep(.chan-head-right .v-slider) {
+  margin-inline: 0 !important;
+}
+
+/* 窄卡片: 左右布局退回单行换行 + 信息组横排 (基于卡片实际宽度) */
 @container (max-width: 900px) {
   .chan-header-wide {
     flex-wrap: wrap;
   }
 
+  /* 窄屏: CH号靠左, 右侧组靠右, 中间留白 */
   .chan-head-left {
     flex-direction: row;
     align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     width: 100%;
+  }
+
+  /* 输入源选择组缩窄, 避免半行过宽 */
+  .chan-source-row {
+    flex: 0 1 35%;
+    max-width: 35%;
+    min-width: 0;
   }
 
   .chan-head-right {
     width: 100%;
+    /* 左 16px, 右 24px (右侧 ×1.5), 下 12px 给刻度线留出下方空间 */
+    padding: 0 24px 12px 16px;
   }
 }
 
@@ -1309,11 +1343,12 @@ onUnmounted(() => {
 /* 静态刻度: 按数值百分比定位 + 竖线标记 */
 .range-ticks {
   position: relative;
-  height: 16px;
+  height: 22px;
+  line-height: 1;
   margin-top: 2px;
-  /* 与 .v-slider 默认 margin-inline: 8px 对齐, 使刻度区间与轨道区间一致 */
-  margin-left: 8px;
-  margin-right: 8px;
+  /* 与 .chan-head-right 的 padding 对齐 (左 16px / 右 24px), 使刻度区间与轨道区间一致 */
+  margin-left: 16px;
+  margin-right: 24px;
   font-size: 0.68rem;
   color: rgba(255, 255, 255, 0.4);
 }
@@ -1322,6 +1357,8 @@ onUnmounted(() => {
   position: absolute;
   top: 8px;
   transform: translateX(-50%);
+  font-size: 12px;
+  line-height: 1;
   user-select: none;
   white-space: nowrap;
   transition: opacity 0.25s ease-in-out, visibility 0.25s ease-in-out;
@@ -1367,24 +1404,14 @@ onUnmounted(() => {
 
 /* ── 悬浮底栏 (模型切换 + 加载/保存) ── */
 
-/* 页面底部留白, 防止内容被悬浮底栏遮挡 */
+/* 页面底部留白, 防止内容被悬浮底栏遮挡; 水平内边距隔离屏幕边缘 */
 .config-page {
-  padding-bottom: 96px;
+  padding: 0 16px 96px;
 }
 
-.model-bottom-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: rgb(var(--v-theme-surface));
-  border-top: 1px solid rgba(var(--v-theme-primary), 0.25);
-  box-shadow: 0 -2px 16px rgba(0, 0, 0, 0.35);
-  z-index: 100;
+/* 顶部工具栏保持原边缘对齐, 内容区仍缩进 16px */
+.config-page > .v-toolbar {
+  margin: 0 -16px;
 }
 
 .model-select {
