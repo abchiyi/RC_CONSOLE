@@ -16,22 +16,26 @@
         size="small" variant="tonal" @click="saveSettings" :loading="power.loading">
         保存到设备
       </v-btn>
+      <v-btn v-if="serial.connected" color="warning" prepend-icon="mdi-upload-network"
+        size="small" variant="tonal" @click="upgradeDialog = true">
+        固件升级
+      </v-btn>
     </v-toolbar>
 
     <!-- 未连接提示 -->
-    <v-alert v-if="!serial.connected" class="ma-4" color="info" icon="mdi-information" variant="tonal">
+    <v-alert v-if="!serial.connected" class="ma-3" color="info" icon="mdi-information" variant="tonal">
       请先连接设备以管理系统设置
     </v-alert>
 
     <v-row dense class="pa-4">
       <!-- 实时状态卡片 -->
       <v-col cols="12" md="6">
-        <v-card rounded="lg" variant="outlined">
+        <v-card variant="tonal">
           <v-card-item>
             <template #prepend>
               <v-icon color="primary">mdi-monitor-dashboard</v-icon>
             </template>
-            <v-card-title class="text-body-1">系统状态</v-card-title>
+            <v-card-title class="text-subtitle-1">系统状态</v-card-title>
             <template #append>
               <v-chip v-if="stateError" color="error" size="x-small" variant="tonal">
                 {{ stateError }}
@@ -120,12 +124,12 @@
 
       <!-- 空闲关机设置卡片 -->
       <v-col cols="12" md="6">
-        <v-card rounded="lg" variant="outlined">
+        <v-card variant="tonal">
           <v-card-item>
             <template #prepend>
               <v-icon color="primary">mdi-timer-cog</v-icon>
             </template>
-            <v-card-title class="text-body-1">空闲关机设置</v-card-title>
+            <v-card-title class="text-subtitle-1">空闲关机设置</v-card-title>
             <template #append>
               <v-chip v-if="cfgDirty" color="warning" size="x-small" variant="tonal">已修改</v-chip>
               <v-chip v-if="cfgOk" color="success" size="x-small" variant="tonal">{{ cfgOk }}</v-chip>
@@ -205,12 +209,12 @@
 
       <!-- 调试模式卡片 -->
       <v-col cols="12" md="6">
-        <v-card rounded="lg" variant="outlined" :color="power.debugMode ? 'warning' : undefined">
+        <v-card variant="tonal" :color="power.debugMode ? 'warning' : undefined">
           <v-card-item>
             <template #prepend>
               <v-icon :color="power.debugMode ? 'warning' : 'grey'">mdi-bug</v-icon>
             </template>
-            <v-card-title class="text-body-1">调试模式</v-card-title>
+            <v-card-title class="text-subtitle-1">调试模式</v-card-title>
             <template #append>
               <v-switch
                 v-model="debugSwitch"
@@ -246,12 +250,12 @@
 
       <!-- 恢复出厂设置卡片 -->
       <v-col cols="12" md="6">
-        <v-card rounded="lg" variant="outlined" color="error">
+        <v-card variant="tonal" color="error">
           <v-card-item>
             <template #prepend>
               <v-icon color="error">mdi-alert-octagram</v-icon>
             </template>
-            <v-card-title class="text-body-1">恢复出厂设置</v-card-title>
+            <v-card-title class="text-subtitle-1">恢复出厂设置</v-card-title>
           </v-card-item>
 
           <v-card-text>
@@ -307,6 +311,8 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <FirmwareUpgradeDialog v-model="upgradeDialog" />
   </div>
 </template>
 
@@ -315,9 +321,13 @@ import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import { usePowerStore } from '@/stores/power'
 import { serialService } from '@/services/SerialService'
+import FirmwareUpgradeDialog from '@/components/FirmwareUpgradeDialog.vue'
 
 const serial = useSerialStore()
 const power = usePowerStore()
+
+// ========== 固件升级对话框 ==========
+const upgradeDialog = ref(false)
 
 // ========== 轮询 ==========
 const pollActive = ref(false)

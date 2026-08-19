@@ -15,7 +15,9 @@ declare module 'vue' {
     CalWizard: typeof import('./components/calibration/CalWizard.vue')['default']
     ChannelGrid: typeof import('./components/channel/ChannelGrid.vue')['default']
     ElrsFieldTree: typeof import('./components/elrs/ElrsFieldTree.vue')['default']
+    FirmwareUpgradeDialog: typeof import('./components/FirmwareUpgradeDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SliderLabel: typeof import('./components/SliderLabel.vue')['default']
   }
 }

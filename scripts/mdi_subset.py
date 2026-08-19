@@ -28,9 +28,13 @@ OUT_CSS = SRC / "styles" / "mdi-subset.css"
 ICON_RE = re.compile(r"mdi-([a-z0-9-]+)")
 CSS_RE = re.compile(r"\.mdi-([a-z0-9-]+)::before\s*\{[^}]*content:\s*\"\\F([0-9A-Fa-f]+)\"")
 
+# Vuetify 内部组件(如 v-number-input 的加减按钮)渲染的图标，源码中没有显式 mdi-* 字符串，
+# 需手动补充，否则子集字体中缺少对应字形导致图标显示空白。
+EXTRA_ICONS = {"minus", "plus", "radiobox-blank", "radiobox-marked", "checkbox-blank-outline", "checkbox-marked"}
+
 
 def collect_icons() -> set[str]:
-    icons: set[str] = set()
+    icons: set[str] = set(EXTRA_ICONS)
     for root, _, files in os.walk(SRC):
         for f in files:
             if not f.endswith((".vue", ".ts", ".js", ".tsx", ".jsx")):

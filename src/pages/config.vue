@@ -1,266 +1,106 @@
 <template>
-  <div>
+  <div class="config-page">
     <v-snackbar v-model="snackbarVisible" color="info" timeout="2000">
       {{ snackbarMsg }}
     </v-snackbar>
 
     <v-toolbar color="transparent" density="compact">
-      <v-toolbar-title class="text-h6">
+      <v-toolbar-title class="text-h6 page-title">
         <v-icon class="mr-2">mdi-cog</v-icon>
         通道配置
       </v-toolbar-title>
 
-      <v-spacer />
-
-      <v-btn v-if="serial.connected" class="mr-2" color="primary" prepend-icon="mdi-download" size="small"
-        variant="tonal" :loading="configStore.loading" @click="loadFromDevice">
-        从设备加载
-      </v-btn>
-
-      <v-btn v-if="serial.connected" class="mr-2" color="success" prepend-icon="mdi-content-save" size="small"
-        variant="tonal" :loading="savingModel" @click="saveModel">
-        保存到设备
-      </v-btn>
     </v-toolbar>
 
     <!-- 未连接 -->
-    <v-alert v-if="!serial.connected" class="ma-4" color="info" icon="mdi-information" variant="tonal">
+    <v-alert v-if="!serial.connected" class="ma-3" color="primary" border="start" border-color="primary"
+      icon="mdi-information" variant="tonal">
       请先连接设备以加载和编辑配置
     </v-alert>
 
     <v-row v-if="serial.connected" dense>
       <!-- 左侧: 主配置区域 -->
-      <v-col cols="12" lg="8" xl="9">
-        <!-- 设备信息 -->
-        <v-card v-if="configStore.deviceInfo" class="mb-2" rounded="lg" variant="outlined">
-          <v-card-item>
-            <template #prepend>
-              <v-icon>mdi-chip</v-icon>
-            </template>
-            <v-card-title>设备信息</v-card-title>
-            <v-card-subtitle>
-              {{ configStore.deviceInfo.device }}
-              · {{ configStore.deviceInfo.channel_count }} 通道
-              · {{ configStore.deviceInfo.model_count }} 模型
-            </v-card-subtitle>
-          </v-card-item>
-        </v-card>
-
-        <!-- 模型配置选项卡 -->
-        <v-card v-if="configStore.modelCount > 0" rounded="lg" variant="outlined">
-          <v-card-text class="pa-2 pb-0">
-            <v-tabs v-model="selectedSlot" center-active density="compact" @update:model-value="onSlotSelect">
-              <v-tab v-for="i in configStore.modelCount" :key="i - 1" :value="i - 1" size="small">
-                <v-icon size="16" class="mr-1">mdi-controller-classic</v-icon>
-                <span class="text-caption">Model {{ i }}</span>
-              </v-tab>
-            </v-tabs>
-          </v-card-text>
-          <v-divider />
-          <!-- 模型详情 (可编辑) -->
-          <template v-if="configStore.config && editChannels.length > 0">
-            <v-card-item>
-              <template #prepend>
-                <v-icon>mdi-view-list</v-icon>
-              </template>
-              <v-card-title> {{ configStore.config.models[selectedSlot]?.name || '未命名' }}
-
-                <v-chip v-if="selectedSlot === configStore.config.active_model" size="x-small" color="success"
-                  class="ml-1" variant="tonal">激活中</v-chip>
-              </v-card-title>
-
-              <template #append>
-                <div class="d-flex ga-1 action-btns">
-                  <v-btn color="success" prepend-icon="mdi-check-circle" size="small" variant="tonal"
-                    :disabled="selectedSlot === configStore.config.active_model" @click="activateModel">
-                    激活配置
-                  </v-btn>
-                </div>
-                <div class="fab-container">
-                  <v-speed-dial transition="scale">
-                    <template #activator="{ props: activatorProps }">
-                      <v-btn v-bind="activatorProps" icon="mdi-dots-vertical" size="small" color="primary" />
-                    </template>
-                    <v-tooltip location="left" text="激活配置">
-                      <template #activator="{ props }">
-                        <v-btn v-bind="props" icon="mdi-check-circle" size="small" color="success"
-                          :disabled="selectedSlot === configStore.config.active_model" @click="activateModel" />
-                      </template>
-                    </v-tooltip>
-                  </v-speed-dial>
-                </div>
-              </template>
-            </v-card-item>
-            <v-card-text>
-              <template v-for="(ch, idx) in editChannels" :key="idx">
-                <v-sheet rounded="lg" border class="my-2 chan-card" :class="{ 'card-selected': expandedIdx === idx }"
-                  style="position:relative; overflow:hidden">
-                  <!-- 实时通道值背景条 -->
-                  <div v-if="chanLivePct(idx) >= 0" class="chan-live-bg" :style="{ width: chanLivePct(idx) + '%' }" />
+      <v-col cols="12">
+        <!-- 通道卡片列表 -->
+        <template v-if="configStore.config && editChannels.length > 0">
+          <template v-for="{ ch, idx } in visibleChannels" :key="idx">
+                <v-sheet rounded="lg" class="my-2 chan-card" :class="{ 'card-selected': expandedIdx === idx }"
+                  style="position:relative; overflow:visible; background: #1e1e1e;">
                   <!-- 头部行 -->
-                  <div class="chan-header-row pa-3" style="cursor:pointer" @click="toggleExpand(idx)">
-                    <!-- 宽屏布局 -->
-                    <div class="chan-header-wide d-flex align-center flex-wrap">
-                      <span class="text-caption font-weight-bold mr-3" style="min-width:32px">CH{{ idx }}</span>
-                      <v-select v-model="ch.source" :items="sourceOptions" density="compact" hide-details
-                        variant="outlined" style="max-width:140px" class="mr-3"
-                        @update:model-value="(val: string) => onSourceChange(idx, val)" @click.stop />
-                      <template v-if="effectiveSource(ch) !== 'NONE'">
-                        <div class="flex-grow-1 mx-2" @click.stop>
-                          <template v-if="isButtonSource(ch.source)">
-                            <v-range-slider :model-value="[ch.output_min ?? 1000, ch.output_max ?? 2000]"
-                              @update:model-value="onBtnOutputRangeChange(idx, $event)" :min="1000" :max="2000"
-                              :step="1" density="compact" hide-details thumb-label>
-                              <template #prepend>
-                                <v-text-field :model-value="ch.output_min ?? 1000"
-                                  @update:model-value="(v: string) => onBtnOutputRangeChange(idx, [Number(v), ch.output_max ?? 2000])"
-                                  density="compact" style="width:90px" type="number" variant="outlined" hide-details
-                                  single-line />
-                              </template>
-                              <template #append>
-                                <v-text-field :model-value="ch.output_max ?? 2000"
-                                  @update:model-value="(v: string) => onBtnOutputRangeChange(idx, [ch.output_min ?? 1000, Number(v)])"
-                                  density="compact" style="width:90px" type="number" variant="outlined" hide-details
-                                  single-line />
-                              </template>
-                            </v-range-slider>
-                          </template>
-                          <template v-else>
-                            <v-range-slider :model-value="[ch.output_min ?? 1000, ch.output_max ?? 2000]"
-                              @update:model-value="(v: number[]) => { ch.output_min = v[0]!; ch.output_max = v[1]! }"
-                              :min="1000" :max="2000" :step="1" density="compact" hide-details thumb-label>
-                              <template #prepend>
-                                <v-text-field :model-value="ch.output_min ?? 1000"
-                                  @update:model-value="(v: string) => ch.output_min = Number(v)" density="compact"
-                                  style="width:90px" type="number" variant="outlined" hide-details single-line />
-                              </template>
-                              <template #append>
-                                <v-text-field :model-value="ch.output_max ?? 2000"
-                                  @update:model-value="(v: string) => ch.output_max = Number(v)" density="compact"
-                                  style="width:90px" type="number" variant="outlined" hide-details single-line />
-                              </template>
-                            </v-range-slider>
-                          </template>
+                  <div class="chan-header-row" style="cursor:pointer" @click="toggleExpand(idx)">
+                    <!-- 宽屏布局: 左右两栏 (左=通道编号+名称+输入源, 右=输出范围) -->
+                    <div class="chan-header-wide">
+                      <div class="chan-head-left">
+                        <div class="chan-id-row">
+                          <span class="text-caption font-weight-bold chan-id">CH{{ idx }}</span>
                         </div>
-                        <v-btn :icon="expandedIdx === idx ? 'mdi-chevron-up' : 'mdi-chevron-down'" density="compact"
-                          size="x-small" variant="text" @click.stop="toggleExpand(idx)" />
-                      </template>
-                    </div>
-                    <!-- 窄屏布局 -->
-                    <div class="chan-header-narrow d-flex flex-column">
-                      <div class="d-flex justify-space-between align-center">
-                        <span class="text-caption font-weight-bold">CH{{ idx }}</span>
                         <v-select v-model="ch.source" :items="sourceOptions" density="compact" hide-details
-                          variant="outlined" style="max-width:130px"
+                          variant="solo" class="chan-source-select"
                           @update:model-value="(val: string) => onSourceChange(idx, val)" @click.stop />
                       </div>
-                      <template v-if="effectiveSource(ch) !== 'NONE'">
-                        <div class="d-flex ga-2 mt-2 pb-1" @click.stop>
+                      <template v-if="ch.source !== 'NONE'">
+                        <div class="chan-head-right" @click.stop>
                           <template v-if="isButtonSource(ch.source)">
-                            <v-text-field :model-value="ch.output_min ?? 1000"
-                              @update:model-value="(v: string) => onBtnOutputRangeChange(idx, [Number(v), ch.output_max ?? 2000])"
-                              density="compact" type="number" variant="outlined" hide-details single-line label="最小" />
-                            <v-text-field :model-value="ch.output_max ?? 2000"
-                              @update:model-value="(v: string) => onBtnOutputRangeChange(idx, [ch.output_min ?? 1000, Number(v)])"
-                              density="compact" type="number" variant="outlined" hide-details single-line label="最大" />
+                            <div class="range-wrap">
+                              <div class="slider-box" :ref="(el) => setSliderBoxRef(idx, el)">
+                                <!-- 实时通道值背景条: 左端 = 左拨杆中心, 填充到实时值 -->
+                                <div v-for="l in chanLivePxList(idx)" :key="'chan-live'" class="chan-live-bg"
+                                  :style="{ left: l.left + 'px', width: l.width + 'px' }" />
+                                <v-range-slider :model-value="[ch.output_min ?? 1000, ch.output_max ?? 2000]"
+                                  @update:model-value="onBtnOutputRangeChange(idx, $event)" :min="1000" :max="2000"
+                                  :step="1" density="compact" hide-details thumb-label />
+                              </div>
+                              <div class="range-ticks">
+                                <span v-for="t in tickValues" :key="t" class="range-tick"
+                                  :class="{ 'tick-hl': tickHighlight.has(t) }"
+                                  :style="{ left: ((t - 1000) / 10) + '%' }">{{ t }}</span>
+                              </div>
+                            </div>
                           </template>
                           <template v-else>
-                            <v-text-field :model-value="ch.output_min ?? 1000"
-                              @update:model-value="(v: string) => ch.output_min = Number(v)" density="compact"
-                              type="number" variant="outlined" hide-details single-line label="最小" />
-                            <v-text-field :model-value="ch.output_max ?? 2000"
-                              @update:model-value="(v: string) => ch.output_max = Number(v)" density="compact"
-                              type="number" variant="outlined" hide-details single-line label="最大" />
+                            <div class="range-wrap">
+                              <div class="slider-box" :ref="(el) => setSliderBoxRef(idx, el)">
+                                <!-- 实时通道值背景条: 左端 = 左拨杆中心, 填充到实时值 -->
+                                <div v-for="l in chanLivePxList(idx)" :key="'chan-live'" class="chan-live-bg"
+                                  :style="{ left: l.left + 'px', width: l.width + 'px' }" />
+                                <v-range-slider :model-value="[ch.output_min ?? 1000, ch.output_max ?? 2000]"
+                                  @update:model-value="(v: number[]) => { ch.output_min = v[0]!; ch.output_max = v[1]! }"
+                                  :min="1000" :max="2000" :step="1" density="compact" hide-details thumb-label />
+                                <!-- 中心值竖线: 可拖动设置输出中心, 拖动时显示气泡 -->
+                                <div class="center-mark" :style="{ left: centerMarkLeftPx(idx) + 'px' }"
+                                  @pointerdown="startCenterDrag(idx, $event)"
+                                  @pointermove="onCenterDragMove($event)"
+                                  @pointerup="endCenterDrag" @pointercancel="endCenterDrag">
+                                  <SliderLabel v-if="centerDragShow && centerDragIdx === idx"
+                                    :value="ch.output_center ?? 1500" class="center-mark-label" />
+                                </div>
+                              </div>
+                              <div class="range-ticks">
+                                <span v-for="t in tickValues" :key="t" class="range-tick"
+                                  :class="{ 'tick-hl': tickHighlight.has(t), 'tick-overlap': isTickOverlap(idx, t) }"
+                                  :data-t="t"
+                                  :style="{ left: ((t - 1000) / 10) + '%' }">{{ t }}</span>
+                                <!-- 中心值刻度: 始终绘制, 与静态刻度字符重叠时隐藏静态刻度 -->
+                                <span class="range-tick tick-center"
+                                  :style="{ left: ((centerValue(ch) - 1000) / 10) + '%' }">{{ centerValue(ch) }}</span>
+                              </div>
+                            </div>
                           </template>
+                          <v-btn :icon="expandedIdx === idx ? 'mdi-chevron-up' : 'mdi-chevron-down'" density="compact"
+                            size="x-small" variant="text" @click.stop="toggleExpand(idx)" />
                         </div>
                       </template>
                     </div>
+
                   </div>
                   <!-- 展开详情 (动画) -->
                   <v-expand-transition>
                     <div v-if="expandedIdx === idx && (effectiveSource(ch) !== 'NONE' || ch.condition.enabled)">
                       <v-divider />
-                      <div class="pa-3">
-                        <!-- 条件覆盖 (最高优先级, 所有输入源通用) -->
-                        <v-sheet rounded="lg" border class="pa-3 mb-3" :class="{ 'cond-active': ch.condition.enabled }">
-                          <div class="param-group">
-                            <span class="text-caption font-weight-bold"
-                              style="color:rgb(var(--v-theme-warning))">&#9888; 条件覆盖</span>
-                            <v-switch v-model="ch.condition.enabled" color="warning" density="compact" hide-details />
-                          </div>
-                          <v-expand-transition>
-                            <div v-if="ch.condition.enabled">
-                              <v-divider class="my-2" />
-                              <div class="param-group mb-2">
-                                <span class="text-caption font-weight-bold">监视通道</span>
-                                <v-select v-model="ch.condition.source_channel" :items="sourceChannelOptions"
-                                  density="compact" hide-details variant="outlined" style="max-width:120px" />
-                              </div>
-                              <div class="param-group mb-2">
-                                <span class="text-caption font-weight-bold">运算符</span>
-                                <v-select v-model="ch.condition.op" :items="opOptions" density="compact" hide-details
-                                  variant="outlined" style="max-width:100px" />
-                              </div>
-                              <div class="param-group mb-2">
-                                <span class="text-caption font-weight-bold">阈值 (μs)</span>
-                                <span class="param-input-wrap">
-                                  <v-number-input v-model="ch.condition.threshold" :min="1000" :max="2000" :step="1"
-                                    controlVariant="split" density="compact" hide-details :hideInput="false"
-                                    :inset="false" variant="outlined" style="min-width:140px" />
-                                </span>
-                              </div>
-                              <v-divider class="my-2" />
-                              <v-radio-group v-model="ch.condition.switch_source" inline hide-details density="compact"
-                                class="mb-2">
-                                <v-radio :value="false" label="固定输出值" />
-                                <v-radio :value="true" label="切换输入源" />
-                              </v-radio-group>
-                              <template v-if="!ch.condition.switch_source">
-                                <div class="param-group">
-                                  <span class="text-caption font-weight-bold">输出值 (μs)</span>
-                                  <span class="param-input-wrap">
-                                    <v-number-input v-model="ch.condition.value" :min="1000" :max="2000" :step="1"
-                                      controlVariant="split" density="compact" hide-details :hideInput="false"
-                                      :inset="false" variant="outlined" style="min-width:140px" />
-                                  </span>
-                                </div>
-                              </template>
-                              <template v-else>
-                                <div class="param-group">
-                                  <span class="text-caption font-weight-bold">替代输入源</span>
-                                  <v-select v-model="ch.condition.alt_source" :items="sourceOptions" density="compact"
-                                    hide-details variant="outlined" style="max-width:160px" />
-                                </div>
-                              </template>
-                            </div>
-                          </v-expand-transition>
-                        </v-sheet>
-
-                        <!-- 安全锁: 固定 CH4 > 1500μs 控制 -->
-                        <v-sheet rounded="lg" border class="pa-3 mb-3" :class="{ 'cond-active': ch.lock_enabled }">
-                          <div class="param-group">
-                            <span class="text-caption font-weight-bold" style="color:rgb(var(--v-theme-info))">&#128274;
-                              安全锁 (CH4 &gt;
-                              1500μs 时解锁)</span>
-                            <v-switch v-model="ch.lock_enabled" color="info" density="compact" hide-details />
-                          </div>
-                          <v-expand-transition>
-                            <div v-if="ch.lock_enabled">
-                              <v-divider class="my-2" />
-                              <div class="param-group">
-                                <span class="text-caption font-weight-bold">锁定输出值 (μs)</span>
-                                <span class="param-input-wrap">
-                                  <v-number-input v-model="ch.lock_value" :min="1000" :max="2000" :step="1"
-                                    controlVariant="split" density="compact" hide-details :hideInput="false"
-                                    :inset="false" variant="outlined" style="min-width:140px" />
-                                </span>
-                              </div>
-                            </div>
-                          </v-expand-transition>
-                        </v-sheet>
+                      <div class="pa-3 chan-expand-body">
 
                         <!-- 按钮通道: 触发配置 (动态添加, 最多 3 挡位) -->
-                        <v-sheet v-if="isButtonSource(effectiveSource(ch))" rounded="lg" border class="pa-3">
+                        <v-sheet v-if="isButtonSource(ch.source)" rounded="lg" class="pa-3 mb-3">
                           <div class="text-caption text-medium-emphasis mb-2">
                             多挡触发：1 挡时选择触发方式，触发后在输出最小/最大值间切换；2 挡及以上每条指定触发方式与输出值，同一种触发方式绑定多个挡位时循环切换，最多 3 挡。
                           </div>
@@ -275,8 +115,8 @@
                                   <v-icon class="mx-1" size="16">mdi-arrow-right</v-icon>
                                   <v-number-input v-model="entry.value" :reverse="false"
                                     :min="ch.output_min ?? 1000" :max="ch.output_max ?? 2000" :step="1" class="param-val"
-                                    controlVariant="split" density="compact" hide-details :hideInput="false"
-                                    :inset="false" variant="outlined" style="width:180px" />
+                                    controlVariant="stacked" density="compact" hide-details :hideInput="false"
+                                    :inset="false" variant="outlined" style="width:130px" />
                                 </template>
                                 <span v-else class="text-caption text-medium-emphasis ml-2">
                                   触发时在输出最小↔最大间切换
@@ -287,18 +127,18 @@
                             </div>
                           </template>
                           <div v-if="btnEntryCount(ch) < 3" class="mt-2">
-                            <v-btn size="small" variant="tonal" color="primary" prepend-icon="mdi-plus"
+                            <v-btn class="btn-secondary" size="small" rounded="lg" prepend-icon="mdi-plus"
                               @click="addBtnEntry(ch)">添加按钮</v-btn>
                           </div>
                         </v-sheet>
                         <!-- 连续量通道: 死区/反向/输出中心 -->
-                        <v-sheet v-if="isContinuousSource(effectiveSource(ch))" rounded="lg" border class="pa-3">
+                        <v-sheet v-if="isContinuousSource(ch.source)" rounded="lg" class="pa-3 mb-3">
                           <div class="param-group">
                             <span class="text-caption font-weight-bold">死区抖动</span>
                             <span class="param-input-wrap">
-                              <v-number-input v-model="ch.deadzone" :min="0" :max="255" :step="1" controlVariant="split"
+                              <v-number-input v-model="ch.deadzone" :min="0" :max="255" :step="1" controlVariant="stacked"
                                 density="compact" hide-details :hideInput="false" :inset="false" variant="outlined"
-                                style="min-width:140px" />
+                                style="min-width:100px" />
                             </span>
                           </div>
                           <v-divider class="my-2" />
@@ -306,56 +146,41 @@
                             <span class="text-caption font-weight-bold">反向</span>
                             <v-switch v-model="ch.reverse" color="warning" density="compact" hide-details />
                           </div>
-                          <template v-if="isImuSource(effectiveSource(ch))">
+                          <template v-if="isImuSource(ch.source)">
                             <v-divider class="my-2" />
                             <!-- 宽屏: 范围滑块 -->
                             <div class="detail-slider-wide">
-                              <v-range-slider :model-value="[ch.input_min ?? 0, ch.input_max ?? 0]"
-                                @update:model-value="(v: number[]) => { ch.input_min = v[0]!; ch.input_max = v[1]! }"
-                                :min="inputRangeBounds(ch.source).min" :max="inputRangeBounds(ch.source).max" :step="1"
-                                density="compact" hide-details thumb-label>
-                                <template #prepend>
-                                  <span class="text-caption font-weight-bold mr-2" style="min-width:60px">输入范围</span>
-                                  <v-text-field :model-value="ch.input_min ?? 0"
-                                    @update:model-value="(v: string) => ch.input_min = Number(v)" density="compact"
-                                    style="width:90px" type="number" variant="outlined" hide-details single-line />
-                                </template>
-                                <template #append>
-                                  <v-text-field :model-value="ch.input_max ?? 0"
-                                    @update:model-value="(v: string) => ch.input_max = Number(v)" density="compact"
-                                    style="width:90px" type="number" variant="outlined" hide-details single-line />
-                                </template>
-                              </v-range-slider>
-                            </div>
-                            <!-- 窄屏: 数字输入框 -->
-                            <div class="detail-slider-narrow">
-                              <div class="param-group">
-                                <span class="text-caption font-weight-bold">输入范围</span>
-                                <span class="d-flex ga-2">
-                                  <v-text-field :model-value="ch.input_min ?? 0"
-                                    @update:model-value="(v: string) => ch.input_min = Number(v)" density="compact"
-                                    type="number" variant="outlined" hide-details single-line label="最小" />
-                                  <v-text-field :model-value="ch.input_max ?? 0"
-                                    @update:model-value="(v: string) => ch.input_max = Number(v)" density="compact"
-                                    type="number" variant="outlined" hide-details single-line label="最大" />
-                                </span>
+                              <div class="d-flex align-center mb-1">
+                                <span class="text-caption font-weight-bold mr-2" style="min-width:90px">输入角度限制</span>
+                              </div>
+                              <div class="range-wrap">
+                                <v-range-slider :model-value="[ch.input_min ?? 0, ch.input_max ?? 0]"
+                                  @update:model-value="(v: number[]) => { ch.input_min = v[0]!; ch.input_max = v[1]! }"
+                                  :min="inputRangeBounds(ch.source).min" :max="inputRangeBounds(ch.source).max" :step="1"
+                                  density="compact" hide-details thumb-label />
+                                <div class="range-ticks">
+                                  <span v-for="t in inputTicks(inputRangeBounds(ch.source).min, inputRangeBounds(ch.source).max)"
+                                    :key="t" class="range-tick"
+                                    :style="{ left: ((t - inputRangeBounds(ch.source).min) / (inputRangeBounds(ch.source).max - inputRangeBounds(ch.source).min) * 100) + '%' }">{{ t }}</span>
+                                </div>
                               </div>
                             </div>
+
                           </template>
                           <!-- EC11 旋钮步长 -->
-                          <template v-if="isKnobEc11Source(effectiveSource(ch))">
+                          <template v-if="isKnobEc11Source(ch.source)">
                             <v-divider class="my-2" />
                             <div class="param-group">
                               <span class="text-caption font-weight-bold">EC11 步长 (µs/格)</span>
                               <span class="param-input-wrap">
                                 <v-number-input v-model="ch.ec11_step" :min="1" :max="500" :step="1"
-                                  controlVariant="split" density="compact" hide-details :hideInput="false"
-                                  :inset="false" variant="outlined" style="min-width:140px" />
+                                  controlVariant="stacked" density="compact" hide-details :hideInput="false"
+                                  :inset="false" variant="outlined" style="min-width:100px" />
                               </span>
                             </div>
                           </template>
                           <!-- MIX 混合配置 -->
-                          <template v-if="effectiveSource(ch) === 'MIX'">
+                          <template v-if="ch.source === 'MIX'">
                             <v-divider class="my-2" />
                             <div class="param-group">
                               <span class="text-caption font-weight-bold">启用混合</span>
@@ -363,9 +188,9 @@
                             </div>
                             <div v-if="ch.mix_enabled" class="mt-2">
                               <div v-for="(mi, miIdx) in ch.mix_items" :key="miIdx"
-                                class="mix-item-card mb-2 pa-2" style="border:1px solid rgba(var(--v-theme-on-surface),.12); border-radius:8px">
+                                class="mix-item-card mb-2 pa-2" style="border-radius:8px">
                                 <!-- 行1: 输入源 + 权重 -->
-                                <div class="d-flex align-center ga-2 mb-2">
+                                <div class="d-flex align-center ga-2 mb-2 mix-row1">
                                   <v-select v-model="mi.src" :items="mixSourceOptions" density="compact"
                                     hide-details variant="outlined" style="max-width:140px" />
                                   <v-slider v-model="mi.w" :min="-100" :max="100" :step="1"
@@ -380,34 +205,101 @@
                                     hide-details label="反向" />
                                 </div>
                               </div>
-                              <v-btn v-if="(ch.mix_items?.length ?? 0) < 4" size="x-small"
-                                variant="tonal" prepend-icon="mdi-plus" color="primary"
+                              <v-btn v-if="(ch.mix_items?.length ?? 0) < 4" class="btn-secondary" size="x-small"
+                                rounded="lg" prepend-icon="mdi-plus"
                                 @click="ch.mix_items!.push({ src: 'IMU_ROLL', w: 50, reverse: false })">
                                 添加混合项
                               </v-btn>
                             </div>
                           </template>
                           <v-divider class="my-2" />
+                        </v-sheet>
+
+                        <!-- 条件覆盖 (最高优先级, 仅模拟输入: 摇杆 & IMU & 扳机) -->
+                        <v-sheet v-if="isConditionSource(ch.source)" rounded="lg" class="pa-3 mb-3"
+                          :class="{ 'cond-active': ch.condition.enabled }">
                           <div class="param-group">
-                            <span class="text-caption font-weight-bold">输出中心偏移</span>
-                            <span class="param-controls">
-                              <v-number-input v-model="ch.output_center" :min="1000" :max="2000" :step="1"
-                                controlVariant="split" density="compact" hide-details :hideInput="false" :inset="false"
-                                variant="outlined" style="width:200px" />
-                            </span>
+                            <span class="text-caption font-weight-bold"
+                              style="color:rgb(var(--v-theme-warning))">&#9888; 条件覆盖</span>
+                            <v-switch v-model="ch.condition.enabled" color="warning" density="compact" hide-details />
                           </div>
+                          <v-expand-transition>
+                            <div v-if="ch.condition.enabled">
+                              <v-divider class="my-2" />
+                              <div class="cond-row mb-2">
+                                <div class="cond-row-item">
+                                  <span class="text-caption font-weight-bold">监视通道</span>
+                                  <v-select v-model="ch.condition.source_channel" :items="sourceChannelOptions"
+                                    density="compact" hide-details variant="outlined" />
+                                </div>
+                                <div class="cond-action-block">
+                                  <div class="cond-action-half">
+                                    <span class="text-caption font-weight-bold">动作</span>
+                                    <v-select v-model="ch.condition.switch_source" :items="conditionActionOptions"
+                                      density="compact" hide-details variant="outlined" />
+                                  </div>
+                                  <div class="cond-action-half">
+                                    <template v-if="!ch.condition.switch_source">
+                                      <span class="text-caption font-weight-bold">输出值 (μs)</span>
+                                      <v-number-input v-model="ch.condition.value" :min="1000" :max="2000" :step="1"
+                                        controlVariant="stacked" density="compact" hide-details :hideInput="false"
+                                        :inset="false" variant="outlined" />
+                                    </template>
+                                    <template v-else>
+                                      <span class="text-caption font-weight-bold">替代输入源</span>
+                                      <v-select v-model="ch.condition.alt_source" :items="altSourceOptions" density="compact"
+                                        hide-details variant="outlined" />
+                                    </template>
+                                  </div>
+                                </div>
+                              </div>
+                              <div class="cond-range-wrap">
+                                <span class="text-caption font-weight-bold">阈值范围 (μs)</span>
+                                <v-range-slider
+                                  :model-value="[ch.condition.low ?? 1000, ch.condition.high ?? 2000]"
+                                  @update:model-value="(v: number[]) => { ch.condition.low = v[0]!; ch.condition.high = v[1]! }"
+                                  :min="1000" :max="2000" :step="1" density="compact" hide-details thumb-label />
+                                <div class="range-ticks">
+                                  <span v-for="t in tickValues" :key="t" class="range-tick"
+                                    :class="{ 'tick-hl': tickHighlight.has(t) }"
+                                    :style="{ left: ((t - 1000) / 10) + '%' }">{{ t }}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </v-expand-transition>
+                        </v-sheet>
+
+                        <!-- 安全锁: 固定 CH4 > 1500μs 控制 -->
+                        <v-sheet rounded="lg" class="pa-3 mb-3" :class="{ 'cond-active': ch.lock_enabled }">
+                          <div class="param-group">
+                            <span class="text-caption font-weight-bold">&#128274;
+                              安全锁 (CH4 &gt;
+                              1500μs 时解锁)</span>
+                            <v-switch v-model="ch.lock_enabled" color="primary" density="compact" hide-details />
+                          </div>
+                          <v-expand-transition>
+                            <div v-if="ch.lock_enabled">
+                              <v-divider class="my-2" />
+                              <div class="param-group">
+                                <span class="text-caption font-weight-bold">锁定输出值 (μs)</span>
+                                <span class="param-input-wrap">
+                                  <v-number-input v-model="ch.lock_value" :min="1000" :max="2000" :step="1"
+                                    controlVariant="stacked" density="compact" hide-details :hideInput="false"
+                                    :inset="false" variant="outlined" style="min-width:100px" />
+                                </span>
+                              </div>
+                            </div>
+                          </v-expand-transition>
                         </v-sheet>
                       </div>
                     </div>
                   </v-expand-transition>
                 </v-sheet>
               </template>
-            </v-card-text>
-          </template>
-        </v-card>
+        </template>
 
         <!-- 未加载提示 -->
-        <v-card v-if="!configStore.config" rounded="lg" variant="outlined">
+        <v-card v-if="!configStore.config" variant="outlined">
           <v-card-text class="text-center py-8">
             <v-icon class="mb-2" color="grey" size="48">mdi-download</v-icon>
             <div class="text-body-1 text-medium-emphasis">
@@ -417,51 +309,37 @@
         </v-card>
       </v-col>
 
-      <!-- 右侧: 通道监视器 -->
-      <v-col cols="12" lg="4" xl="3">
-        <v-card class="channel-monitor" rounded="lg" variant="outlined">
-          <v-card-item class="pb-1">
-            <template #prepend>
-              <v-icon>mdi-monitor-dashboard</v-icon>
-            </template>
-            <v-card-title class="text-body-1">通道监视器</v-card-title>
-            <template #append>
-              <v-icon :color="chStore.polling ? 'success' : 'grey'" size="10">
-                mdi-circle
-              </v-icon>
-              <v-btn
-                :color="chStore.polling ? 'error' : 'success'"
-                :prepend-icon="chStore.polling ? 'mdi-stop' : 'mdi-play'"
-                size="small" variant="tonal" @click="togglePoll"
-              >
-                {{ chStore.polling ? '停止传输' : '开始传输' }}
-              </v-btn>
-            </template>
-          </v-card-item>
-
-          <v-card-text class="py-0">
-            <div class="chan-row" v-for="ch in chStore.activeChannels.filter(c => c.used)" :key="ch.index">
-              <span class="chan-idx text-caption font-weight-bold mr-1">
-                CH{{ ch.index }}
-              </span>
-              <span class="chan-src text-caption mr-2" :class="{ 'text-grey': !ch.used }">
-                {{ sourceLabel(ch.source) }}
-              </span>
-              <v-progress-linear :model-value="chanProgress(ch.valueUs)" :color="ch.used ? 'primary' : 'grey-lighten1'"
-                height="6" rounded class="flex-grow-1 mx-2" />
-              <span class="chan-val text-caption" :class="{ 'text-grey': !ch.used }">
-                {{ ch.valueUs }} μs
-              </span>
-            </div>
-          </v-card-text>
-        </v-card>
-      </v-col>
     </v-row>
+
+    <!-- 全宽悬浮底栏: 模型切换 + 加载/保存 -->
+    <div v-if="serial.connected" class="model-bottom-bar">
+      <template v-if="(configStore.modelCount ?? 0) > 1">
+        <v-icon color="primary">mdi-controller-classic</v-icon>
+        <span class="text-subtitle-2 font-weight-medium ml-1 mr-2">模型</span>
+        <v-select v-model="selectedSlot" class="model-select" :items="modelOptions" item-title="title"
+          item-value="value" density="compact" variant="outlined" hide-details
+          @update:model-value="onSlotSelect" />
+      </template>
+      <v-spacer />
+      <v-btn v-if="configStore.config" class="btn-secondary" prepend-icon="mdi-check-circle" size="small"
+        rounded="lg" :disabled="selectedSlot === configStore.config.active_model" @click="activateModel">
+        <span class="btn-text">设为默认</span>
+      </v-btn>
+      <v-btn class="btn-secondary" prepend-icon="mdi-download" size="small" rounded="lg"
+        :loading="configStore.loading" @click="loadFromDevice">
+        <span class="btn-text">从设备加载</span>
+      </v-btn>
+      <v-btn v-if="configStore.config" class="btn-primary" prepend-icon="mdi-content-save" size="small"
+        rounded="lg" :loading="savingModel" @click="saveModel">
+        <span class="btn-text">保存到设备</span>
+      </v-btn>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import SliderLabel from '@/components/SliderLabel.vue'
 import { useSerialStore } from '@/stores/serial'
 import { useConfigStore, type ModelChannel } from '@/stores/config'
 import { useChannelStore } from '@/stores/channels'
@@ -478,6 +356,18 @@ const editChannels = reactive<ModelChannel[]>([])
 
 // 当前展开的通道行 (null = 无展开)
 const expandedIdx = ref<number | null>(null)
+
+// 通道列表: 保留原始索引, 展开/实时值/源切换等逻辑不受影响
+const visibleChannels = computed<{ ch: ModelChannel; idx: number }[]>(() =>
+  editChannels.map((ch, idx) => ({ ch, idx })),
+)
+// 模型下拉选项 (选项式切换)
+const modelOptions = computed(() =>
+  (configStore.config?.models ?? []).map((m, i) => ({
+    title: `Model ${i + 1}${m?.name ? ` · ${m.name}` : ''}`,
+    value: i,
+  })),
+)
 const snackbarMsg = ref('')
 const snackbarVisible = ref(false)
 const savingModel = ref(false)
@@ -512,10 +402,6 @@ const TRIGGER_LABELS: Record<string, string> = {
   RELEASE: '释放',
 }
 
-function sourceLabel(id: string): string {
-  return SOURCE_LABELS[id] ?? id
-}
-
 // 按钮类输入源
 const BUTTON_SOURCES = new Set(['BUTTON_LOCK', 'BUTTON_MH', 'BUTTON_EC11_BTN', 'BUTTON_SHOT'])
 // 连续量输入源
@@ -534,6 +420,13 @@ function isImuSource(s: string): boolean { return IMU_SOURCES.has(s) }
 // EC11 旋钮输入源 (仅能绑定一个通道)
 const KNOB_EC11_SOURCES = new Set(['KNOB_EC11'])
 function isKnobEc11Source(s: string): boolean { return KNOB_EC11_SOURCES.has(s) }
+
+// 支持条件覆盖的输入源: 模拟输入(摇杆 & IMU & 扳机)
+const CONDITION_SOURCES = new Set([
+  'ANALOG_TRIGGER', 'ANALOG_JOYSTICK_X', 'ANALOG_JOYSTICK_Y',
+  'IMU_ROLL', 'IMU_PITCH',
+])
+function isConditionSource(s: string): boolean { return CONDITION_SOURCES.has(s) }
 
 /** 计算通道的有效输入源 (考虑条件覆盖切换) */
 function effectiveSource(ch: ModelChannel): string {
@@ -615,6 +508,25 @@ function inputRangeBounds(source: string): { min: number; max: number } {
   return { min: -5000, max: 5000 }
 }
 
+// 输出范围刻度: 1000~2000 静态刻度 (8 等分)
+// 刻度值: 主要值 1000/1500/2000 附近加密 (±100), 中段稀疏
+const tickValues = [1000, 1250, 1500, 1750, 2000]
+
+// 中心值钳制到刻度范围 (1000~2000)
+function centerValue(ch: ModelChannel): number {
+  return Math.min(Math.max(ch.output_center ?? 1500, 1000), 2000)
+}
+
+// 高亮刻度值 (主要值)
+const tickHighlight = new Set([1000, 2000])
+
+/** 输入范围刻度: 动态 min/max 8 等分 */
+function inputTicks(min: number, max: number): number[] {
+  const arr: number[] = []
+  for (let i = 0; i <= 8; i++) arr.push(Math.round(min + ((max - min) * i) / 8))
+  return arr
+}
+
 // MIX 可选的连续量输入源 (排除按钮、EC11 旋钮、MIX 自身)
 const mixSourceOptions = computed(() =>
   configStore.deviceInfo?.input_sources
@@ -631,16 +543,25 @@ const sourceOptions = computed(() =>
   })) ?? [],
 )
 
+// 条件覆盖: 替代输入源选项 (仅模拟类: 摇杆 & 扳机 & IMU & EC11 旋钮)
+const ALT_SOURCE_ALLOWED = new Set([
+  'ANALOG_TRIGGER', 'ANALOG_JOYSTICK_X', 'ANALOG_JOYSTICK_Y',
+  'IMU_ROLL', 'IMU_PITCH', 'KNOB_EC11',
+])
+const altSourceOptions = computed(() =>
+  sourceOptions.value.filter(o => ALT_SOURCE_ALLOWED.has(o.value)),
+)
+
 // 条件: 监视通道下拉 (CH0~CH15)
 const sourceChannelOptions = computed(() =>
   Array.from({ length: 16 }, (_, i) => ({ title: `CH${i}`, value: i })),
 )
 
-// 条件: 比较运算符下拉
-const OP_LABELS: Record<number, string> = { 0: '>', 1: '<', 2: '>=', 3: '<=', 4: '==', 5: '!=' }
-const opOptions = computed(() =>
-  Object.entries(OP_LABELS).map(([v, t]) => ({ title: t, value: Number(v) })),
-)
+// 条件: 动作下拉（固定输出值 / 切换输入源）
+const conditionActionOptions = [
+  { title: '固定输出值', value: false },
+  { title: '切换输入源', value: true },
+]
 
 // 按钮触发方式下拉选项 (从固件 button_triggers 动态获取，回退到硬编码)
 // SHOT 按钮单击用于系统级 IMU 归零，不可选
@@ -664,21 +585,128 @@ function triggerOptionsNoNone(source?: string) {
   return triggerOptions(source).filter(o => o.value !== 'NONE')
 }
 
-// μs → 0-100 进度 (居中映射)
-function chanProgress(us: number): number {
-  return ((us - 1000) / 10)  // 1000→0%, 1500→50%, 2000→100%
-}
-
-/** 查找通道 idx 的实时输出百分比, -1 表示无数据 */
-function chanLivePct(idx: number): number {
+/** 通道实时值在输出范围滑块上的定位: 起点对齐 output_min, 填充到实时值位置 */
+function chanLive(idx: number): { startPct: number; fillPct: number } | null {
   const ch = chStore.activeChannels.find(c => c.index === idx)
-  if (!ch || !ch.used) return -1
-  return Math.max(0, Math.min(100, chanProgress(ch.valueUs)))
+  if (!ch || !ch.used) return null
+  const cfg = editChannels[idx]
+  const lo = cfg?.output_min ?? 1000
+  const hi = cfg?.output_max ?? 2000
+  const us = ch.valueUs
+  // output_min / output_max / 实时值在 1000~2000 全局刻度上的百分比位置
+  const startPct = (lo - 1000) / 10
+  const endPct = (hi - 1000) / 10
+  const curPct = (us - 1000) / 10
+  // 实时值填充到 output_min~output_max 区间内, 超出则钳制到区间边界
+  const clamped = Math.max(startPct, Math.min(endPct, curPct))
+  return {
+    startPct,
+    fillPct: Math.max(0, clamped - startPct),
+  }
 }
 
-// 轮询控制
-function togglePoll(): void {
-  chStore.polling ? chStore.stopPolling() : chStore.startPolling()
+/** 通道实时值背景条: 左端 = 左拨杆中心, 右端对齐滑块轨道右端 */
+function chanLivePx(idx: number): { left: number; width: number } | null {
+  const live = chanLive(idx)
+  if (!live) return null
+  void resizeTick.value // 窗口尺寸变化时强制重算
+  const box = sliderBoxRefs.get(idx)
+  if (!box) return null
+  const boxRect = box.getBoundingClientRect()
+  const thumbs = box.querySelectorAll<HTMLElement>('.v-slider-thumb')
+  if (thumbs.length < 2) return null
+  const track = box.querySelector<HTMLElement>('.v-slider-track')
+  if (!track) return null
+  const r0 = thumbs[0]!.getBoundingClientRect()
+  const trackRight = track.getBoundingClientRect().right
+  const c0 = r0.left + r0.width / 2 // 左拨杆中心 = output_min 位置
+  return {
+    left: c0 - boxRect.left,
+    width: Math.max(0, (trackRight - c0) * (live.fillPct / 100)),
+  }
+}
+
+// 返回数组供 v-for 使用: 测量失败时返回空数组 → 不渲染
+function chanLivePxList(idx: number): { left: number; width: number }[] {
+  const px = chanLivePx(idx)
+  return px ? [px] : []
+}
+
+// 滑块容器引用 + 窗口尺寸变化 → 用于测量通道条
+const resizeTick = ref(0)
+const sliderBoxRefs = new Map<number, HTMLElement>()
+function setSliderBoxRef(idx: number, el: unknown): void {
+  if (el) sliderBoxRefs.set(idx, el as HTMLElement)
+  else sliderBoxRefs.delete(idx)
+}
+function onWindowResize(): void {
+  resizeTick.value++
+  nextTick(measureTickOverlap)
+}
+
+// 动态刻度与静态刻度字符重叠检测: 实测矩形相交, 重叠时隐藏静态刻度
+const overlapTick = ref(0)
+const tickOverlapCache = new Map<number, Set<number>>()
+function isTickOverlap(idx: number, t: number): boolean {
+  void overlapTick.value
+  return tickOverlapCache.get(idx)?.has(t) ?? false
+}
+function measureTickOverlap(): void {
+  const next = new Map<number, Set<number>>()
+  sliderBoxRefs.forEach((box, idx) => {
+    const ticksEl = box.parentElement?.querySelector<HTMLElement>('.range-ticks')
+    const dyn = ticksEl?.querySelector<HTMLElement>('.range-tick.tick-center')
+    if (!ticksEl || !dyn) return
+    const dr = dyn.getBoundingClientRect()
+    if (!dr.width) return // 尚未渲染完成
+    const set = new Set<number>()
+    ticksEl.querySelectorAll<HTMLElement>('.range-tick[data-t]').forEach((el) => {
+      const r = el.getBoundingClientRect()
+      if (dr.left < r.right && dr.right > r.left) set.add(Number(el.dataset.t))
+    })
+    next.set(idx, set)
+  })
+  tickOverlapCache.clear()
+  next.forEach((v, k) => tickOverlapCache.set(k, v))
+  overlapTick.value++
+}
+
+// 中心值竖线: 位置换算与拖拽手势
+function centerMarkLeftPx(idx: number): number {
+  void resizeTick.value
+  const box = sliderBoxRefs.get(idx)
+  const track = box?.querySelector<HTMLElement>('.v-slider-track')
+  const ch = editChannels[idx]
+  if (!box || !track || !ch) return 0
+  const boxRect = box.getBoundingClientRect()
+  const r = track.getBoundingClientRect()
+  const v = Math.min(Math.max(ch.output_center ?? 1500, 1000), 2000)
+  return r.left - boxRect.left + ((v - 1000) / 1000) * r.width
+}
+function centerValueFromClientX(idx: number, clientX: number): number {
+  const track = sliderBoxRefs.get(idx)?.querySelector<HTMLElement>('.v-slider-track')
+  if (!track) return 1500
+  const r = track.getBoundingClientRect()
+  const v = Math.round(1000 + ((clientX - r.left) / r.width) * 1000)
+  return Math.min(Math.max(v, 1000), 2000)
+}
+const centerDragShow = ref(false)
+let centerDragIdx: number | null = null
+function startCenterDrag(idx: number, e: PointerEvent): void {
+  centerDragIdx = idx
+  centerDragShow.value = true
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  const ch = editChannels[idx]
+  if (ch) ch.output_center = centerValueFromClientX(idx, e.clientX)
+}
+function onCenterDragMove(e: PointerEvent): void {
+  if (centerDragIdx == null) return
+  const ch = editChannels[centerDragIdx]
+  if (ch) ch.output_center = centerValueFromClientX(centerDragIdx, e.clientX)
+}
+function endCenterDrag(): void {
+  centerDragIdx = null
+  centerDragShow.value = false
 }
 
 // 防止同步时触发自动写入的标志
@@ -712,13 +740,13 @@ function syncEditFromStore(): void {
         condition: hasFlat ? {
           enabled: !!flat.cond_enabled,
           source_channel: flat.cond_src ?? 0,
-          op: flat.cond_op ?? 0,
-          threshold: rawToUs(flat.cond_thr ?? 991),
+          low: rawToUs(flat.cond_low ?? 1000),
+          high: rawToUs(flat.cond_high ?? 2000),
           switch_source: !!flat.cond_switch,
           value: rawToUs(flat.cond_val ?? 991),
           alt_source: flat.cond_alt ?? 'NONE',
         } : {
-          enabled: false, source_channel: 0, op: 0, threshold: 1500,
+          enabled: false, source_channel: 0, low: 1000, high: 2000,
           switch_source: false, value: 1500, alt_source: 'NONE',
         },
         lock_enabled: !!flat.lock_enabled,
@@ -771,7 +799,8 @@ async function saveCurrentModel(): Promise<boolean> {
     // 嵌套 condition 也要转 raw (encodeChannelTlv 直接用嵌套对象编码 0x0e)
     const condRaw = {
       ...condition,
-      threshold: usToRaw(condition.threshold),
+      low: usToRaw(condition.low),
+      high: usToRaw(condition.high),
       value: usToRaw(condition.value),
     }
     return {
@@ -785,8 +814,8 @@ async function saveCurrentModel(): Promise<boolean> {
       toggle: { trigger: toggle.trigger, value: usToRaw(toggle.value) },
       cond_enabled: condition.enabled,
       cond_src: condition.source_channel,
-      cond_op: condition.op,
-      cond_thr: condRaw.threshold,
+      cond_low: condRaw.low,
+      cond_high: condRaw.high,
       cond_switch: condition.switch_source,
       cond_val: condRaw.value,
       cond_alt: condition.alt_source,
@@ -868,9 +897,13 @@ async function enterPage(): Promise<void> {
 
 // 进入页面自动轮询 + 自动加载配置，离开页面停止
 onMounted(() => {
+  window.addEventListener('resize', onWindowResize)
   if (serial.connected && !chStore.polling) chStore.startPolling()
   if (CHANNEL_LINK_ONLY) return  // 调试: 仅保留通道监视, 暂停自动加载
   enterPage()
+  // 初次渲染完成后测量刻度重叠 (字体就绪后再测一次)
+  nextTick(measureTickOverlap)
+  document.fonts?.ready.then(() => measureTickOverlap())
 })
 
 // 页面打开后再连接设备时，自动加载配置
@@ -892,51 +925,65 @@ watch(editChannels, () => {
   }, 300)
 }, { deep: true })
 
+// 输出中心变化 → 重测刻度重叠
+watch(() => editChannels.map((c) => c.output_center).join(','), () => {
+  nextTick(measureTickOverlap)
+})
+
 onUnmounted(() => {
+  window.removeEventListener('resize', onWindowResize)
   chStore.stopPolling()
 })
 </script>
 
 <style scoped>
-.channel-monitor {
-  position: sticky;
-  top: 8px;
-  max-height: calc(100vh - 80px);
-  overflow-y: auto;
-}
-
-.chan-row {
-  display: flex;
-  align-items: center;
-  padding: 2px 0;
-  min-height: 28px;
-}
-
-.chan-idx {
-  width: 32px;
-  flex-shrink: 0;
-}
-
-.chan-src {
-  width: 68px;
-  flex-shrink: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.chan-val {
-  width: 40px;
-  flex-shrink: 0;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-
 .param-group {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+/* 条件覆盖: 监视通道/动作 横排 */
+.cond-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.cond-row-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 条件覆盖: 动作块 = 动作 + 输出值/输入源 左右结构, 占 2/3 */
+.cond-action-block {
+  display: flex;
+  gap: 8px;
+  flex: 2;
+  min-width: 0;
+}
+
+.cond-action-half {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.cond-row-item .v-select,
+.cond-row-item .v-number-input,
+.cond-action-half .v-select,
+.cond-action-half .v-number-input {
+  width: 100%;
+}
+
+/* 条件覆盖: 阈值范围滑块行 */
+.cond-range-wrap {
+  margin-top: 8px;
 }
 
 .param-controls {
@@ -973,16 +1020,62 @@ onUnmounted(() => {
   display: block;
 }
 
-.detail-slider-narrow {
-  display: none !important;
-}
-
 .chan-header-wide {
   display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
-.chan-header-narrow {
-  display: none !important;
+/* 左栏: 通道编号 + 名称 + 输入源 */
+.chan-head-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+  width: 170px;
+  background: #262626;
+  padding: 8px;
+  border-radius: 8px;
+  align-self: stretch;
+}
+
+.chan-id-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.chan-id {
+  min-width: 32px;
+  text-align: center;
+}
+
+/* 右栏: 输出范围滑块 + 展开按钮 */
+.chan-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+/* 窄卡片: 左右布局退回单行换行 (基于卡片实际宽度) */
+@container (max-width: 900px) {
+  .chan-header-wide {
+    flex-wrap: wrap;
+  }
+
+  .chan-head-left {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+  }
+
+  .chan-head-right {
+    width: 100%;
+  }
 }
 
 @media (max-width: 450px) {
@@ -995,34 +1088,67 @@ onUnmounted(() => {
   }
 }
 
-@media (max-width: 1024px) {
-  .chan-header-wide {
-    display: none !important;
+/* ── 移动端优化 ── */
+@media (max-width: 600px) {
+  /* ① 工具栏只留图标, 防挤压溢出 */
+  .btn-text {
+    display: none;
   }
 
-  .chan-header-narrow {
-    display: flex !important;
+  /* ② 参数行窄屏换行, 避免控件溢出卡片 */
+  .param-group {
+    flex-wrap: wrap;
+    row-gap: 8px;
   }
 
-  .detail-slider-wide {
-    display: none !important;
+  /* ②-1 条件覆盖横排: 窄屏每行最多两个, 极端宽度自动堆叠 */
+  .cond-row {
+    flex-wrap: wrap;
   }
 
-  .detail-slider-narrow {
-    display: block !important;
+  .cond-row-item {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 120px;
+  }
+
+  /* 窄屏动作块换到下一行整行显示, 内部左右半区仍各半 */
+  .cond-action-block {
+    flex: 1 1 100%;
+  }
+
+  /* ③ MIX 行1: 滑块独占一行, 保证可拖动 */
+  .mix-row1 {
+    flex-wrap: wrap;
+  }
+
+  .mix-row1 .v-slider {
+    flex-basis: 100%;
+    order: 3;
+  }
+
+  /* ⑤ 触控目标增大至 44px, 减少误触 */
+  .param-controls .v-btn,
+  .chan-header-row .v-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* ⑥ 底部安全区留白 (iOS 刘海屏) */
+  :deep(.v-main) {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }
 
 .chan-live-bg {
   position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  background: rgba(var(--v-theme-primary), 0.3);
-  transition: none;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 24px;
+  border-radius: 12px;
+  background: rgba(var(--v-theme-primary), 0.15);
+  transition: left 0.15s ease, width 0.15s ease;
   pointer-events: none;
   z-index: 0;
-  border-radius: inherit;
 }
 
 /* 移除 v-progress-linear 内置过渡, 消除前端渲染滞后 */
@@ -1036,17 +1162,282 @@ onUnmounted(() => {
   z-index: 1;
 }
 
+/* 通道卡片作为容器查询基准, 宽/窄屏按实际卡片宽度切换 */
 .chan-card {
+  container-type: inline-size;
   transition: border-color 0.3s, background-color 0.3s;
 }
 
+/* 展开内容区: 比卡片底色 #1e1e1e 略深 */
+.chan-expand-body {
+  background: #1a1a1a;
+  border-radius: 0 0 8px 8px;
+}
+
 .card-selected {
-  background-color: rgba(var(--v-theme-primary), 0.06) !important;
   border-color: rgb(var(--v-theme-primary)) !important;
 }
 
 .cond-active {
-  background-color: rgba(var(--v-theme-warning), 0.05) !important;
   border-color: rgb(var(--v-theme-warning)) !important;
+}
+
+/* ── Betaflight 风格 ── */
+
+/* ② 页面标题左侧橙色高亮 */
+.page-title {
+  border-left: 4px solid rgb(var(--v-theme-primary));
+  padding-left: 12px;
+}
+
+/* ⑤ 范围滑块扁平化 + 主色填充 (Betaflight 双滑块风格) */
+.range-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.slider-box {
+  position: relative;
+}
+
+:deep(.v-slider-track__background) {
+  background: #3a3a3a !important;
+  opacity: 1 !important;
+}
+
+:deep(.v-slider-track__fill) {
+  background: rgb(var(--v-theme-primary)) !important;
+}
+
+:deep(.v-slider-thumb__surface) {
+  width: 24px;
+  height: 24px;
+  background: rgb(var(--v-theme-primary)) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+:deep(.v-slider-thumb__surface::after) {
+  content: none;
+}
+
+/* 中心值竖线: 独立可拖动元素, 不遮挡范围滑块 */
+.center-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 16px;
+  margin-left: -8px;
+  cursor: ew-resize;
+  z-index: 2;
+}
+.center-mark::before {
+  content: '';
+  position: absolute;
+  left: 6.5px;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+}
+/* 中心值气泡: 复用 SliderLabel 组件 (与拨杆气泡结构/样式一致) */
+.center-mark-label {
+  z-index: 3;
+}
+
+/* 滑块气泡: 主色背景 + 深色文字, 提升可见度 */
+:deep(.v-slider-thumb__label) {
+  background: rgb(var(--v-theme-primary)) !important;
+  color: #1a1a1a !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+}
+
+:deep(.v-slider-thumb__label::before) {
+  color: rgb(var(--v-theme-primary)) !important;
+}
+
+/* 强化滑块点击涟漪波纹动画 (主色) */
+:deep(.v-slider-thumb__ripple) {
+  color: rgb(var(--v-theme-primary)) !important;
+  opacity: 0.35 !important;
+}
+
+/* switch 配色 */
+/* 开启 (on): 滑槽主色 + 拨杆白色 */
+:deep(.v-switch .v-selection-control--dirty .v-switch__track) {
+  background: rgb(var(--v-theme-primary)) !important;
+  opacity: 1 !important;
+}
+
+/* 未开启 (off): 滑槽 #404040 + 拨杆 #FFFFFF */
+:deep(.v-switch .v-switch__track) {
+  background: #404040 !important;
+  opacity: 1 !important;
+}
+
+:deep(.v-switch .v-switch__thumb) {
+  background: #ffffff !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* 开启时拨杆与滑槽同色 (主色) */
+:deep(.v-switch .v-selection-control--dirty .v-switch__thumb) {
+  background: rgb(var(--v-theme-primary)) !important;
+}
+
+/* 禁用态: 拨杆 #727272 + 滑槽 #262626 */
+:deep(.v-switch .v-selection-control--disabled .v-switch__track) {
+  background: #262626 !important;
+  opacity: 1 !important;
+}
+
+:deep(.v-switch .v-selection-control--disabled .v-switch__thumb) {
+  background: #727272 !important;
+}
+
+/* 强化 switch 点击涟漪波纹动画 (主色) */
+:deep(.v-switch .v-selection-control__ripple) {
+  color: rgb(var(--v-theme-primary)) !important;
+  opacity: 0.35 !important;
+}
+
+/* 静态刻度: 按数值百分比定位 + 竖线标记 */
+.range-ticks {
+  position: relative;
+  height: 16px;
+  margin-top: 2px;
+  /* 与 .v-slider 默认 margin-inline: 8px 对齐, 使刻度区间与轨道区间一致 */
+  margin-left: 8px;
+  margin-right: 8px;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.range-tick {
+  position: absolute;
+  top: 8px;
+  transform: translateX(-50%);
+  user-select: none;
+  white-space: nowrap;
+  transition: opacity 0.25s ease-in-out, visibility 0.25s ease-in-out;
+}
+
+/* 竖线标记 */
+.range-tick::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -8px;
+  width: 1px;
+  height: 7px;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateX(-50%);
+}
+
+/* 高亮刻度 (1000/1500/2000) */
+.range-tick.tick-hl {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.range-tick.tick-hl::before {
+  background: #ffffff;
+  height: 9px;
+}
+
+/* 中心值刻度: 主题色高亮 */
+.range-tick.tick-center {
+  color: rgb(var(--v-theme-primary)) !important;
+}
+.range-tick.tick-center::before {
+  background: rgb(var(--v-theme-primary)) !important;
+  height: 9px;
+}
+
+/* 与动态刻度字符重叠时隐藏静态刻度 (visibility 保留占位, 避免测量抖动) */
+.range-tick.tick-overlap {
+  visibility: hidden;
+  opacity: 0;
+}
+
+/* ── 悬浮底栏 (模型切换 + 加载/保存) ── */
+
+/* 页面底部留白, 防止内容被悬浮底栏遮挡 */
+.config-page {
+  padding-bottom: 96px;
+}
+
+.model-bottom-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgb(var(--v-theme-surface));
+  border-top: 1px solid rgba(var(--v-theme-primary), 0.25);
+  box-shadow: 0 -2px 16px rgba(0, 0, 0, 0.35);
+  z-index: 100;
+}
+
+.model-select {
+  max-width: 320px;
+  min-width: 0;
+  flex: 1;
+}
+
+.model-head {
+  min-height: 56px;
+}
+
+/* ── 统一按钮风格 ── */
+
+/* 扁平化设计: 禁用按钮阴影 */
+:deep(.v-btn) {
+  box-shadow: none !important;
+}
+
+/* 主要按钮: 实色填充 (激活/开始) */
+.btn-primary {
+  background-color: rgb(var(--v-theme-primary)) !important;
+  color: #1a1a1a !important;
+}
+
+/* 次要按钮: 深色底 + 白字 (保存/添加) */
+.btn-secondary {
+  background-color: rgb(var(--v-theme-surface-variant)) !important;
+  color: #fff !important;
+}
+
+/* 强调次要按钮: 深色底 + 橙色文字 (从设备加载) */
+.btn-accent {
+  background-color: rgb(var(--v-theme-surface-variant)) !important;
+  color: rgb(var(--v-theme-primary)) !important;
+}
+
+/* 危险按钮: 红色实色 (停止传输) */
+.btn-danger {
+  background-color: rgb(var(--v-theme-error)) !important;
+  color: #fff !important;
+}
+
+/* 禁用按钮: 深色底 + 浅灰文字 (覆盖 Vuetify 默认 disabled 半透明) */
+:deep(.v-btn--disabled),
+:deep(.v-btn--disabled .v-btn__overlay) {
+  opacity: 1 !important;
+}
+:deep(.v-btn.btn-primary:disabled),
+:deep(.v-btn.btn-secondary:disabled),
+:deep(.v-btn.btn-accent:disabled),
+:deep(.v-btn.btn-danger:disabled) {
+  background-color: rgb(var(--v-theme-surface-variant)) !important;
+  color: rgba(255, 255, 255, 0.35) !important;
 }
 </style>

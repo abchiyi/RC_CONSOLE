@@ -23,8 +23,8 @@ export interface DeviceInfo {
 export interface ChannelCondition {
   enabled: boolean
   source_channel: number        // 监视的源通道 (0-15)
-  op: number                    // 0:>, 1:<, 2:>=, 3:<=, 4:==, 5:!=
-  threshold: number             // CRSF raw 阈值
+  low: number                   // 范围下限 (μs)
+  high: number                  // 范围上限 (μs)
   switch_source: boolean        // false=固定值, true=切换输入源
   value: number                 // CRSF raw, switch_source=false 时生效
   alt_source: string            // InputSource 字符串, switch_source=true 时生效

@@ -1,77 +1,62 @@
 <template>
-  <div>
-    <v-toolbar color="transparent" density="compact">
-      <v-toolbar-title class="text-h6">
-        <v-icon class="mr-2">mdi-upload-network</v-icon>
-        升级
-      </v-toolbar-title>
-    </v-toolbar>
+  <v-dialog
+    :model-value="modelValue"
+    max-width="640"
+    persistent
+    @update:model-value="onUpdateModelValue"
+  >
+    <v-card>
+      <v-card-title class="d-flex align-center text-body-1">
+        <v-icon class="mr-2" color="primary">mdi-upload-network</v-icon>
+        固件升级
+        <v-spacer />
+        <v-chip v-if="firmwareBusy" color="warning" size="x-small" variant="tonal">升级中</v-chip>
+        <v-chip v-else-if="firmwareStatus" color="success" size="x-small" variant="tonal">完成</v-chip>
+        <v-chip v-else color="grey" size="x-small" variant="tonal">串口 OTA</v-chip>
+      </v-card-title>
 
-    <section class="pa-4 upgrade-wrap">
-      <div class="upgrade-section">
-      <div class="d-flex align-center justify-space-between flex-wrap ga-2 mb-4">
-        <div class="d-flex align-center ga-2">
-          <v-icon color="primary">mdi-file-upload-outline</v-icon>
-          <span class="text-body-1 font-weight-medium">固件控制台上传</span>
-        </div>
-        <div class="d-flex align-center ga-2">
-          <v-chip v-if="firmwareBusy" color="warning" size="x-small" variant="tonal">升级中</v-chip>
-          <v-chip v-else-if="firmwareStatus" color="success" size="x-small" variant="tonal">完成</v-chip>
-          <v-chip v-else color="grey" size="x-small" variant="tonal">串口 OTA</v-chip>
-        </div>
-      </div>
+      <v-card-text>
+        <v-alert v-if="!serial.connected && !firmwareBusy" color="info" variant="tonal" density="compact" class="mb-3">
+          请先连接设备，再上传固件镜像。
+        </v-alert>
 
-      <v-alert v-if="!serial.connected && !firmwareBusy" color="info" variant="tonal" density="compact" class="mb-3">
-        请先连接设备，再上传固件镜像。
-      </v-alert>
-
-      <v-file-input
-        class="file-input-block"
-        :model-value="firmwareFile"
-        accept=".bin,application/octet-stream"
-        clearable
-        density="compact"
-        variant="outlined"
-        hide-details="auto"
-        label="选择固件文件"
-        prepend-icon="mdi-file"
-        show-size
-        :disabled="firmwareBusy || !serial.connected"
-        @update:model-value="onFirmwareFileChange"
-      />
-
-      <div v-if="firmwareBusy" class="mt-4">
-        <div class="d-flex align-center justify-space-between mb-1">
-          <span class="text-caption text-medium-emphasis">上传进度</span>
-          <span class="text-caption font-weight-medium">{{ firmwareProgress }}%</span>
-        </div>
-        <v-progress-linear
-          :model-value="firmwareProgress"
-          color="primary"
-          height="10"
-          rounded
+        <v-file-input
+          :model-value="firmwareFile"
+          accept=".bin,application/octet-stream"
+          clearable
+          density="compact"
+          variant="outlined"
+          hide-details="auto"
+          label="选择固件文件"
+          prepend-icon="mdi-file"
+          show-size
+          :disabled="firmwareBusy || !serial.connected"
+          @update:model-value="onFirmwareFileChange"
         />
-      </div>
 
-      <v-alert v-if="firmwareError" color="error" variant="tonal" density="compact" class="mt-3">
-        {{ firmwareError }}
-      </v-alert>
-      <v-alert v-else-if="firmwareStatus" color="success" variant="tonal" density="compact" class="mt-3">
-        {{ firmwareStatus }}
-      </v-alert>
+        <div v-if="firmwareBusy" class="mt-4">
+          <div class="d-flex align-center justify-space-between mb-1">
+            <span class="text-caption text-medium-emphasis">上传进度</span>
+            <span class="text-caption font-weight-medium">{{ firmwareProgress }}%</span>
+          </div>
+          <v-progress-linear
+            :model-value="firmwareProgress"
+            color="primary"
+            height="10"
+            rounded
+          />
+        </div>
 
-      <div class="d-flex align-center justify-center ga-2 mt-4">
-        <v-btn
-          color="warning"
-          size="small"
-          variant="tonal"
-          prepend-icon="mdi-upload"
-          :disabled="!canFlashFirmware"
-          :loading="firmwareBusy"
-          @click="startFirmwareUpdate"
-        >
-          上传并刷写
-        </v-btn>
+        <v-alert v-if="firmwareError" color="error" variant="tonal" density="compact" class="mt-3">
+          {{ firmwareError }}
+        </v-alert>
+        <v-alert v-else-if="firmwareStatus" color="success" variant="tonal" density="compact" class="mt-3">
+          {{ firmwareStatus }}
+        </v-alert>
+      </v-card-text>
+
+      <v-card-actions>
+        <v-spacer />
         <v-btn
           size="small"
           variant="text"
@@ -81,16 +66,29 @@
         >
           清空
         </v-btn>
-      </div>
-      </div>
-    </section>
-  </div>
+        <v-btn variant="text" :disabled="firmwareBusy" @click="close">关闭</v-btn>
+        <v-btn
+          color="warning"
+          variant="tonal"
+          prepend-icon="mdi-upload"
+          :disabled="!canFlashFirmware"
+          :loading="firmwareBusy"
+          @click="startFirmwareUpdate"
+        >
+          上传并刷写
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import { serialService } from '@/services/SerialService'
+
+const props = defineProps<{ modelValue: boolean }>()
+const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
 
 const serial = useSerialStore()
 
@@ -100,6 +98,16 @@ const firmwareStatus = ref('')
 const firmwareError = ref('')
 const firmwareProgress = ref(0)
 const canFlashFirmware = computed(() => serial.connected && !!firmwareFile.value && !firmwareBusy.value)
+
+/** 升级中强制禁止关闭对话框，避免传输被中断 */
+function onUpdateModelValue(v: boolean) {
+  if (firmwareBusy.value && !v) return
+  emit('update:modelValue', v)
+}
+
+function close() {
+  if (!firmwareBusy.value) emit('update:modelValue', false)
+}
 
 function onFirmwareFileChange(value: File | File[] | null) {
   firmwareFile.value = Array.isArray(value) ? (value[0] ?? null) : value
@@ -227,20 +235,3 @@ async function startFirmwareUpdate() {
   }
 }
 </script>
-
-<style scoped>
-.upgrade-wrap {
-  display: flex;
-  justify-content: center;
-}
-
-.upgrade-section {
-  width: 100%;
-  max-width: 720px;
-  text-align: left;
-}
-
-.file-input-block {
-  width: 100%;
-}
-</style>

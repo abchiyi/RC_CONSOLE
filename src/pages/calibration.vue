@@ -9,7 +9,7 @@
 
     <v-alert
       v-if="!serial.connected"
-      class="ma-4"
+      class="ma-3"
       color="info"
       icon="mdi-information"
       variant="tonal"

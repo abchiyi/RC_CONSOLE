@@ -177,7 +177,7 @@ const DEFAULT_CHANNEL: ModelChannel = {
   ec11_step: 1,
   reverse: false,
   condition: {
-    enabled: false, source_channel: 3, op: 0, threshold: 1500,
+    enabled: false, source_channel: 3, low: 1000, high: 2000,
     switch_source: false, value: 1500, alt_source: 'NONE',
   },
   lock_enabled: false,
@@ -239,7 +239,7 @@ export function encodeChannelTlv(ch: ModelChannel): Uint8Array {
   if (ch.condition) {
     const c = ch.condition
     w.tlv(0x0e, new Writer()
-      .u8(c.enabled ? 1 : 0).u8(c.source_channel ?? 0).u8(c.op ?? 0).u16(c.threshold ?? 0)
+      .u8(c.enabled ? 1 : 0).u8(c.source_channel ?? 0).u16(c.low ?? 1000).u16(c.high ?? 2000)
       .u8(c.switch_source ? 1 : 0).u16(c.value ?? 0).u8(sourceToId(c.alt_source ?? 'NONE'))
       .toBytes())
   }
@@ -304,8 +304,8 @@ function decodeChannelTlv(value: Uint8Array): ModelChannel {
         ch.condition = {
           enabled: !!r.u8(),
           source_channel: r.u8(),
-          op: r.u8(),
-          threshold: r.u16(),
+          low: r.u16(),
+          high: r.u16(),
           switch_source: !!r.u8(),
           value: r.u16(),
           alt_source: sourceFromId(r.u8()),

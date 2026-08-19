@@ -65,7 +65,7 @@
       <v-btn
         v-if="serial.bluetoothSupported"
         class="ml-2"
-        color="primary"
+        color="bluetooth"
         prepend-icon="mdi-bluetooth"
         size="small"
         variant="tonal"
@@ -76,45 +76,37 @@
       </v-btn>
     </template>
 
-    <v-chip
-      v-else
-      color="success"
-      label
-      size="small"
-      variant="tonal"
-    >
-      <v-icon start size="16">{{ serial.isBluetooth ? 'mdi-bluetooth' : 'mdi-usb' }}</v-icon>
-      {{ serial.isBluetooth ? '蓝牙已连接' : '已连接' }}
-    </v-chip>
+    <template v-else>
+      <v-btn
+        v-if="!serial.isBluetooth"
+        class="ml-2"
+        color="warning"
+        icon="mdi-restart"
+        size="small"
+        variant="text"
+        :loading="resetLoading"
+        @click="handleReset"
+      />
 
-    <v-btn
-      v-if="serial.connected && !serial.isBluetooth"
-      class="ml-2"
-      color="warning"
-      icon="mdi-restart"
-      size="small"
-      variant="text"
-      :loading="resetLoading"
-      @click="handleReset"
-    />
-
-    <v-btn
-      v-if="serial.connected"
-      class="ml-2"
-      color="error"
-      icon="mdi-power-plug-off"
-      size="small"
-      variant="text"
-      @click="serial.disconnect()"
-    />
+      <v-btn
+        class="ml-2"
+        color="error"
+        :prepend-icon="serial.isBluetooth ? 'mdi-bluetooth' : 'mdi-usb'"
+        size="small"
+        variant="tonal"
+        @click="serial.disconnect()"
+      >
+        断开连接<template v-if="connectionName">（{{ connectionName }}）</template>
+      </v-btn>
+    </template>
   </v-app-bar>
 </template>
 
 <script setup lang="ts">
-import { watch, ref, onMounted } from 'vue'
+import { watch, ref, computed, onMounted } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import { useChannelStore } from '@/stores/channels'
-import { serialService } from '@/services/SerialService'
+import { serialService, bleService } from '@/services/SerialService'
 import { CHANNEL_LINK_ONLY } from '@/utils/debugFlags'
 
 defineEmits<{ 'toggle-drawer': [] }>()
@@ -123,6 +115,12 @@ const serial = useSerialStore()
 const chStore = useChannelStore()
 const selectedPort = ref<string | null>(null)
 const resetLoading = ref(false)
+
+// 连接后按钮上显示的名称：蓝牙 → 设备名；串口 → COM 口号（无则留空，仅显示"断开连接"）
+const connectionName = computed(() => {
+  if (serial.isBluetooth) return bleService.deviceName || ''
+  return serial.lastPortPath || ''
+})
 
 // 启动时自动刷新串口列表
 onMounted(() => { serial.refreshPorts() })

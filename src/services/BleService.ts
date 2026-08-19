@@ -155,7 +155,8 @@ export class BleService {
     ).join(' | ')
     console.log(`[BLE TX] ${cmd} (${frames.length} frame): ${hex}`)
     try {
-      const CHUNK = 20
+      // 固件 MAX_MTU=247 → ATT payload = MTU-3 = 244B; 一次写入整块, 替代 13 次 20B 写
+      const CHUNK = 244
       // 节流对齐 BLE 连接间隔(12×1.25=15ms), 避免瞬时打爆固件 NimBLE RX mbuf
       const PACE_MS = 15
       for (const f of frames) {

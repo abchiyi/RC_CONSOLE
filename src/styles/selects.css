@@ -1,0 +1,47 @@
+/* 所有下拉选项框统一样式 (参考通道卡片输入源): 无边框扁平化, 背景色区分边界 */
+.v-select .v-field {
+  background: #404040;
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+/* 亮色主题下用浅灰背景, 保证深色文字可读 */
+.v-theme--light .v-select .v-field {
+  background: #ececec;
+}
+
+.v-select .v-field__outline {
+  display: none;
+}
+
+.v-select .v-field--variant-solo {
+  box-shadow: none;
+}
+
+.v-select .v-field__input {
+  font-size: 0.875rem;
+}
+
+/* 数字输入框扁平化：与下拉框统一风格 */
+.v-number-input .v-field {
+  background: #404040;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.v-theme--light .v-number-input .v-field {
+  background: #ececec;
+}
+
+.v-number-input .v-field__outline {
+  display: none;
+}
+
+.v-number-input .v-field__input {
+  font-size: 0.875rem;
+}
+
+/* 右侧堆叠按钮颜色融入背景 */
+.v-number-input .v-number-input__control {
+  color: rgba(var(--v-theme-on-surface), 0.7);
+}

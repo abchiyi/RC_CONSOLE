@@ -145,7 +145,7 @@
         </div>
         <!-- 蓝牙摇杆 -->
         <div class="d-flex align-center mb-2">
-          <v-icon size="24" class="mr-3" color="primary">mdi-bluetooth</v-icon>
+          <v-icon size="24" class="mr-3" color="bluetooth">mdi-bluetooth</v-icon>
           <div class="flex-grow-1">
             <div class="text-body-2 font-weight-medium">蓝牙摇杆</div>
           </div>
