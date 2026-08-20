@@ -34,18 +34,15 @@
 .mdi-check-circle:before { content: "\F05E0"; }
 .mdi-checkbox-blank-outline:before { content: "\F0131"; }
 .mdi-checkbox-marked:before { content: "\F0132"; }
-.mdi-chevron-down:before { content: "\F0140"; }
-.mdi-chevron-up:before { content: "\F0143"; }
+.mdi-chip:before { content: "\F061A"; }
 .mdi-circle:before { content: "\F0765"; }
 .mdi-close:before { content: "\F0156"; }
 .mdi-cog:before { content: "\F0493"; }
 .mdi-content-save:before { content: "\F0193"; }
-.mdi-controller-classic:before { content: "\F0B82"; }
 .mdi-crosshairs-gps:before { content: "\F01A4"; }
 .mdi-database-refresh:before { content: "\F05C2"; }
 .mdi-delete-alert:before { content: "\F10A5"; }
 .mdi-delete-outline:before { content: "\F09E7"; }
-.mdi-dots-vertical:before { content: "\F01D9"; }
 .mdi-download:before { content: "\F01DA"; }
 .mdi-file:before { content: "\F0214"; }
 .mdi-file-tree:before { content: "\F0645"; }
@@ -57,6 +54,8 @@
 .mdi-help-circle:before { content: "\F02D7"; }
 .mdi-information:before { content: "\F02FC"; }
 .mdi-information-outline:before { content: "\F02FD"; }
+.mdi-lan-connect:before { content: "\F0318"; }
+.mdi-lan-disconnect:before { content: "\F0319"; }
 .mdi-link-variant:before { content: "\F0339"; }
 .mdi-menu:before { content: "\F035C"; }
 .mdi-minus:before { content: "\F0374"; }
@@ -65,7 +64,6 @@
 .mdi-play:before { content: "\F040A"; }
 .mdi-plus:before { content: "\F0415"; }
 .mdi-power:before { content: "\F0425"; }
-.mdi-power-plug-off:before { content: "\F06A6"; }
 .mdi-radiobox-blank:before { content: "\F043D"; }
 .mdi-radiobox-marked:before { content: "\F043E"; }
 .mdi-refresh:before { content: "\F0450"; }
@@ -73,7 +71,6 @@
 .mdi-restart:before { content: "\F0709"; }
 .mdi-shimmer:before { content: "\F1545"; }
 .mdi-speedometer:before { content: "\F04C5"; }
-.mdi-target:before { content: "\F04FE"; }
 .mdi-timer-cog:before { content: "\F1925"; }
 .mdi-tune-variant:before { content: "\F1542"; }
 .mdi-upload:before { content: "\F0552"; }
@@ -81,5 +78,4 @@
 .mdi-usb:before { content: "\F0553"; }
 .mdi-usb-port:before { content: "\F11F0"; }
 .mdi-view-dashboard:before { content: "\F056E"; }
-.mdi-view-list:before { content: "\F0572"; }
 .mdi-wifi:before { content: "\F05A9"; }

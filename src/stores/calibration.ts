@@ -24,7 +24,7 @@ export interface ImuCal {
   gyro_bias_z?: number
 }
 
-export type CalType = 'trigger' | 'joy_x' | 'joy_y' | 'imu'
+export type CalType = 'trigger' | 'joy_x' | 'joy_y' | 'joy_xy' | 'imu'
 
 export const useCalibrationStore = defineStore('calibration', () => {
   const trigger = reactive<AdcCal>({ deadzone: 30 })
@@ -46,6 +46,15 @@ export const useCalibrationStore = defineStore('calibration', () => {
     lastMessage.value = '校准进行中…'
     lastType.value = type
     await serialService.sendCommand('cal_start', { type })
+  }
+
+  /** 分步校准: step=1 居中采样, step=2 行程扫描+落盘 (摇杆校准向导) */
+  async function startCalStep(type: CalType, step: 1 | 2): Promise<void> {
+    runningType.value = type
+    calProgress.value = 0
+    lastMessage.value = step === 1 ? '请保持居中，等待采样…' : '请推动到行程两端…'
+    lastType.value = type
+    await serialService.sendCommand('cal_step', { type, step })
   }
 
   function cancelCal(): void {
@@ -217,6 +226,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
     lastMessage,
     lastType,
     startCal,
+    startCalStep,
     cancelCal,
     pollStatus,
     fetchCalData,

@@ -38,7 +38,7 @@ const INPUT_SOURCE_NAMES = [
 
 const TRIGGER_NAMES = ['SINGLE_CLICK', 'DOUBLE_CLICK', 'LONG_PRESS', 'LONG_PRESS_UP', 'PRESS', 'RELEASE']
 
-const CAL_TYPE_NAMES = ['none', 'trigger', 'joy_x', 'joy_y', 'imu']
+const CAL_TYPE_NAMES = ['none', 'trigger', 'joy_x', 'joy_y', 'imu', 'joy_xy']
 
 function sourceToId(s: string): number {
   const idx = INPUT_SOURCE_NAMES.indexOf(s)
@@ -110,6 +110,10 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
       break
     case CMD.CAL_START:
       w.u8(calTypeToId(String(params.type ?? 'none')))
+      break
+    case CMD.CAL_STEP:
+      w.u8(calTypeToId(String(params.type ?? 'joy_x')))
+      w.u8(Number(params.step ?? 0))
       break
     case CMD.CAL_SET_DEADZONE:
       w.u8(calTypeToId(String(params.type ?? 'trigger')))
