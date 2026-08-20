@@ -49,40 +49,6 @@
 
           <v-card-text>
             <div class="d-flex flex-wrap gap-row">
-              <!-- 运行状态 -->
-              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">运行状态</span>
-                <v-chip
-                  v-if="power.state"
-                  :color="stateColor(power.state.state)"
-                  size="small" variant="tonal" class="mt-1"
-                >
-                  {{ stateLabel(power.state.state) }}
-                </v-chip>
-                <span v-else class="text-caption text-grey">--</span>
-              </div>
-
-              <!-- 充电状态 -->
-              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">充电状态</span>
-                <v-chip
-                  v-if="power.state"
-                  :color="chargeColor(power.state.charge)"
-                  size="small" variant="tonal" class="mt-1"
-                >
-                  {{ chargeLabel(power.state.charge) }}
-                </v-chip>
-                <span v-else class="text-caption text-grey">--</span>
-              </div>
-
-              <!-- 电池电压 -->
-              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">电池电压</span>
-                <div class="text-body-2 font-weight-medium">
-                  {{ power.state ? (power.state.battery_mv / 1000).toFixed(2) + ' V' : '--' }}
-                </div>
-              </div>
-
               <!-- 电量 -->
               <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
                 <span class="text-caption text-medium-emphasis">电量</span>
@@ -100,53 +66,11 @@
                 </div>
               </div>
 
-              <!-- 空闲时长 -->
+              <!-- 电池电压 -->
               <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">空闲时长</span>
+                <span class="text-caption text-medium-emphasis">电池电压</span>
                 <div class="text-body-2 font-weight-medium">
-                  {{ power.state ? fmtSeconds(power.state.idle_s) : '--' }}
-                </div>
-              </div>
-
-              <!-- 距关机 -->
-              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">距关机</span>
-                <div class="text-body-2 font-weight-medium" :class="power.state && power.state.state !== 'normal' ? 'text-warning' : 'text-grey'">
-                  {{ power.state && power.state.state !== 'normal'
-                    ? fmtSeconds(power.cfg.idle_shutdown_s - power.state.idle_s)
-                    : '--' }}
-                </div>
-              </div>
-
-              <!-- VBUS 电压 -->
-              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">VBUS 电压</span>
-                <div class="text-body-2 font-weight-medium">
-                  {{ power.state ? (power.state.vbus_mv / 1000).toFixed(2) + ' V' : '--' }}
-                </div>
-              </div>
-
-              <!-- VBUS 类型 -->
-              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">VBUS 类型</span>
-                <div class="text-body-2 font-weight-medium">
-                  {{ power.state ? vbusTypeLabel(power.state.vbus_type) : '--' }}
-                </div>
-              </div>
-
-              <!-- 充电电流 -->
-              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">充电电流</span>
-                <div class="text-body-2 font-weight-medium">
-                  {{ power.state ? power.state.charge_current_ma + ' mA' : '--' }}
-                </div>
-              </div>
-
-              <!-- 输入电流限制 -->
-              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">输入电流限制</span>
-                <div class="text-body-2 font-weight-medium">
-                  {{ power.state ? power.state.idpm_limit_ma + ' mA' : '--' }}
+                  {{ power.state ? (power.state.battery_mv / 1000).toFixed(2) + ' V' : '--' }}
                 </div>
               </div>
 
@@ -158,11 +82,32 @@
                 </div>
               </div>
 
-              <!-- 温度 -->
+              <!-- 充电状态 -->
               <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">温度</span>
+                <span class="text-caption text-medium-emphasis">充电状态</span>
+                <v-chip
+                  v-if="power.state"
+                  :color="chargeColor(power.state.charge)"
+                  size="small" variant="tonal" class="mt-1"
+                >
+                  {{ chargeLabel(power.state.charge) }}
+                </v-chip>
+                <span v-else class="text-caption text-grey">--</span>
+              </div>
+
+              <!-- 充电电流 -->
+              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+                <span class="text-caption text-medium-emphasis">充电电流</span>
                 <div class="text-body-2 font-weight-medium">
-                  {{ power.state ? power.state.temp.toFixed(1) + ' °C' : '--' }}
+                  {{ power.state ? power.state.charge_current_ma + ' mA' : '--' }}
+                </div>
+              </div>
+
+              <!-- 电流上限 (输入电流限制, 单位 A) -->
+              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+                <span class="text-caption text-medium-emphasis">电流上限</span>
+                <div class="text-body-2 font-weight-medium">
+                  {{ power.state ? (power.state.idpm_limit_ma / 1000).toFixed(2) + ' A' : '--' }}
                 </div>
               </div>
             </div>
@@ -588,10 +533,6 @@ function chargeColor(c: string): string {
 
 function chargeLabel(c: string): string {
   return { none: '未充电', charging: '充电中', full: '已充满' }[c] ?? c
-}
-
-function vbusTypeLabel(t: number): string {
-  return { 0: '无输入', 1: 'SDP', 2: 'CDP', 3: 'DCP', 4: '高压DCP', 5: '未知', 6: '非标', 7: 'OTG' }[t] ?? `类型${t}`
 }
 
 onMounted(() => {
