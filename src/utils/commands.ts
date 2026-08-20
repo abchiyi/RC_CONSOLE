@@ -474,6 +474,8 @@ function decodePowerState(r: Reader, name: string): Record<string, unknown> {
     irq_count: r.u32(),
     debug_mode: !!r.u8(),
     idle_s: r.u16(),
+    vbus_type: r.u8(),
+    idpm_limit_ma: r.u16(),
   }
 }
 

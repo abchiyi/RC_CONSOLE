@@ -117,6 +117,54 @@
                     : '--' }}
                 </div>
               </div>
+
+              <!-- VBUS 电压 -->
+              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+                <span class="text-caption text-medium-emphasis">VBUS 电压</span>
+                <div class="text-body-2 font-weight-medium">
+                  {{ power.state ? (power.state.vbus_mv / 1000).toFixed(2) + ' V' : '--' }}
+                </div>
+              </div>
+
+              <!-- VBUS 类型 -->
+              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+                <span class="text-caption text-medium-emphasis">VBUS 类型</span>
+                <div class="text-body-2 font-weight-medium">
+                  {{ power.state ? vbusTypeLabel(power.state.vbus_type) : '--' }}
+                </div>
+              </div>
+
+              <!-- 充电电流 -->
+              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+                <span class="text-caption text-medium-emphasis">充电电流</span>
+                <div class="text-body-2 font-weight-medium">
+                  {{ power.state ? power.state.charge_current_ma + ' mA' : '--' }}
+                </div>
+              </div>
+
+              <!-- 输入电流限制 -->
+              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+                <span class="text-caption text-medium-emphasis">输入电流限制</span>
+                <div class="text-body-2 font-weight-medium">
+                  {{ power.state ? power.state.idpm_limit_ma + ' mA' : '--' }}
+                </div>
+              </div>
+
+              <!-- 系统电压 -->
+              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+                <span class="text-caption text-medium-emphasis">系统电压</span>
+                <div class="text-body-2 font-weight-medium">
+                  {{ power.state ? (power.state.sys_mv / 1000).toFixed(2) + ' V' : '--' }}
+                </div>
+              </div>
+
+              <!-- 温度 -->
+              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+                <span class="text-caption text-medium-emphasis">温度</span>
+                <div class="text-body-2 font-weight-medium">
+                  {{ power.state ? power.state.temp.toFixed(1) + ' °C' : '--' }}
+                </div>
+              </div>
             </div>
           </v-card-text>
         </v-card>
@@ -540,6 +588,10 @@ function chargeColor(c: string): string {
 
 function chargeLabel(c: string): string {
   return { none: '未充电', charging: '充电中', full: '已充满' }[c] ?? c
+}
+
+function vbusTypeLabel(t: number): string {
+  return { 0: '无输入', 1: 'SDP', 2: 'CDP', 3: 'DCP', 4: '高压DCP', 5: '未知', 6: '非标', 7: 'OTG' }[t] ?? `类型${t}`
 }
 
 onMounted(() => {

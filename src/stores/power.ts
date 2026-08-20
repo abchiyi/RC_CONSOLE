@@ -18,6 +18,14 @@ export interface PowerState {
   idle_s: number
   battery_mv: number
   battery_pct: number
+  vbus_mv: number
+  sys_mv: number
+  temp: number
+  charge_current_ma: number
+  irq_count: number
+  debug_mode: boolean
+  vbus_type: number
+  idpm_limit_ma: number
 }
 
 export const usePowerStore = defineStore('power', () => {
