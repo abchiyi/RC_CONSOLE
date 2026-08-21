@@ -1,7 +1,7 @@
 <template>
   <div class="cal-root">
     <!-- ==================== IMU 姿态 (3D 模型) ==================== -->
-    <v-card rounded="lg" variant="outlined" class="cal-card my-2">
+    <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
       <v-card-item>
         <template #prepend>
           <v-avatar color="warning" size="36" class="cal-avatar">
@@ -23,68 +23,84 @@
       <v-card-text>
         <!-- IMU 姿态: 宽屏左右布局 (视窗 | 读数), 窄屏上下布局 -->
         <div class="imu-layout">
-          <!-- 3D 姿态画布: 网格背景 + 手柄模型 -->
+          <!-- 3D 姿态画布: 网格背景 + 手柄模型 (保持 4:3 比例尺, 不随容器拉伸) -->
           <div class="imu-canvas-wrap">
-            <canvas ref="imuCanvas" class="imu-canvas" width="480" height="360" />
+            <div class="imu-canvas-frame">
+              <canvas ref="imuCanvas" class="imu-canvas" width="480" height="360" />
+            </div>
           </div>
 
-          <!-- 右侧数据面板: 基础角度 | 加速度 | 角速度 | 零偏移 -->
+          <!-- 右侧数据面板: 分组卡片 (标题 + 数值格), 等宽字体, 无阴影扁平 -->
           <div class="imu-panel">
-            <div class="imu-panel-title">基础角度</div>
-            <div class="stat-grid">
-              <div class="stat-col text-center">
-                <div class="text-caption text-medium-emphasis mb-1">Roll</div>
-                <div class="mono text-h6 font-weight-bold">{{ fmtDeg(imu.roll) }}</div>
-              </div>
-              <div class="stat-col text-center">
-                <div class="text-caption text-medium-emphasis mb-1">Pitch</div>
-                <div class="mono text-h6 font-weight-bold">{{ fmtDeg(imu.pitch) }}</div>
-              </div>
-              <div class="stat-col text-center">
-                <div class="text-caption text-medium-emphasis mb-1">Yaw</div>
-                <div class="mono text-h6 font-weight-bold">{{ fmtDeg(imu.yaw) }}</div>
-              </div>
-            </div>
-            <v-divider class="my-2" opacity="0.2" />
-
-            <div class="imu-panel-title">加速度</div>
-            <div class="stat-grid">
-              <div class="stat-col">
-                <span class="text-caption">X: <span class="mono">{{ fmtG(imu.acc?.x) }}</span></span>
-              </div>
-              <div class="stat-col">
-                <span class="text-caption">Y: <span class="mono">{{ fmtG(imu.acc?.y) }}</span></span>
-              </div>
-              <div class="stat-col">
-                <span class="text-caption">Z: <span class="mono">{{ fmtG(imu.acc?.z) }}</span></span>
+            <div class="imu-group">
+              <div class="imu-group-title">基础角度</div>
+              <div class="stat-grid">
+                <div class="stat-col text-center">
+                  <div class="text-caption text-medium-emphasis mb-1">Roll</div>
+                  <div class="mono text-h6 font-weight-bold">{{ fmtDeg(imu.roll) }}</div>
+                </div>
+                <div class="stat-col text-center">
+                  <div class="text-caption text-medium-emphasis mb-1">Pitch</div>
+                  <div class="mono text-h6 font-weight-bold">{{ fmtDeg(imu.pitch) }}</div>
+                </div>
+                <div class="stat-col text-center">
+                  <div class="text-caption text-medium-emphasis mb-1">Yaw</div>
+                  <div class="mono text-h6 font-weight-bold">{{ fmtDeg(imu.yaw) }}</div>
+                </div>
               </div>
             </div>
-            <v-divider class="my-2" opacity="0.2" />
 
-            <div class="imu-panel-title">角速度</div>
-            <div class="stat-grid">
-              <div class="stat-col">
-                <span class="text-caption">X: <span class="mono">{{ fmtRate(imu.rate?.x) }}</span></span>
-              </div>
-              <div class="stat-col">
-                <span class="text-caption">Y: <span class="mono">{{ fmtRate(imu.rate?.y) }}</span></span>
-              </div>
-              <div class="stat-col">
-                <span class="text-caption">Z: <span class="mono">{{ fmtRate(imu.rate?.z) }}</span></span>
+            <div class="imu-group">
+              <div class="imu-group-title">加速度</div>
+              <div class="stat-grid">
+                <div class="stat-col text-center">
+                  <div class="text-caption text-medium-emphasis mb-1">X</div>
+                  <div class="mono text-subtitle-1 font-weight-bold">{{ fmtG(imu.acc?.x) }}</div>
+                </div>
+                <div class="stat-col text-center">
+                  <div class="text-caption text-medium-emphasis mb-1">Y</div>
+                  <div class="mono text-subtitle-1 font-weight-bold">{{ fmtG(imu.acc?.y) }}</div>
+                </div>
+                <div class="stat-col text-center">
+                  <div class="text-caption text-medium-emphasis mb-1">Z</div>
+                  <div class="mono text-subtitle-1 font-weight-bold">{{ fmtG(imu.acc?.z) }}</div>
+                </div>
               </div>
             </div>
-            <v-divider class="my-2" opacity="0.2" />
 
-            <div class="imu-panel-title">零偏移</div>
-            <div class="stat-grid">
-              <div class="stat-col">
-                <span class="text-caption">X: <span class="mono">{{ fmtBias(imu.gyro_bias_x) }}</span></span>
+            <div class="imu-group">
+              <div class="imu-group-title">角速度</div>
+              <div class="stat-grid">
+                <div class="stat-col text-center">
+                  <div class="text-caption text-medium-emphasis mb-1">X</div>
+                  <div class="mono text-subtitle-1 font-weight-bold">{{ fmtRate(imu.rate?.x) }}</div>
+                </div>
+                <div class="stat-col text-center">
+                  <div class="text-caption text-medium-emphasis mb-1">Y</div>
+                  <div class="mono text-subtitle-1 font-weight-bold">{{ fmtRate(imu.rate?.y) }}</div>
+                </div>
+                <div class="stat-col text-center">
+                  <div class="text-caption text-medium-emphasis mb-1">Z</div>
+                  <div class="mono text-subtitle-1 font-weight-bold">{{ fmtRate(imu.rate?.z) }}</div>
+                </div>
               </div>
-              <div class="stat-col">
-                <span class="text-caption">Y: <span class="mono">{{ fmtBias(imu.gyro_bias_y) }}</span></span>
-              </div>
-              <div class="stat-col">
-                <span class="text-caption">Z: <span class="mono">{{ fmtBias(imu.gyro_bias_z) }}</span></span>
+            </div>
+
+            <div class="imu-group">
+              <div class="imu-group-title">零偏移</div>
+              <div class="stat-grid">
+                <div class="stat-col text-center">
+                  <div class="text-caption text-medium-emphasis mb-1">X</div>
+                  <div class="mono text-subtitle-1 font-weight-bold">{{ fmtBias(imu.gyro_bias_x) }}</div>
+                </div>
+                <div class="stat-col text-center">
+                  <div class="text-caption text-medium-emphasis mb-1">Y</div>
+                  <div class="mono text-subtitle-1 font-weight-bold">{{ fmtBias(imu.gyro_bias_y) }}</div>
+                </div>
+                <div class="stat-col text-center">
+                  <div class="text-caption text-medium-emphasis mb-1">Z</div>
+                  <div class="mono text-subtitle-1 font-weight-bold">{{ fmtBias(imu.gyro_bias_z) }}</div>
+                </div>
               </div>
             </div>
           </div>
@@ -110,7 +126,7 @@
     </v-card>
 
     <!-- ==================== 扳机校准 ==================== -->
-    <v-card rounded="lg" variant="outlined" class="cal-card my-2">
+    <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
       <v-card-item>
         <template #prepend>
           <v-avatar color="primary" size="36" class="cal-avatar">
@@ -197,7 +213,7 @@
     </v-card>
 
     <!-- ==================== 摇杆校准 (性能展示) ==================== -->
-    <v-card rounded="lg" variant="outlined" class="cal-card my-2">
+    <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
       <v-card-item>
         <template #prepend>
           <v-avatar color="success" size="36" class="cal-avatar">
@@ -261,7 +277,7 @@
 
     <!-- ==================== 摇杆校准弹窗 (stepper 向导) ==================== -->
     <v-dialog v-model="calDialog" max-width="560" persistent>
-      <v-card rounded="lg">
+      <v-card rounded="lg" elevation="0">
         <v-card-item>
           <template #prepend>
             <v-avatar color="success" size="36" class="cal-avatar">
@@ -417,7 +433,7 @@
     </v-dialog>
 
     <!-- ==================== 全局设置 ==================== -->
-    <v-card rounded="lg" variant="outlined" class="cal-card my-2">
+    <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
       <v-card-item>
         <template #prepend>
           <v-avatar color="grey-darken-1" size="36" class="cal-avatar">
@@ -720,6 +736,8 @@ function drawScene(): void {
   if (!canvas) return
   const ctx = canvas.getContext('2d')
   if (!ctx) return
+
+  // 固定 480×360 逻辑坐标系: 位图恒定, 模型比例尺不变, 缩放由 CSS 等比完成
   const W = canvas.width
   const H = canvas.height
 
@@ -751,7 +769,7 @@ function drawScene(): void {
   const R0: number[][] = [[-1, 0, 0], [0, 1, 0], [0, 0, -1]] // Ry(180°): 0 位时前方朝屏幕内
   const R = mul3(deviceToScreen(roll, pitch, yaw), R0)
 
-  // 透视投影: focal=200, 相机 z=6
+  // 透视投影: focal=200, 相机 z=6 (固定坐标系)
   const focal = 200
   const camZ = 6
   const cx = W / 2
@@ -911,10 +929,6 @@ onUnmounted(async () => {
   border-color: rgba(255, 255, 255, 0.16) !important;
 }
 
-.cal-avatar {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-}
-
 /* 等宽数字字体 */
 .mono {
   font-family: 'Cascadia Mono', 'Consolas', monospace;
@@ -979,7 +993,6 @@ onUnmounted(async () => {
   border-radius: 50%;
   background: rgb(var(--v-theme-primary));
   border: 2px solid #fff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 /* 状态数值列 */
@@ -1070,39 +1083,65 @@ onUnmounted(async () => {
   min-width: 0;
   display: flex;
   justify-content: center;
+  aspect-ratio: 4 / 3;   /* 窄屏兜底高度, 防止画布塌陷 */
 }
 
-/* IMU 3D 姿态画布 */
-.imu-canvas {
-  display: block;
+/* 裁剪容器: 不锁比例, 宽屏由布局 stretch 决定高度 */
+.imu-canvas-frame {
+  position: relative;
   width: 100%;
-  max-width: 640px;      /* 限制最大尺寸, 避免宽屏拉伸模糊 (内部 480px, 2x DPR 内清晰) */
-  height: auto;
+  max-width: 640px;
+  height: 100%;
+  overflow: hidden;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
-/* 右侧数据大框: 基础角度 | 加速度 | 角速度 | 零偏移 */
+/* 画布: 填满父节点, cover 等比显示 + 裁剪, 比例尺恒定不失真 */
+.imu-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 右侧数据面板: 简单文字排列 + 等宽字体, 无背景无阴影 */
 .imu-panel {
   flex: 1 1 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 14px 16px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 4px;
 }
 
-.imu-panel-title {
-  font-size: 0.75rem;
+/* 参数分组卡片: 浅色圆角块, 无阴影扁平 */
+.imu-group {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 10px 12px;
+}
+
+.imu-group-title {
+  font-size: 0.7rem;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.55);
-  margin-bottom: 2px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 6px;
+}
+
+.imu-group .stat-col {
+  border: none;
+  background: transparent;
+}
+
+.imu-group .stat-col .mono {
+  font-family: 'Cascadia Mono', 'JetBrains Mono', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 宽屏: 左右布局 */
@@ -1112,6 +1151,7 @@ onUnmounted(async () => {
     align-items: stretch;
   }
   .imu-canvas-wrap {
+    aspect-ratio: auto;   /* 高度改由布局 stretch 决定, 与右侧面板等高 */
     max-width: 55%;
   }
 }
