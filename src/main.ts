@@ -28,7 +28,6 @@ import {
   serialService,
   webSerialService,
   electronSerialService,
-  webSocketService,
   bleService,
 } from '@/services/SerialService'
 
@@ -113,7 +112,7 @@ function routeStreamEvent(contentType: number, data: Record<string, unknown>): v
 // 注册对象路由到全部后端实例。
 // 注意：setSerialBackend() 只替换 serialService 引用、不迁移 onObject 监听器，
 // 因此必须对每个后端单独注册，否则切换到 BLE 后收到的 notify 数据无人消费。
-;[webSerialService, electronSerialService, webSocketService, bleService]
+;[webSerialService, electronSerialService, bleService]
   .forEach(svc => svc.onObject(routeObject))
 // 活动后端引用兜底（若未来新增后端实例未在上面枚举）
 serialService.onObject(routeObject)

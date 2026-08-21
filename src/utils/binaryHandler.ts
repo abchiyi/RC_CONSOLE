@@ -1,6 +1,6 @@
 /**
  * binaryHandler.ts — 二进制帧统一分发
- * 四个后端（Web Serial / Electron 串口 / WebSocket / BLE）共用：
+ * 三个后端（Web Serial / Electron 串口 / BLE）共用：
  * 字节流 → StreamDecoder → 帧 → (RESPONSE→decodeResponse / EVENT→decodeEvent / FRAGMENT→重组) → 对象回调
  */
 

@@ -3,7 +3,6 @@
  * 支持多种模式：
  *   - Web Serial API (浏览器)
  *   - Electron 原生串口 (桌面端)
- *   - WebSocket (固件 Web 控制台)
  *   - Web Bluetooth NUS (桌面端/浏览器，经 connectBLE())
  */
 import { defineStore } from 'pinia'
@@ -11,7 +10,6 @@ import { ref, computed } from 'vue'
 import {
   SerialService,
   ElectronSerialService,
-  WebSocketService,
   BleService,
   bleService,
   getSerialService,
@@ -20,7 +18,6 @@ import {
   type SerialBackend,
   serialService as webSerial,
   electronSerialService,
-  webSocketService,
 } from '@/services/SerialService'
 import { useChannelStore } from './channels'
 
@@ -28,7 +25,7 @@ export const useSerialStore = defineStore('serial', () => {
   const connected = ref(false)
   const connecting = ref(false)
   const supported = ref(
-    SerialService.isSupported() || ElectronSerialService.isSupported() || WebSocketService.isSupported() || BleService.isSupported(),
+    SerialService.isSupported() || ElectronSerialService.isSupported() || BleService.isSupported(),
   )
   const error = ref<string | null>(null)
   const availablePorts = ref<SerialPortDescriptor[]>([])
@@ -38,15 +35,10 @@ export const useSerialStore = defineStore('serial', () => {
 
   // 运行时确定使用哪个后端
   const isElectron = ElectronSerialService.isSupported()
-  const isWebConsole = !isElectron && WebSocketService.isWebConsolePage()
   const bluetoothSupported = BleService.isSupported()
 
   // 活动后端（可运行时切换为 BLE）
-  let backend: SerialBackend = isElectron
-    ? electronSerialService
-    : isWebConsole
-      ? webSocketService
-      : webSerial
+  let backend: SerialBackend = isElectron ? electronSerialService : webSerial
 
   const statusIcon = computed(() => {
     if (!connected.value) return 'mdi-usb-port'
@@ -83,7 +75,7 @@ export const useSerialStore = defineStore('serial', () => {
     return []
   }
 
-  /** 连接设备（自动适配 Web Serial / Electron / WebSocket / BLE） */
+  /** 连接设备（自动适配 Web Serial / Electron / BLE） */
   async function connect(portPath?: string): Promise<boolean> {
     if (isBluetooth.value) {
       // 用户主动选择串口连接，切回默认后端
@@ -103,15 +95,7 @@ export const useSerialStore = defineStore('serial', () => {
     error.value = null
 
     try {
-      if (isWebConsole) {
-        // Web 控制台模式：同源 WebSocket，自动连接
-        const ok = await (backend as WebSocketService).connect()
-        if (ok) {
-          connected.value = true
-        } else {
-          error.value = 'WebSocket 连接失败，请确认设备已开机并处于 Web 控制台模式'
-        }
-      } else if (isElectron) {
+      if (isElectron) {
         // Electron 模式
         let targetPath = portPath
 
@@ -228,18 +212,6 @@ export const useSerialStore = defineStore('serial', () => {
   backend.onDisconnect(() => {
     connected.value = false
   })
-
-  // Web 控制台模式：断线自动重连，连接状态由 WS 事件驱动
-  if (isWebConsole) {
-    ;(backend as WebSocketService).onStatusChange(ok => {
-      connected.value = ok
-    })
-  }
-
-  // Web 控制台模式：页面加载即自动连接（无需手动选择端口）
-  if (isWebConsole && !connected.value) {
-    void connect()
-  }
 
   return {
     connected,
