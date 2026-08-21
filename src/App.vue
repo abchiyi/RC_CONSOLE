@@ -23,7 +23,9 @@
 
     <!-- 主内容区 -->
     <v-main>
-      <router-view />
+      <div class="content-wrap">
+        <router-view />
+      </div>
     </v-main>
 
     <!-- 全局底栏: 左状态右操作双槽, 容器常驻 DOM (Teleport 目标), 未连接时隐藏 -->
@@ -35,7 +37,7 @@
 
       <!-- 全局默认操作: 从设备加载 (始终最右侧, 点击广播事件, 当前页面监听执行自己的加载逻辑) -->
       <div id="global-footer-right" class="global-footer-slot">
-        <v-btn class="footer-btn-secondary" prepend-icon="mdi-download" size="small"
+        <v-btn class="footer-btn-secondary footer-reload-btn" prepend-icon="mdi-download" size="small"
           :loading="reloading" @click="triggerReload">
           <span class="btn-text">从设备加载</span>
         </v-btn>
@@ -78,6 +80,13 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* 正文内容限宽居中 */
+.content-wrap {
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
+}
+
 /* 全局底栏: 深色扁平, 顶部细线分隔 */
 .global-footer {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -106,6 +115,11 @@ onUnmounted(() => {
 .global-footer .footer-btn-secondary {
   background: rgba(255, 255, 255, 0.08) !important;
   color: #fff !important;
+}
+
+/* 「从设备加载」始终排在右侧槽最末尾 (Teleport 注入内容在前) */
+.footer-reload-btn {
+  order: 9999;
 }
 
 /* 窄屏隐藏按钮文字只留图标 */

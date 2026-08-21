@@ -1,38 +1,32 @@
 <template>
-  <div>
+  <div class="system-page">
+    <v-snackbar v-model="snackbarVisible" color="info" timeout="2000">
+      {{ snackbarMsg }}
+    </v-snackbar>
+
     <v-toolbar color="transparent" density="compact">
-      <v-toolbar-title class="text-h6">
+      <v-toolbar-title class="text-h6 page-title">
         <v-icon class="mr-2">mdi-cog</v-icon>
         系统
       </v-toolbar-title>
-
-      <v-spacer />
-
-      <v-btn v-if="serial.connected && cfgDirty" color="success" prepend-icon="mdi-content-save"
-        size="small" variant="tonal" @click="saveSettings" :loading="power.loading">
-        保存到设备
-      </v-btn>
-      <v-btn v-if="serial.connected" color="warning" prepend-icon="mdi-upload-network"
-        size="small" variant="tonal" @click="upgradeDialog = true">
-        固件升级
-      </v-btn>
     </v-toolbar>
 
-    <!-- 未连接提示 -->
-    <v-alert v-if="!serial.connected" class="ma-3" color="info" icon="mdi-information" variant="tonal">
+    <!-- 未连接 -->
+    <v-alert v-if="!serial.connected" class="ma-3" color="primary" border="start" border-color="primary"
+      icon="mdi-information" variant="tonal">
       请先连接设备以管理系统设置
     </v-alert>
 
-    <v-row dense class="pa-4">
+    <v-row v-if="serial.connected" dense>
       <!-- 实时状态卡片 -->
       <v-col cols="12" md="6">
-        <v-card variant="tonal">
-          <v-card-item>
-            <template #prepend>
-              <v-icon color="primary">mdi-monitor-dashboard</v-icon>
-            </template>
-            <v-card-title class="text-subtitle-1">系统状态</v-card-title>
-            <template #append>
+        <v-sheet rounded="lg" class="pa-3 mb-3">
+          <div class="card-head">
+            <div class="card-title-row">
+              <v-icon color="primary" class="me-2">mdi-monitor-dashboard</v-icon>
+              <span class="text-subtitle-1 font-weight-bold">系统状态</span>
+            </div>
+            <div class="card-badges">
               <v-chip v-if="stateError" color="error" size="x-small" variant="tonal">
                 {{ stateError }}
               </v-chip>
@@ -40,163 +34,163 @@
                 <v-icon start size="12">mdi-circle</v-icon>
                 监控中
               </v-chip>
-            </template>
-          </v-card-item>
+            </div>
+          </div>
 
-          <v-card-text>
-            <div class="d-flex flex-wrap gap-row">
-              <!-- 电量 -->
-              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">电量</span>
-                <div class="d-flex align-center ga-2 mt-1">
-                  <span class="text-body-2 font-weight-medium">
-                    {{ power.state ? battPct(power.state.battery_pct) + '%' : '--' }}
-                  </span>
-                  <v-progress-linear
-                    v-if="power.state"
-                    :model-value="battPct(power.state.battery_pct)"
-                    :color="battColor(power.state.battery_pct)"
-                    height="6" rounded
-                    style="max-width: 100px;"
-                  />
-                </div>
-              </div>
+          <div class="d-flex flex-wrap gap-row mt-2">
+            <!-- 设备型号 -->
+            <div class="stat-item" style="flex: 1 1 100%;">
+              <span class="text-caption text-medium-emphasis">设备型号</span>
+              <div class="text-body-2 font-weight-medium">{{ configStore.deviceInfo?.device ?? '--' }}</div>
+            </div>
 
-              <!-- 电池电压 -->
-              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">电池电压</span>
-                <div class="text-body-2 font-weight-medium">
-                  {{ power.state ? (power.state.battery_mv / 1000).toFixed(2) + ' V' : '--' }}
-                </div>
-              </div>
+            <!-- 硬件版本 -->
+            <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+              <span class="text-caption text-medium-emphasis">硬件版本</span>
+              <div class="text-body-2 font-weight-medium">{{ configStore.deviceInfo?.hw_version ?? '--' }}</div>
+            </div>
 
-              <!-- 系统电压 -->
-              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">系统电压</span>
-                <div class="text-body-2 font-weight-medium">
-                  {{ power.state ? (power.state.sys_mv / 1000).toFixed(2) + ' V' : '--' }}
-                </div>
-              </div>
+            <!-- 软件版本 -->
+            <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+              <span class="text-caption text-medium-emphasis">软件版本</span>
+              <div class="text-body-2 font-weight-medium">{{ configStore.deviceInfo?.fw_version ?? '--' }}</div>
+            </div>
 
-              <!-- 充电状态 -->
-              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">充电状态</span>
-                <v-chip
+            <!-- 电量 -->
+            <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+              <span class="text-caption text-medium-emphasis">电量</span>
+              <div class="d-flex align-center ga-2 mt-1">
+                <span class="text-body-2 font-weight-medium">
+                  {{ power.state ? battPct(power.state.battery_pct) + '%' : '--' }}
+                </span>
+                <v-progress-linear
                   v-if="power.state"
-                  :color="chargeColor(power.state.charge)"
-                  size="small" variant="tonal" class="mt-1"
-                >
-                  {{ chargeLabel(power.state.charge) }}
-                </v-chip>
-                <span v-else class="text-caption text-grey">--</span>
-              </div>
-
-              <!-- 充电电流 -->
-              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">充电电流</span>
-                <div class="text-body-2 font-weight-medium">
-                  {{ power.state ? power.state.charge_current_ma + ' mA' : '--' }}
-                </div>
-              </div>
-
-              <!-- 电流上限 (输入电流限制, 单位 A) -->
-              <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
-                <span class="text-caption text-medium-emphasis">电流上限</span>
-                <div class="text-body-2 font-weight-medium">
-                  {{ power.state ? (power.state.idpm_limit_ma / 1000).toFixed(2) + ' A' : '--' }}
-                </div>
+                  :model-value="battPct(power.state.battery_pct)"
+                  :color="battColor(power.state.battery_pct)"
+                  height="6" rounded
+                  style="max-width: 100px;"
+                />
               </div>
             </div>
-          </v-card-text>
-        </v-card>
+
+            <!-- 电池电压 -->
+            <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+              <span class="text-caption text-medium-emphasis">电池电压</span>
+              <div class="text-body-2 font-weight-medium">
+                {{ power.state ? (power.state.battery_mv / 1000).toFixed(2) + ' V' : '--' }}
+              </div>
+            </div>
+
+            <!-- 系统电压 -->
+            <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+              <span class="text-caption text-medium-emphasis">系统电压</span>
+              <div class="text-body-2 font-weight-medium">
+                {{ power.state ? (power.state.sys_mv / 1000).toFixed(2) + ' V' : '--' }}
+              </div>
+            </div>
+
+            <!-- 充电状态 -->
+            <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+              <span class="text-caption text-medium-emphasis">充电状态</span>
+              <v-chip
+                v-if="power.state"
+                :color="chargeColor(power.state.charge)"
+                size="small" variant="tonal" class="mt-1"
+              >
+                {{ chargeLabel(power.state.charge) }}
+              </v-chip>
+              <span v-else class="text-caption text-grey">--</span>
+            </div>
+
+            <!-- 充电电流 -->
+            <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+              <span class="text-caption text-medium-emphasis">充电电流</span>
+              <div class="text-body-2 font-weight-medium">
+                {{ power.state ? power.state.charge_current_ma + ' mA' : '--' }}
+              </div>
+            </div>
+
+            <!-- 电流上限 (输入电流限制, 单位 A) -->
+            <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
+              <span class="text-caption text-medium-emphasis">电流上限</span>
+              <div class="text-body-2 font-weight-medium">
+                {{ power.state ? (power.state.idpm_limit_ma / 1000).toFixed(2) + ' A' : '--' }}
+              </div>
+            </div>
+          </div>
+        </v-sheet>
       </v-col>
 
       <!-- 空闲关机设置卡片 -->
       <v-col cols="12" md="6">
-        <v-card variant="tonal">
-          <v-card-item>
-            <template #prepend>
-              <v-icon color="primary">mdi-timer-cog</v-icon>
-            </template>
-            <v-card-title class="text-subtitle-1">空闲关机设置</v-card-title>
-            <template #append>
-              <v-chip v-if="cfgDirty" color="warning" size="x-small" variant="tonal">已修改</v-chip>
-              <v-chip v-if="cfgOk" color="success" size="x-small" variant="tonal">{{ cfgOk }}</v-chip>
-              <v-chip v-if="cfgErr" color="error" size="x-small" variant="tonal">{{ cfgErr }}</v-chip>
-            </template>
-          </v-card-item>
-
-          <v-card-text>
-            <div class="d-flex flex-column ga-4">
-              <!-- 空闲警告时间 -->
-              <div>
-                <label class="text-caption text-medium-emphasis d-flex align-center ga-1 mb-1">
-                  <v-icon size="16">mdi-bell</v-icon>
-                  空闲警告时间 (秒)
-                </label>
-                <div class="d-flex align-center ga-2">
-                  <v-text-field
-                    v-model.number="warnSec"
-                    type="number"
-                    :min="10"
-                    :max="shutdownSec - 10"
-                    density="compact"
-                    variant="outlined"
-                    hide-details
-                    style="max-width: 120px;"
-                  />
-                  <span class="text-caption text-medium-emphasis">≈ {{ fmtSeconds(warnSec) }}</span>
-                </div>
-                <div class="text-caption text-disabled mt-1">LED 慢闪 + 蜂鸣器提醒</div>
-              </div>
-
-              <!-- 关机超时时间 -->
-              <div>
-                <label class="text-caption text-medium-emphasis d-flex align-center ga-1 mb-1">
-                  <v-icon size="16">mdi-power</v-icon>
-                  关机超时时间 (秒)
-                </label>
-                <div class="d-flex align-center ga-2">
-                  <v-text-field
-                    v-model.number="shutdownSec"
-                    type="number"
-                    :min="warnSec + 10"
-                    :max="3600"
-                    density="compact"
-                    variant="outlined"
-                    hide-details
-                    style="max-width: 120px;"
-                  />
-                  <span class="text-caption text-medium-emphasis">≈ {{ fmtSeconds(shutdownSec) }}</span>
-                </div>
-                <div class="text-caption text-disabled mt-1">LED 倒计时后 Deep Sleep 关机</div>
-              </div>
+        <v-sheet rounded="lg" class="pa-3 mb-3">
+          <div class="card-head">
+            <div class="card-title-row">
+              <v-icon color="primary" class="me-2">mdi-timer-cog</v-icon>
+              <span class="text-subtitle-1 font-weight-bold">空闲关机设置</span>
             </div>
-          </v-card-text>
+            <div class="card-badges">
+              <v-chip v-if="cfgDirty" color="warning" size="x-small" variant="tonal">已修改</v-chip>
+            </div>
+          </div>
 
-          <v-card-actions class="pa-4 pt-0">
-            <v-btn
-              color="success" size="small" variant="tonal"
-              :disabled="!cfgDirty"
-              :loading="power.loading"
-              prepend-icon="mdi-content-save"
-              @click="saveSettings"
-            >
-              保存到设备
-            </v-btn>
-          </v-card-actions>
-        </v-card>
+          <div class="d-flex flex-column ga-4 mt-2">
+            <!-- 空闲警告时间 -->
+            <div>
+              <label class="text-caption text-medium-emphasis d-flex align-center ga-1 mb-1">
+                <v-icon size="16">mdi-bell</v-icon>
+                空闲警告时间 (秒)
+              </label>
+              <div class="d-flex align-center ga-2">
+                <v-text-field
+                  v-model.number="warnSec"
+                  type="number"
+                  :min="10"
+                  :max="shutdownSec - 10"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  style="max-width: 120px;"
+                />
+                <span class="text-caption text-medium-emphasis">≈ {{ fmtSeconds(warnSec) }}</span>
+              </div>
+              <div class="text-caption text-disabled mt-1">LED 慢闪 + 蜂鸣器提醒</div>
+            </div>
+
+            <!-- 关机超时时间 -->
+            <div>
+              <label class="text-caption text-medium-emphasis d-flex align-center ga-1 mb-1">
+                <v-icon size="16">mdi-power</v-icon>
+                关机超时时间 (秒)
+              </label>
+              <div class="d-flex align-center ga-2">
+                <v-text-field
+                  v-model.number="shutdownSec"
+                  type="number"
+                  :min="warnSec + 10"
+                  :max="3600"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  style="max-width: 120px;"
+                />
+                <span class="text-caption text-medium-emphasis">≈ {{ fmtSeconds(shutdownSec) }}</span>
+              </div>
+              <div class="text-caption text-disabled mt-1">LED 倒计时后 Deep Sleep 关机</div>
+            </div>
+          </div>
+        </v-sheet>
       </v-col>
 
       <!-- 调试模式卡片 -->
       <v-col cols="12" md="6">
-        <v-card variant="tonal" :color="power.debugMode ? 'warning' : undefined">
-          <v-card-item>
-            <template #prepend>
-              <v-icon :color="power.debugMode ? 'warning' : 'grey'">mdi-bug</v-icon>
-            </template>
-            <v-card-title class="text-subtitle-1">调试模式</v-card-title>
-            <template #append>
+        <v-sheet rounded="lg" class="pa-3 mb-3" :color="power.debugMode ? 'warning' : undefined">
+          <div class="card-head">
+            <div class="card-title-row">
+              <v-icon :color="power.debugMode ? 'warning' : 'grey'" class="me-2">mdi-bug</v-icon>
+              <span class="text-subtitle-1 font-weight-bold">调试模式</span>
+            </div>
+            <div class="card-badges">
               <v-switch
                 v-model="debugSwitch"
                 :color="power.debugMode ? 'warning' : undefined"
@@ -206,10 +200,10 @@
                 inset
                 @update:model-value="toggleDebugMode"
               />
-            </template>
-          </v-card-item>
+            </div>
+          </div>
 
-          <v-card-text>
+          <div class="mt-2">
             <v-alert
               v-if="power.debugMode"
               color="warning"
@@ -225,21 +219,21 @@
               开启后，USB 供电和串口通讯将不阻止空闲关机，
               方便调试验证超时关机功能。
             </p>
-          </v-card-text>
-        </v-card>
+          </div>
+        </v-sheet>
       </v-col>
 
       <!-- 恢复出厂设置卡片 -->
       <v-col cols="12" md="6">
-        <v-card variant="tonal" color="error">
-          <v-card-item>
-            <template #prepend>
-              <v-icon color="error">mdi-alert-octagram</v-icon>
-            </template>
-            <v-card-title class="text-subtitle-1">恢复出厂设置</v-card-title>
-          </v-card-item>
+        <v-sheet rounded="lg" class="pa-3 mb-3">
+          <div class="card-head">
+            <div class="card-title-row">
+              <v-icon color="error" class="me-2">mdi-alert-octagram</v-icon>
+              <span class="text-subtitle-1 font-weight-bold">恢复出厂设置</span>
+            </div>
+          </div>
 
-          <v-card-text>
+          <div class="mt-2">
             <v-alert color="error" variant="tonal" density="compact" class="mb-2">
               此操作会直接抹除 NVS 分区全部数据（模型配置、校准、电源设置等），且不可恢复。
             </v-alert>
@@ -253,22 +247,22 @@
             <v-alert v-else-if="factoryResetMsg" color="success" variant="tonal" density="compact" class="mt-3">
               {{ factoryResetMsg }}
             </v-alert>
-          </v-card-text>
 
-          <v-card-actions class="pa-4 pt-0">
-            <v-btn
-              color="error"
-              size="small"
-              variant="tonal"
-              prepend-icon="mdi-delete-alert"
-              :disabled="!serial.connected || factoryResetBusy"
-              :loading="factoryResetBusy"
-              @click="factoryResetDialog = true"
-            >
-              抹除 NVS 并重启
-            </v-btn>
-          </v-card-actions>
-        </v-card>
+            <div class="mt-3">
+              <v-btn
+                color="error"
+                size="small"
+                variant="tonal"
+                prepend-icon="mdi-delete-alert"
+                :disabled="!serial.connected || factoryResetBusy"
+                :loading="factoryResetBusy"
+                @click="factoryResetDialog = true"
+              >
+                抹除 NVS 并重启
+              </v-btn>
+            </div>
+          </div>
+        </v-sheet>
       </v-col>
     </v-row>
 
@@ -294,6 +288,18 @@
     </v-dialog>
 
     <FirmwareUpgradeDialog v-model="upgradeDialog" />
+
+    <!-- 底栏操作按钮: Teleport 到全局底栏右侧槽 (App.vue) -->
+    <Teleport to="#global-footer-right">
+      <v-btn v-if="serial.connected && cfgDirty" class="btn-secondary me-2" prepend-icon="mdi-content-save"
+        size="small" :loading="power.loading" @click="saveSettings">
+        <span class="btn-text">保存到设备</span>
+      </v-btn>
+      <v-btn v-if="serial.connected" class="btn-secondary" prepend-icon="mdi-upload-network"
+        size="small" @click="upgradeDialog = true">
+        <span class="btn-text">固件升级</span>
+      </v-btn>
+    </Teleport>
   </div>
 </template>
 
@@ -301,11 +307,13 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import { usePowerStore } from '@/stores/power'
+import { useConfigStore } from '@/stores/config'
 import { serialService } from '@/services/SerialService'
 import FirmwareUpgradeDialog from '@/components/FirmwareUpgradeDialog.vue'
 
 const serial = useSerialStore()
 const power = usePowerStore()
+const configStore = useConfigStore()
 
 // ========== 固件升级对话框 ==========
 const upgradeDialog = ref(false)
@@ -332,9 +340,11 @@ function stopPoll() {
 const warnSec = ref(power.cfg.idle_warning_s)
 const shutdownSec = ref(power.cfg.idle_shutdown_s)
 const cfgDirty = ref(false)
-const cfgOk = ref('')
-const cfgErr = ref('')
 const stateError = ref('')
+
+// ========== 操作提示 (snackbar) ==========
+const snackbarVisible = ref(false)
+const snackbarMsg = ref('')
 
 // ========== 调试模式 ==========
 const debugSwitch = ref(power.debugMode)
@@ -430,8 +440,6 @@ watch(() => power.cfg, (c) => {
 watch([warnSec, shutdownSec], () => {
   const c = power.cfg
   cfgDirty.value = warnSec.value !== c.idle_warning_s || shutdownSec.value !== c.idle_shutdown_s
-  cfgOk.value = ''
-  cfgErr.value = ''
 })
 
 /** 进入页面/连接建立后：拉取配置并启动轮询 */
@@ -450,15 +458,17 @@ watch(() => serial.connected, (connected) => {
 })
 
 async function reloadAll() {
-  cfgOk.value = ''; cfgErr.value = ''; stateError.value = ''
+  stateError.value = ''
   try {
     await power.fetchCfg()
+    await configStore.fetchDeviceInfo()
     warnSec.value = power.cfg.idle_warning_s
     shutdownSec.value = power.cfg.idle_shutdown_s
     cfgDirty.value = false
     startPoll()
   } catch {
-    cfgErr.value = '加载配置失败'
+    snackbarMsg.value = '配置加载失败'
+    snackbarVisible.value = true
   }
 }
 
@@ -472,17 +482,17 @@ async function onGlobalReload() {
 }
 
 async function saveSettings() {
-  cfgOk.value = ''; cfgErr.value = ''
   try {
     await power.saveCfg({
       idle_warning_s: warnSec.value,
       idle_shutdown_s: shutdownSec.value,
     })
     cfgDirty.value = false
-    cfgOk.value = '保存成功'
-    setTimeout(() => { cfgOk.value = '' }, 3000)
+    snackbarMsg.value = '设置已保存到设备'
+    snackbarVisible.value = true
   } catch {
-    cfgErr.value = '保存失败'
+    snackbarMsg.value = '保存失败，请重试'
+    snackbarVisible.value = true
   }
 }
 
@@ -532,12 +542,62 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* ── 页面布局 (与 config 页一致) ── */
+.system-page {
+  padding: 0 16px 96px;
+}
+
+/* 顶部工具栏保持原边缘对齐, 内容区仍缩进 16px */
+.system-page > .v-toolbar {
+  margin: 0 -16px;
+}
+
+/* 页面标题左侧主题色高亮 */
+.page-title {
+  border-left: 4px solid rgb(var(--v-theme-primary));
+  padding-left: 12px;
+}
+
+/* 卡片头部: 左标题 + 右状态 */
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.card-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 底栏次要按钮: 深色底 + 白字 (与 config 页一致) */
+.btn-secondary {
+  background-color: rgb(var(--v-theme-surface-variant)) !important;
+  color: #fff !important;
+}
+
+/* 窄屏隐藏按钮文字只留图标 */
+@media (max-width: 600px) {
+  .btn-text {
+    display: none;
+  }
+}
+
 .stat-item {
   padding: 8px 4px;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
+
 .gap-row {
   column-gap: 16px;
   row-gap: 8px;

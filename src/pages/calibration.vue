@@ -5,9 +5,6 @@
         <v-icon class="mr-2">mdi-chip</v-icon>
         传感器
       </v-toolbar-title>
-      <v-spacer />
-      <v-btn v-if="serial.connected" color="primary" prepend-icon="mdi-help-circle"
-        size="small" variant="tonal" @click="guideOpen = true">校准</v-btn>
     </v-toolbar>
 
     <!-- 未连接 -->
@@ -16,9 +13,17 @@
       请先连接设备以查看传感器数据
     </v-alert>
 
-    <CalWizard v-if="serial.connected" />
     <OutputCurvePanel v-if="serial.connected" />
+    <CalWizard v-if="serial.connected" />
     <CalStepperGuide v-if="serial.connected" v-model="guideOpen" />
+
+    <!-- 校准按钮: Teleport 到全局底栏左侧槽 (App.vue) -->
+    <Teleport to="#global-footer-left">
+      <v-btn v-if="serial.connected" color="primary" prepend-icon="mdi-help-circle" size="small"
+        variant="tonal" @click="guideOpen = true">
+        校准
+      </v-btn>
+    </Teleport>
   </div>
 </template>
 

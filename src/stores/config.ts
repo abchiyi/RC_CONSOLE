@@ -14,6 +14,8 @@ export interface InputSourceInfo {
 
 export interface DeviceInfo {
   device: string
+  fw_version?: string      // 软件版本（固件）
+  hw_version?: string      // 硬件版本
   model_count: number
   channel_count: number
   input_sources: InputSourceInfo[]
@@ -67,7 +69,7 @@ export interface ModelChannel {
 export interface ModelConfig {
   name: string
   channels: ModelChannel[]
-  // 模型级输出响应曲线总开关: 开启后模型所有连续量通道输出应用对应源的 OpenTX 5 点曲线
+  // 模型级输出响应曲线总开关: 开启后模型所有连续量通道输出应用对应源的响应曲线
   curve_enabled: boolean
 }
 

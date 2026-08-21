@@ -30,7 +30,7 @@
             <v-switch v-model="modelCurveEnabled" color="primary" density="compact" hide-details />
           </div>
           <div class="text-caption text-medium-emphasis mt-1">
-            开启后本模型所有连续量通道的输出按「传感器」页对应输入源的 OpenTX 5 点曲线整形；关闭时输出原始输入。默认开启。
+            开启后连续量通道输出按「传感器」页对应曲线整形；关闭则原样输出。默认开启。
           </div>
         </v-sheet>
 

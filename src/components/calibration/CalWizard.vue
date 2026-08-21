@@ -106,54 +106,6 @@
           </div>
         </div>
 
-        <!-- 静置抖动观察: Roll/Pitch 实时角度条 (固定 ±10° 窗口) -->
-        <div class="range-meter mt-3">
-          <div class="mb-2">
-            <div class="range-scale d-flex text-caption text-medium-emphasis mb-1">
-              <span class="mono">-10°</span>
-              <v-spacer />
-              <span class="mono text-warning">0°</span>
-              <v-spacer />
-              <span class="mono">+10°</span>
-            </div>
-            <div class="range-track">
-              <div class="range-fill" :style="{ width: imuPercent(imu.roll) + '%', background: 'linear-gradient(90deg, rgb(var(--v-theme-warning)), #ffc107)' }" />
-              <div class="range-center" style="left: 50%" />
-              <div class="range-thumb" :style="{ left: imuPercent(imu.roll) + '%' }">
-                <div class="range-thumb-dot" />
-              </div>
-            </div>
-            <div class="d-flex mt-1 align-baseline">
-              <span class="text-caption text-medium-emphasis mr-2">Roll</span>
-              <span class="mono font-weight-bold">{{ fmtDeg(imu.roll) }}</span>
-            </div>
-          </div>
-          <div>
-            <div class="range-scale d-flex text-caption text-medium-emphasis mb-1">
-              <span class="mono">-10°</span>
-              <v-spacer />
-              <span class="mono text-warning">0°</span>
-              <v-spacer />
-              <span class="mono">+10°</span>
-            </div>
-            <div class="range-track">
-              <div class="range-fill" :style="{ width: imuPercent(imu.pitch) + '%', background: 'linear-gradient(90deg, rgb(var(--v-theme-warning)), #ffc107)' }" />
-              <div class="range-center" style="left: 50%" />
-              <div class="range-thumb" :style="{ left: imuPercent(imu.pitch) + '%' }">
-                <div class="range-thumb-dot" />
-              </div>
-            </div>
-            <div class="d-flex mt-1 align-baseline">
-              <span class="text-caption text-medium-emphasis mr-2">Pitch</span>
-              <span class="mono font-weight-bold">{{ fmtDeg(imu.pitch) }}</span>
-            </div>
-          </div>
-        </div>
-        <div class="cal-hint">
-          <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
-          <span>静置观察 Roll/Pitch 抖动幅度，通道死区需罩住抖动范围，防止静止时通道跳动</span>
-        </div>
-
         <v-progress-linear v-if="runningType === 'imu'" :model-value="calProgress" color="warning" class="mt-3"
           height="6" rounded />
         <v-alert v-if="lastMessage && lastType === 'imu'" class="mt-3 py-1" density="compact"
@@ -443,13 +395,6 @@ function centerPercent(data: AdcCal): number {
   const range = raw_max - raw_min
   if (range <= 0) return 50
   return ((raw_center - raw_min) / range) * 100
-}
-
-/** IMU 抖动条: 固定 ±10° 窗口, 聚焦静置抖动 */
-const IMU_RANGE = 10
-function imuPercent(v?: number): number {
-  if (v === undefined || v === null) return 50
-  return Math.max(0, Math.min(100, ((v + IMU_RANGE) / (2 * IMU_RANGE)) * 100))
 }
 
 /** 死区高亮段样式: 以中心线为对称轴, 半宽 = deadzone/范围 */
