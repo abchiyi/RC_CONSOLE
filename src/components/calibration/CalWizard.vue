@@ -9,7 +9,7 @@
           </v-avatar>
         </template>
         <v-card-title>
-          IMU 校准
+          IMU
         </v-card-title>
         <v-card-subtitle>将设备静置后校准陀螺仪零偏</v-card-subtitle>
         <template #append>
@@ -134,7 +134,7 @@
           </v-avatar>
         </template>
         <v-card-title>
-          扳机校准
+          扳机
         </v-card-title>
         <v-card-subtitle>校准扳机 (Trigger) 的零位与行程范围</v-card-subtitle>
         <template #append>
@@ -221,7 +221,7 @@
           </v-avatar>
         </template>
         <v-card-title>
-          摇杆校准
+          摇杆
         </v-card-title>
         <v-card-subtitle>摇杆实时位置与行程范围 (校准在弹窗中进行)</v-card-subtitle>
         <template #append>
@@ -893,7 +893,17 @@ function fmtRate(v?: number): string {
 }
 
 // --- 生命周期 ---
+/** 全局底栏「从设备加载」: 重新拉取校准数据, 完成后回报 App 关闭全局按钮 loading */
+async function onGlobalReload() {
+  try {
+    await calStore.fetchCalData()
+  } finally {
+    window.dispatchEvent(new CustomEvent('app:reload-done'))
+  }
+}
+
 onMounted(async () => {
+  window.addEventListener('app:reload-from-device', onGlobalReload)
   // 先停通道流，让校准流独占流会话（固件单流会话，后发覆盖先发，避免 ct=0/ct=1 互相覆盖）
   await chStore.stopPolling()
   // 获取初始校准数据
@@ -905,6 +915,7 @@ onMounted(async () => {
 })
 
 onUnmounted(async () => {
+  window.removeEventListener('app:reload-from-device', onGlobalReload)
   cancelAnimationFrame(rafId)
   calStore.stopTimers()
   calStore.stopCalDataPolling()

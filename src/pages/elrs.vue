@@ -7,18 +7,6 @@
       </v-toolbar-title>
 
       <v-spacer />
-
-      <v-btn
-        v-if="serial.connected"
-        color="primary"
-        prepend-icon="mdi-database-refresh"
-        size="small"
-        variant="tonal"
-        :loading="link.dynPwrLoading"
-        @click="refreshElrsFields"
-      >
-        重新扫描字段
-      </v-btn>
     </v-toolbar>
 
     <v-alert v-if="!serial.connected" class="ma-3" color="info" icon="mdi-information" variant="tonal">
@@ -351,6 +339,15 @@ async function autoLoadFields() {
   dynPwrSwitch.value = link.dynPowerOn ?? false
 }
 
+/** 全局底栏「从设备加载」: 重新扫描字段 (清空固件缓存强制重建), 完成后回报 App 关闭全局按钮 loading */
+async function onGlobalReload() {
+  try {
+    await refreshElrsFields()
+  } finally {
+    window.dispatchEvent(new CustomEvent('app:reload-done'))
+  }
+}
+
 async function toggleDynPower(v: boolean | null) {
   dynPwrToggling.value = true
   elrsMsg.value = ''
@@ -388,9 +385,13 @@ watch(() => serial.connected, (connected) => {
   if (connected) enterPage()
 })
 
-onMounted(enterPage)
+onMounted(() => {
+  enterPage()
+  window.addEventListener('app:reload-from-device', onGlobalReload)
+})
 
 onUnmounted(async () => {
+  window.removeEventListener('app:reload-from-device', onGlobalReload)
   if (!serial.connected) return
   await link.stopLinkStream()      // 离开页面停止链路流
   await chStore.startPolling()     // 恢复通道流

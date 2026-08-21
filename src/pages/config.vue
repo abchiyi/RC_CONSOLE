@@ -313,28 +313,22 @@
 
     </v-row>
 
-    <!-- 底栏: 行为/宽度与顶栏一致 (自动避开抽屉, 抽屉开合时跟随) -->
-    <v-app-bar v-if="serial.connected" location="bottom" color="surface" density="compact" elevation="1"
-      class="px-3">
+    <!-- 底栏操作按钮: Teleport 到全局底栏右侧槽 (App.vue), 显示由全局容器统一控制 -->
+    <Teleport to="#global-footer-right">
       <template v-if="(configStore.modelCount ?? 0) > 1">
-        <v-select v-model="selectedSlot" class="model-select ml-3" :items="modelOptions" item-title="title"
+        <v-select v-model="selectedSlot" class="model-select me-2" :items="modelOptions" item-title="title"
           item-value="value" density="compact" variant="outlined" hide-details
           @update:model-value="onSlotSelect" />
       </template>
-      <v-spacer />
       <v-btn v-if="configStore.config" class="btn-secondary me-2" prepend-icon="mdi-check-circle" size="small"
-        rounded="lg" :disabled="selectedSlot === configStore.config.active_model" @click="activateModel">
+        :disabled="selectedSlot === configStore.config.active_model" @click="activateModel">
         <span class="btn-text">设为默认</span>
       </v-btn>
-      <v-btn class="btn-secondary me-2" prepend-icon="mdi-download" size="small" rounded="lg"
-        :loading="configStore.loading" @click="loadFromDevice">
-        <span class="btn-text">从设备加载</span>
-      </v-btn>
       <v-btn v-if="configStore.config" class="btn-primary" prepend-icon="mdi-content-save" size="small"
-        rounded="lg" :loading="savingModel" @click="saveModel">
+        :loading="savingModel" @click="saveModel">
         <span class="btn-text">保存到设备</span>
       </v-btn>
-    </v-app-bar>
+    </Teleport>
   </div>
 </template>
 
@@ -791,6 +785,15 @@ async function loadFromDevice(): Promise<void> {
   }
 }
 
+/** 全局底栏「从设备加载」: 复用本页加载逻辑, 完成后回报 App 关闭全局按钮 loading */
+async function onGlobalReload() {
+  try {
+    await loadFromDevice()
+  } finally {
+    window.dispatchEvent(new CustomEvent('app:reload-done'))
+  }
+}
+
 async function saveCurrentModel(): Promise<boolean> {
   const name = configStore.config?.models?.[selectedSlot.value]?.name || ''
   // 将 μs 转回 CRSF raw 再发送到固件
@@ -899,6 +902,7 @@ async function enterPage(): Promise<void> {
 // 进入页面自动轮询 + 自动加载配置，离开页面停止
 onMounted(() => {
   window.addEventListener('resize', onWindowResize)
+  window.addEventListener('app:reload-from-device', onGlobalReload)
   if (serial.connected && !chStore.polling) chStore.startPolling()
   if (CHANNEL_LINK_ONLY) return  // 调试: 仅保留通道监视, 暂停自动加载
   enterPage()
@@ -933,6 +937,7 @@ watch(() => editChannels.map((c) => c.output_center).join(','), () => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', onWindowResize)
+  window.removeEventListener('app:reload-from-device', onGlobalReload)
   chStore.stopPolling()
 })
 </script>

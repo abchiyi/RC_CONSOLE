@@ -8,10 +8,6 @@
 
       <v-spacer />
 
-      <v-btn v-if="serial.connected" class="mr-2" color="primary" prepend-icon="mdi-reload"
-        size="small" variant="tonal" @click="reloadAll" :loading="power.loading">
-        重新加载
-      </v-btn>
       <v-btn v-if="serial.connected && cfgDirty" color="success" prepend-icon="mdi-content-save"
         size="small" variant="tonal" @click="saveSettings" :loading="power.loading">
         保存到设备
@@ -187,14 +183,6 @@
               @click="saveSettings"
             >
               保存到设备
-            </v-btn>
-            <v-btn
-              color="primary" size="small" variant="text"
-              :loading="power.loading"
-              prepend-icon="mdi-reload"
-              @click="reloadSettings"
-            >
-              重新加载
             </v-btn>
           </v-card-actions>
         </v-card>
@@ -474,15 +462,12 @@ async function reloadAll() {
   }
 }
 
-async function reloadSettings() {
-  cfgOk.value = ''; cfgErr.value = ''
+/** 全局底栏「从设备加载」: 复用本页加载逻辑, 完成后回报 App 关闭全局按钮 loading */
+async function onGlobalReload() {
   try {
-    await power.fetchCfg()
-    warnSec.value = power.cfg.idle_warning_s
-    shutdownSec.value = power.cfg.idle_shutdown_s
-    cfgDirty.value = false
-  } catch {
-    cfgErr.value = '加载配置失败'
+    await reloadAll()
+  } finally {
+    window.dispatchEvent(new CustomEvent('app:reload-done'))
   }
 }
 
@@ -537,10 +522,12 @@ function chargeLabel(c: string): string {
 
 onMounted(() => {
   if (serial.connected) enterPage()
+  window.addEventListener('app:reload-from-device', onGlobalReload)
 })
 
 onUnmounted(() => {
   stopPoll()
+  window.removeEventListener('app:reload-from-device', onGlobalReload)
 })
 </script>
 
