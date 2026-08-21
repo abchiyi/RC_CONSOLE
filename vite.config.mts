@@ -10,7 +10,7 @@ import { fileURLToPath, URL } from 'node:url'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: './',  // Electron 需要相对路径，否则资源加载失败
+  base: './', // GitHub Pages / Electron 需要相对路径，否则资源加载失败
   plugins: [
     VueRouter({
       dts: 'src/typed-router.d.ts',
