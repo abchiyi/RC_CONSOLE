@@ -5,6 +5,9 @@
         <v-icon class="mr-2">mdi-chip</v-icon>
         传感器
       </v-toolbar-title>
+      <v-spacer />
+      <v-btn v-if="serial.connected" color="primary" prepend-icon="mdi-wizard-hat"
+        size="small" variant="tonal" @click="guideOpen = true">校准</v-btn>
     </v-toolbar>
 
     <!-- 未连接 -->
@@ -14,14 +17,18 @@
     </v-alert>
 
     <CalWizard v-if="serial.connected" />
+    <CalStepperGuide v-if="serial.connected" v-model="guideOpen" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import CalWizard from '@/components/calibration/CalWizard.vue'
+import CalStepperGuide from '@/components/calibration/CalStepperGuide.vue'
 
 const serial = useSerialStore()
+const guideOpen = ref(false)
 </script>
 
 <style scoped>

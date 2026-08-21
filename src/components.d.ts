@@ -12,6 +12,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AppBar: typeof import('./components/AppBar.vue')['default']
+    CalStepperGuide: typeof import('./components/calibration/CalStepperGuide.vue')['default']
     CalWizard: typeof import('./components/calibration/CalWizard.vue')['default']
     ChannelGrid: typeof import('./components/channel/ChannelGrid.vue')['default']
     ElrsFieldTree: typeof import('./components/elrs/ElrsFieldTree.vue')['default']
