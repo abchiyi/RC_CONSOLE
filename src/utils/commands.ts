@@ -594,12 +594,29 @@ export function unpack11bit(data: Uint8Array, count: number): number[] {
   return out
 }
 
-/** RAW+IMU 事件：u16 trigger, u16 joy_x, u16 joy_y, i16 roll/pitch/yaw（×100 定点） */
+/** RAW+IMU 事件：u16 trigger, u16 joy_x, u16 joy_y, i16 roll/pitch/yaw, i16 acc_x/y/z, i16 rate_x/y/z（×100/×10 定点）。
+ *  固件 acc/rate 为传感器原始轴，这里按 AHRS installMap {2,0,1} 重映射：新X←原Z, 新Y←原X, 新Z←原Y */
 function decodeRawImu(bytes: Uint8Array): Record<string, unknown> {
   const r = new Reader(bytes)
+  const raw = { trigger: r.u16(), joy_x: r.u16(), joy_y: r.u16() }
+  const roll = r.i16() / 100
+  const pitch = r.i16() / 100
+  const yaw = r.i16() / 100
+  const accX = r.i16() / 100
+  const accY = r.i16() / 100
+  const accZ = r.i16() / 100
+  const rateX = r.i16() / 10
+  const rateY = r.i16() / 10
+  const rateZ = r.i16() / 10
   return {
-    raw: { trigger: r.u16(), joy_x: r.u16(), joy_y: r.u16() },
-    imu: { roll: r.i16() / 100, pitch: r.i16() / 100, yaw: r.i16() / 100 },
+    raw,
+    imu: {
+      roll,
+      pitch,
+      yaw,
+      acc: { x: accZ, y: accX, z: accY },     // 轴映射 {2,0,1}
+      rate: { x: rateZ, y: rateX, z: rateY }, // 轴映射 {2,0,1}
+    },
   }
 }
 

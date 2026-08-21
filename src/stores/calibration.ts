@@ -19,6 +19,8 @@ export interface ImuCal {
   roll?: number
   pitch?: number
   yaw?: number
+  acc?: { x?: number; y?: number; z?: number }
+  rate?: { x?: number; y?: number; z?: number }
   gyro_bias_x?: number
   gyro_bias_y?: number
   gyro_bias_z?: number
@@ -212,6 +214,8 @@ export const useCalibrationStore = defineStore('calibration', () => {
       if (data.imu.roll !== undefined) imu.roll = data.imu.roll
       if (data.imu.pitch !== undefined) imu.pitch = data.imu.pitch
       if (data.imu.yaw !== undefined) imu.yaw = data.imu.yaw
+      if (data.imu.acc) imu.acc = { ...data.imu.acc }
+      if (data.imu.rate) imu.rate = { ...data.imu.rate }
     }
   }
 

@@ -21,38 +21,76 @@
       </v-card-item>
 
       <v-card-text>
-        <!-- 3D 姿态画布: 网格背景 + 手柄模型 -->
-        <canvas ref="imuCanvas" class="imu-canvas" width="480" height="360" />
+        <!-- IMU 姿态: 宽屏左右布局 (视窗 | 读数), 窄屏上下布局 -->
+        <div class="imu-layout">
+          <!-- 3D 姿态画布: 网格背景 + 手柄模型 -->
+          <div class="imu-canvas-wrap">
+            <canvas ref="imuCanvas" class="imu-canvas" width="480" height="360" />
+          </div>
 
-        <div class="stat-grid mt-3">
-          <div class="stat-col text-center">
-            <div class="text-caption text-medium-emphasis mb-1">Roll</div>
-            <div class="mono text-h6 font-weight-bold">{{ fmtDeg(imu.roll) }}</div>
-          </div>
-          <div class="stat-col text-center">
-            <div class="text-caption text-medium-emphasis mb-1">Pitch</div>
-            <div class="mono text-h6 font-weight-bold">{{ fmtDeg(imu.pitch) }}</div>
-          </div>
-          <div class="stat-col text-center">
-            <div class="text-caption text-medium-emphasis mb-1">Yaw</div>
-            <div class="mono text-h6 font-weight-bold">{{ fmtDeg(imu.yaw) }}</div>
+          <!-- 右侧数据面板: 基础角度 | 加速度 | 角速度 | 零偏移 -->
+          <div class="imu-panel">
+            <div class="imu-panel-title">基础角度</div>
+            <div class="stat-grid">
+              <div class="stat-col text-center">
+                <div class="text-caption text-medium-emphasis mb-1">Roll</div>
+                <div class="mono text-h6 font-weight-bold">{{ fmtDeg(imu.roll) }}</div>
+              </div>
+              <div class="stat-col text-center">
+                <div class="text-caption text-medium-emphasis mb-1">Pitch</div>
+                <div class="mono text-h6 font-weight-bold">{{ fmtDeg(imu.pitch) }}</div>
+              </div>
+              <div class="stat-col text-center">
+                <div class="text-caption text-medium-emphasis mb-1">Yaw</div>
+                <div class="mono text-h6 font-weight-bold">{{ fmtDeg(imu.yaw) }}</div>
+              </div>
+            </div>
+            <v-divider class="my-2" opacity="0.2" />
+
+            <div class="imu-panel-title">加速度</div>
+            <div class="stat-grid">
+              <div class="stat-col">
+                <span class="text-caption">X: <span class="mono">{{ fmtG(imu.acc?.x) }}</span></span>
+              </div>
+              <div class="stat-col">
+                <span class="text-caption">Y: <span class="mono">{{ fmtG(imu.acc?.y) }}</span></span>
+              </div>
+              <div class="stat-col">
+                <span class="text-caption">Z: <span class="mono">{{ fmtG(imu.acc?.z) }}</span></span>
+              </div>
+            </div>
+            <v-divider class="my-2" opacity="0.2" />
+
+            <div class="imu-panel-title">角速度</div>
+            <div class="stat-grid">
+              <div class="stat-col">
+                <span class="text-caption">X: <span class="mono">{{ fmtRate(imu.rate?.x) }}</span></span>
+              </div>
+              <div class="stat-col">
+                <span class="text-caption">Y: <span class="mono">{{ fmtRate(imu.rate?.y) }}</span></span>
+              </div>
+              <div class="stat-col">
+                <span class="text-caption">Z: <span class="mono">{{ fmtRate(imu.rate?.z) }}</span></span>
+              </div>
+            </div>
+            <v-divider class="my-2" opacity="0.2" />
+
+            <div class="imu-panel-title">零偏移</div>
+            <div class="stat-grid">
+              <div class="stat-col">
+                <span class="text-caption">X: <span class="mono">{{ fmtBias(imu.gyro_bias_x) }}</span></span>
+              </div>
+              <div class="stat-col">
+                <span class="text-caption">Y: <span class="mono">{{ fmtBias(imu.gyro_bias_y) }}</span></span>
+              </div>
+              <div class="stat-col">
+                <span class="text-caption">Z: <span class="mono">{{ fmtBias(imu.gyro_bias_z) }}</span></span>
+              </div>
+            </div>
           </div>
         </div>
 
         <v-divider class="my-3" opacity="0.4" />
-
-        <div class="text-caption text-medium-emphasis mb-1">陀螺零偏</div>
-        <div class="stat-grid">
-          <div class="stat-col">
-            <span class="text-caption">X: <span class="mono">{{ fmtBias(imu.gyro_bias_x) }}</span></span>
-          </div>
-          <div class="stat-col">
-            <span class="text-caption">Y: <span class="mono">{{ fmtBias(imu.gyro_bias_y) }}</span></span>
-          </div>
-          <div class="stat-col">
-            <span class="text-caption">Z: <span class="mono">{{ fmtBias(imu.gyro_bias_z) }}</span></span>
-          </div>
-        </div>
 
         <v-progress-linear v-if="runningType === 'imu'" :model-value="calProgress" color="warning" class="mt-3"
           height="6" rounded />
@@ -827,6 +865,14 @@ function fmtBias(v?: number): string {
   if (v === undefined || v === null) return '--'
   return v.toFixed(4)
 }
+function fmtG(v?: number): string {
+  if (v === undefined || v === null) return '--'
+  return v.toFixed(2) + ' g'
+}
+function fmtRate(v?: number): string {
+  if (v === undefined || v === null) return '--'
+  return v.toFixed(1) + ' °/s'
+}
 
 // --- 生命周期 ---
 onMounted(async () => {
@@ -1012,14 +1058,62 @@ onUnmounted(async () => {
   background: rgba(255, 255, 255, 0.04);
 }
 
+/* IMU 姿态布局: 窄屏上下 (视窗在上, 读数在下), 宽屏左右 */
+.imu-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.imu-canvas-wrap {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+
 /* IMU 3D 姿态画布 */
 .imu-canvas {
   display: block;
   width: 100%;
+  max-width: 640px;      /* 限制最大尺寸, 避免宽屏拉伸模糊 (内部 480px, 2x DPR 内清晰) */
   height: auto;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* 右侧数据大框: 基础角度 | 加速度 | 角速度 | 零偏移 */
+.imu-panel {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.imu-panel-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 2px;
+}
+
+/* 宽屏: 左右布局 */
+@media (min-width: 720px) {
+  .imu-layout {
+    flex-direction: row;
+    align-items: stretch;
+  }
+  .imu-canvas-wrap {
+    max-width: 55%;
+  }
 }
 
 /* 响应式: 窄屏下 2D 与读数值堆叠 */
