@@ -28,11 +28,27 @@ export interface ImuCal {
 
 export type CalType = 'trigger' | 'joy_x' | 'joy_y' | 'joy_xy' | 'imu'
 
+/** cubic-bezier 输出响应曲线: 端点固定 (0,0)/(100,100), 控制点 (x1,y1)/(x2,y2) 可调 (x:0~100, y:-100~100); 双向源奇函数对称 */
+export interface OutputCurve {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+}
+
+export type CurveType = 'trigger' | 'joy_x' | 'joy_y' | 'imu_roll' | 'imu_pitch'
+
 export const useCalibrationStore = defineStore('calibration', () => {
   const trigger = reactive<AdcCal>({ deadzone: 30 })
   const joyX = reactive<AdcCal>({ deadzone: 30 })
   const joyY = reactive<AdcCal>({ deadzone: 30 })
   const imu = reactive<ImuCal>({})
+
+  const triggerCurve = reactive<OutputCurve>({ x1: 50, y1: 50, x2: 50, y2: 50 })
+  const joyXCurve = reactive<OutputCurve>({ x1: 50, y1: 50, x2: 50, y2: 50 })
+  const joyYCurve = reactive<OutputCurve>({ x1: 50, y1: 50, x2: 50, y2: 50 })
+  const imuRollCurve = reactive<OutputCurve>({ x1: 50, y1: 50, x2: 50, y2: 50 })
+  const imuPitchCurve = reactive<OutputCurve>({ x1: 50, y1: 50, x2: 50, y2: 50 })
 
   const lpfAlpha = ref(500)
   const runningType = ref<CalType | null>(null)
@@ -78,6 +94,13 @@ export const useCalibrationStore = defineStore('calibration', () => {
 
   async function setLpf(alpha: number): Promise<void> {
     await serialService.sendCommand('cal_set_lpf_alpha', { alpha })
+  }
+
+  /** 写入输出响应曲线 (cubic-bezier 4 参数), 固件立即持久化到 NVS; 启用与否由模型级开关控制 */
+  async function setCurve(type: CurveType, c: OutputCurve): Promise<void> {
+    await serialService.sendCommand('cal_set_curve', {
+      type, x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2,
+    })
   }
 
   // 0位校准响应确认（cal_zero_imu → {cmd, ok}）
@@ -223,6 +246,37 @@ export const useCalibrationStore = defineStore('calibration', () => {
         if (!_deadzonesLoaded && adc.joy_y.deadzone !== undefined)
           joyY.deadzone = adc.joy_y.deadzone
       }
+      // 输出响应曲线 (cubic-bezier)
+      if (adc.trigger_curve) {
+        triggerCurve.x1 = adc.trigger_curve.x1 ?? 50
+        triggerCurve.y1 = adc.trigger_curve.y1 ?? 50
+        triggerCurve.x2 = adc.trigger_curve.x2 ?? 50
+        triggerCurve.y2 = adc.trigger_curve.y2 ?? 50
+      }
+      if (adc.joy_x_curve) {
+        joyXCurve.x1 = adc.joy_x_curve.x1 ?? 50
+        joyXCurve.y1 = adc.joy_x_curve.y1 ?? 50
+        joyXCurve.x2 = adc.joy_x_curve.x2 ?? 50
+        joyXCurve.y2 = adc.joy_x_curve.y2 ?? 50
+      }
+      if (adc.joy_y_curve) {
+        joyYCurve.x1 = adc.joy_y_curve.x1 ?? 50
+        joyYCurve.y1 = adc.joy_y_curve.y1 ?? 50
+        joyYCurve.x2 = adc.joy_y_curve.x2 ?? 50
+        joyYCurve.y2 = adc.joy_y_curve.y2 ?? 50
+      }
+      if (adc.imu_roll_curve) {
+        imuRollCurve.x1 = adc.imu_roll_curve.x1 ?? 50
+        imuRollCurve.y1 = adc.imu_roll_curve.y1 ?? 50
+        imuRollCurve.x2 = adc.imu_roll_curve.x2 ?? 50
+        imuRollCurve.y2 = adc.imu_roll_curve.y2 ?? 50
+      }
+      if (adc.imu_pitch_curve) {
+        imuPitchCurve.x1 = adc.imu_pitch_curve.x1 ?? 50
+        imuPitchCurve.y1 = adc.imu_pitch_curve.y1 ?? 50
+        imuPitchCurve.x2 = adc.imu_pitch_curve.x2 ?? 50
+        imuPitchCurve.y2 = adc.imu_pitch_curve.y2 ?? 50
+      }
       _deadzonesLoaded = true
     }
     if (data.imu) {
@@ -260,6 +314,11 @@ export const useCalibrationStore = defineStore('calibration', () => {
     joyX,
     joyY,
     imu,
+    triggerCurve,
+    joyXCurve,
+    joyYCurve,
+    imuRollCurve,
+    imuPitchCurve,
     lpfAlpha,
     runningType,
     calProgress,
@@ -273,6 +332,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
     applyCalRaw,
     setDeadzone,
     setLpf,
+    setCurve,
     zeroIMU,
     startStatusPolling,
     startCalTimeout,

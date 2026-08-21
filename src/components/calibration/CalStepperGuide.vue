@@ -4,7 +4,7 @@
       <v-card-item>
         <template #prepend>
           <v-avatar color="surface-variant" size="36" class="cal-avatar">
-            <v-icon color="primary" size="20">mdi-wizard-hat</v-icon>
+            <v-icon color="primary" size="20">mdi-help-circle</v-icon>
           </v-avatar>
         </template>
         <v-card-title>校准向导</v-card-title>

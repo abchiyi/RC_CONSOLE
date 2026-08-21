@@ -40,6 +40,9 @@ const TRIGGER_NAMES = ['SINGLE_CLICK', 'DOUBLE_CLICK', 'LONG_PRESS', 'LONG_PRESS
 
 const CAL_TYPE_NAMES = ['none', 'trigger', 'joy_x', 'joy_y', 'imu', 'joy_xy']
 
+/** 输出响应曲线类型 (cubic-bezier): 与固件 CMD_CAL_SET_CURVE type 一致 */
+const CURVE_TYPE_NAMES = ['none', 'trigger', 'joy_x', 'joy_y', 'imu_roll', 'imu_pitch']
+
 function sourceToId(s: string): number {
   const idx = INPUT_SOURCE_NAMES.indexOf(s)
   return idx > 0 ? idx : 0
@@ -67,6 +70,15 @@ function calTypeToId(t: string): number {
 
 function calTypeFromId(id: number): string {
   return CAL_TYPE_NAMES[id] ?? 'none'
+}
+
+function curveTypeToId(t: string): number {
+  const idx = CURVE_TYPE_NAMES.indexOf(t)
+  return idx > 0 ? idx : 0
+}
+
+function curveTypeFromId(id: number): string {
+  return CURVE_TYPE_NAMES[id] ?? 'none'
 }
 
 /** 单帧最大 payload：超过则拆成 FRAGMENT 帧 */
@@ -100,8 +112,12 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
       if (params.diff) {
         // 差分同步: flags=0x01 (FLAG_PARTIAL), 固件按现有 RAM 模型合并缺失字段
         w.u8(1)
-        const d = params.diff as { name: string | null; channels: Map<number, ModelChannel> }
-        w.bytes(encodeModelDiffTlv(d.name, d.channels))
+        const d = params.diff as {
+          name: string | null
+          channels: Map<number, ModelChannel>
+          curveEnabled: boolean | null
+        }
+        w.bytes(encodeModelDiffTlv(d.name, d.channels, d.curveEnabled))
       } else {
         // 全量覆盖: flags=0x00 (兼容旧语义, 缺失字段恢复默认)
         w.u8(0)
@@ -121,6 +137,13 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
       break
     case CMD.CAL_SET_LPF_ALPHA:
       w.u16(Number(params.alpha ?? 500))
+      break
+    case CMD.CAL_SET_CURVE:
+      w.u8(curveTypeToId(String(params.type ?? 'trigger')))
+      w.i8(Number(params.x1 ?? 50))
+      w.i8(Number(params.y1 ?? 50))
+      w.i8(Number(params.x2 ?? 50))
+      w.i8(Number(params.y2 ?? 50))
       break
     case CMD.SET_POWER_CFG:
       w.u16(Number(params.idle_warning_s ?? 0))
@@ -190,10 +213,13 @@ const DEFAULT_CHANNEL: ModelChannel = {
   mix_items: [],
 }
 
-/** 模型对象 TLV：0x01 name, 0x02..0x11 通道 0..15 */
+/** 模型对象 TLV：0x01 name, 0x02..0x11 通道 0..15, 0x12 curve_enabled */
 export function encodeModelTlv(model: ModelConfig): Uint8Array {
   const w = new Writer()
   if (model.name) w.tlv(0x01, new Writer().str(model.name).toBytes())
+  if (model.curve_enabled !== undefined) {
+    w.tlv(0x12, new Writer().u8(model.curve_enabled ? 1 : 0).toBytes())
+  }
   const channels = model.channels ?? []
   for (let i = 0; i < 16 && i < channels.length; i++) {
     const ch = channels[i]
@@ -209,10 +235,13 @@ export function encodeModelTlv(model: ModelConfig): Uint8Array {
 export function encodeModelDiffTlv(
   name: string | null,
   channels: Map<number, ModelChannel>,
+  curveEnabled: boolean | null = null,
 ): Uint8Array {
   const w = new Writer()
   // name 有变化就发送 (即使空串, 用于清空模型名)
   if (name !== null) w.tlv(0x01, new Writer().str(name).toBytes())
+  // 模型级曲线总开关有变化才发送
+  if (curveEnabled !== null) w.tlv(0x12, new Writer().u8(curveEnabled ? 1 : 0).toBytes())
   for (const [idx, ch] of channels) {
     if (idx >= 0 && idx < 16) w.tlv(0x02 + idx, encodeChannelTlv(ch))
   }
@@ -260,7 +289,7 @@ export function encodeChannelTlv(ch: ModelChannel): Uint8Array {
 }
 
 export function decodeModelTlv(data: Uint8Array): ModelConfig {
-  const model: ModelConfig = { name: '', channels: [] }
+  const model: ModelConfig = { name: '', channels: [], curve_enabled: true }
   for (const { tag, value } of parseTlvList(data)) {
     if (tag === 0x01) {
       // 防御: name 字段数据异常(如长度越界)时降级为空名, 不让整个响应丢失
@@ -269,6 +298,8 @@ export function decodeModelTlv(data: Uint8Array): ModelConfig {
       } catch {
         model.name = ''
       }
+    } else if (tag === 0x12) {
+      model.curve_enabled = !!new Reader(value).u8()
     } else if (tag >= 0x02 && tag <= 0x11) {
       const idx = tag - 0x02
       if (idx < 16) {
@@ -416,7 +447,7 @@ function decodeGetConfig(r: Reader, name: string): Record<string, unknown> {
     else if (tag >= 0x10 && tag <= 0x17) {
       const slot = tag - 0x10
       // 固件仅回模型名 str（完整通道数据经 GET_MODEL 按需拉取）
-      ;(cfg.models as ModelConfig[])[slot] = { name: new Reader(value).str(), channels: [] }
+      ;(cfg.models as ModelConfig[])[slot] = { name: new Reader(value).str(), channels: [], curve_enabled: true }
     }
   }
   return cfg
@@ -443,10 +474,24 @@ function readCalData(r: Reader): Record<string, number | boolean> {
   }
 }
 
+function readCurveData(r: Reader): Record<string, number> {
+  return { x1: r.i8(), y1: r.i8(), x2: r.i8(), y2: r.i8() }
+}
+
 function decodeCalGet(r: Reader, name: string): Record<string, unknown> {
+  const adc: Record<string, unknown> = {
+    trigger: readCalData(r),
+    joy_x: readCalData(r),
+    joy_y: readCalData(r),
+    trigger_curve: readCurveData(r),
+    joy_x_curve: readCurveData(r),
+    joy_y_curve: readCurveData(r),
+    imu_roll_curve: readCurveData(r),
+    imu_pitch_curve: readCurveData(r),
+  }
   return {
     cmd: name,
-    adc: { trigger: readCalData(r), joy_x: readCalData(r), joy_y: readCalData(r) },
+    adc,
     imu: { cal: { gyro_bias_x: r.f32(), gyro_bias_y: r.f32(), gyro_bias_z: r.f32() } },
     cal_state: r.u8(),
     lpf_alpha: r.i32(),

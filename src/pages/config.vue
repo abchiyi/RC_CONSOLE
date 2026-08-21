@@ -21,6 +21,19 @@
     <v-row v-if="serial.connected" dense>
       <!-- 左侧: 主配置区域 -->
       <v-col cols="12">
+        <!-- 模型级: 输出响应曲线总开关 -->
+        <v-sheet v-if="configStore.config" rounded="lg" class="pa-3 mb-3 model-curve-sheet">
+          <div class="param-group">
+            <span class="text-caption font-weight-bold">
+              <v-icon size="16" class="me-1">mdi-tune-variant</v-icon>
+              输出响应曲线 (模型级)</span>
+            <v-switch v-model="modelCurveEnabled" color="primary" density="compact" hide-details />
+          </div>
+          <div class="text-caption text-medium-emphasis mt-1">
+            开启后本模型所有连续量通道的输出按「传感器」页对应输入源的 OpenTX 5 点曲线整形；关闭时输出原始输入。默认开启。
+          </div>
+        </v-sheet>
+
         <!-- 通道卡片列表 -->
         <template v-if="configStore.config && editChannels.length > 0">
           <template v-for="{ ch, idx } in visibleChannels" :key="idx">
@@ -351,6 +364,15 @@ const editChannels = reactive<ModelChannel[]>([])
 
 // 当前展开的通道行 (null = 无展开)
 const expandedIdx = ref<number | null>(null)
+
+// 模型级输出响应曲线总开关 (双向绑定到当前模型的 curve_enabled, 默认开)
+const modelCurveEnabled = computed<boolean>({
+  get: () => configStore.config?.models?.[selectedSlot.value]?.curve_enabled ?? true,
+  set: (v: boolean) => {
+    const m = configStore.config?.models?.[selectedSlot.value]
+    if (m) m.curve_enabled = v
+  },
+})
 
 // 通道列表: 保留原始索引, 展开/实时值/源切换等逻辑不受影响
 const visibleChannels = computed<{ ch: ModelChannel; idx: number }[]>(() =>
@@ -796,7 +818,9 @@ async function onGlobalReload() {
 }
 
 async function saveCurrentModel(): Promise<boolean> {
-  const name = configStore.config?.models?.[selectedSlot.value]?.name || ''
+  const model = configStore.config?.models?.[selectedSlot.value]
+  const name = model?.name || ''
+  const curveEnabled = !!model?.curve_enabled
   // 将 μs 转回 CRSF raw 再发送到固件
   // 条件字段需扁平化并映射到固件缩写的 JSON key
   const rawChannels = editChannels.map(ch => {
@@ -833,6 +857,7 @@ async function saveCurrentModel(): Promise<boolean> {
   return await configStore.setModel(selectedSlot.value, {
     name,
     channels: rawChannels,
+    curve_enabled: curveEnabled,
   })
 }
 

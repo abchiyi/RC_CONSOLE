@@ -17,6 +17,8 @@ declare module 'vue' {
     ChannelGrid: typeof import('./components/channel/ChannelGrid.vue')['default']
     ElrsFieldTree: typeof import('./components/elrs/ElrsFieldTree.vue')['default']
     FirmwareUpgradeDialog: typeof import('./components/FirmwareUpgradeDialog.vue')['default']
+    OutputCurveEditor: typeof import('./components/config/OutputCurveEditor.vue')['default']
+    OutputCurvePanel: typeof import('./components/calibration/OutputCurvePanel.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SliderLabel: typeof import('./components/SliderLabel.vue')['default']

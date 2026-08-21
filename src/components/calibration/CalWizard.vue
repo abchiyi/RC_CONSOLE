@@ -106,7 +106,53 @@
           </div>
         </div>
 
-        <v-divider class="my-3" opacity="0.4" />
+        <!-- 静置抖动观察: Roll/Pitch 实时角度条 (固定 ±10° 窗口) -->
+        <div class="range-meter mt-3">
+          <div class="mb-2">
+            <div class="range-scale d-flex text-caption text-medium-emphasis mb-1">
+              <span class="mono">-10°</span>
+              <v-spacer />
+              <span class="mono text-warning">0°</span>
+              <v-spacer />
+              <span class="mono">+10°</span>
+            </div>
+            <div class="range-track">
+              <div class="range-fill" :style="{ width: imuPercent(imu.roll) + '%', background: 'linear-gradient(90deg, rgb(var(--v-theme-warning)), #ffc107)' }" />
+              <div class="range-center" style="left: 50%" />
+              <div class="range-thumb" :style="{ left: imuPercent(imu.roll) + '%' }">
+                <div class="range-thumb-dot" />
+              </div>
+            </div>
+            <div class="d-flex mt-1 align-baseline">
+              <span class="text-caption text-medium-emphasis mr-2">Roll</span>
+              <span class="mono font-weight-bold">{{ fmtDeg(imu.roll) }}</span>
+            </div>
+          </div>
+          <div>
+            <div class="range-scale d-flex text-caption text-medium-emphasis mb-1">
+              <span class="mono">-10°</span>
+              <v-spacer />
+              <span class="mono text-warning">0°</span>
+              <v-spacer />
+              <span class="mono">+10°</span>
+            </div>
+            <div class="range-track">
+              <div class="range-fill" :style="{ width: imuPercent(imu.pitch) + '%', background: 'linear-gradient(90deg, rgb(var(--v-theme-warning)), #ffc107)' }" />
+              <div class="range-center" style="left: 50%" />
+              <div class="range-thumb" :style="{ left: imuPercent(imu.pitch) + '%' }">
+                <div class="range-thumb-dot" />
+              </div>
+            </div>
+            <div class="d-flex mt-1 align-baseline">
+              <span class="text-caption text-medium-emphasis mr-2">Pitch</span>
+              <span class="mono font-weight-bold">{{ fmtDeg(imu.pitch) }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="cal-hint">
+          <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
+          <span>静置观察 Roll/Pitch 抖动幅度，通道死区需罩住抖动范围，防止静止时通道跳动</span>
+        </div>
 
         <v-progress-linear v-if="runningType === 'imu'" :model-value="calProgress" color="warning" class="mt-3"
           height="6" rounded />
@@ -114,12 +160,12 @@
           :color="runningType === 'imu' ? 'warning' : 'success'" variant="tonal">
           {{ lastMessage }}
         </v-alert>
+        <div class="cal-hint">
+          <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
+          <span>IMU 三轴原点由 <b>SHOT 按钮短按</b> 临时设置：按一次即把当前姿态作为零位</span>
+        </div>
       </v-card-text>
 
-      <v-card-actions>
-        <v-btn color="secondary" prepend-icon="mdi-crosshairs-gps" variant="tonal" @click="zeroIMU">归零</v-btn>
-        <v-spacer />
-      </v-card-actions>
     </v-card>
 
     <!-- ==================== 扳机校准 ==================== -->
@@ -167,14 +213,17 @@
           </div>
         </div>
 
-        <v-divider class="my-3" opacity="0.4" />
-
         <div class="d-flex align-center mb-1">
           <span class="text-caption text-medium-emphasis mr-2">死区</span>
           <v-chip size="x-small" variant="tonal" class="mono">{{ trigger.deadzone }}</v-chip>
         </div>
-        <v-slider v-model.number="trigger.deadzone" :min="0" :max="500" :step="1" density="compact" hide-details
-          thumb-label :disabled="runningType !== null" @end="debounceDeadzone('trigger')" />
+        <v-slider v-model.number="trigger.deadzone" class="dz-slider dz-primary" :min="0" :max="500" :step="1" density="compact" hide-details
+          color="primary" thumb-label :disabled="runningType !== null" @end="debounceDeadzone('trigger')" />
+
+        <div class="cal-hint">
+          <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
+          <span>观察往复推动的定位精度与中心抖动，死区需罩住中心附近抖动范围；<b>轻触时产生的微小偏移也需考虑在内</b></span>
+        </div>
 
         <v-progress-linear v-if="runningType === 'trigger'" :model-value="calProgress" color="warning" class="mt-3"
           height="6" rounded />
@@ -232,14 +281,63 @@
           </div>
         </div>
 
+        <!-- X/Y 实时量程条 (同扳机: 死区高亮 + 中心线 + thumb) -->
+        <div class="range-meter mt-3">
+          <div class="mb-2">
+            <div class="range-scale d-flex text-caption text-medium-emphasis mb-1">
+              <span class="mono">{{ joyX.raw_min ?? '--' }}</span>
+              <v-spacer />
+              <span class="mono text-success">{{ joyX.raw_center ?? '--' }}</span>
+              <v-spacer />
+              <span class="mono">{{ joyX.raw_max ?? '--' }}</span>
+            </div>
+            <div class="range-track">
+              <div class="range-fill" :style="{ width: rawPercent(joyX) + '%', background: 'linear-gradient(90deg, rgb(var(--v-theme-success)), #69f0ae)' }" />
+              <div v-if="hasRange(joyX)" class="range-deadzone" :style="deadzoneStyle(joyX)" />
+              <div v-if="hasRange(joyX)" class="range-center" :style="{ left: centerPercent(joyX) + '%' }" />
+              <div class="range-thumb" :style="{ left: rawPercent(joyX) + '%' }">
+                <div class="range-thumb-dot" />
+              </div>
+            </div>
+            <div class="d-flex mt-1 align-baseline">
+              <span class="text-caption text-medium-emphasis mr-2">X</span>
+              <span class="mono font-weight-bold text-success">{{ joyX.raw ?? '--' }}</span>
+            </div>
+          </div>
+          <div>
+            <div class="range-scale d-flex text-caption text-medium-emphasis mb-1">
+              <span class="mono">{{ joyY.raw_min ?? '--' }}</span>
+              <v-spacer />
+              <span class="mono text-info">{{ joyY.raw_center ?? '--' }}</span>
+              <v-spacer />
+              <span class="mono">{{ joyY.raw_max ?? '--' }}</span>
+            </div>
+            <div class="range-track">
+              <div class="range-fill" :style="{ width: rawPercent(joyY) + '%', background: 'linear-gradient(90deg, rgb(var(--v-theme-info)), #448aff)' }" />
+              <div v-if="hasRange(joyY)" class="range-deadzone" :style="deadzoneStyle(joyY)" />
+              <div v-if="hasRange(joyY)" class="range-center" :style="{ left: centerPercent(joyY) + '%' }" />
+              <div class="range-thumb" :style="{ left: rawPercent(joyY) + '%' }">
+                <div class="range-thumb-dot" />
+              </div>
+            </div>
+            <div class="d-flex mt-1 align-baseline">
+              <span class="text-caption text-medium-emphasis mr-2">Y</span>
+              <span class="mono font-weight-bold text-info">{{ joyY.raw ?? '--' }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="cal-hint">
+          <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
+          <span>观察往复推动的定位精度与中心抖动，死区需罩住中心附近抖动范围；<b>轻触时产生的微小偏移也需考虑在内</b></span>
+        </div>
+
         <!-- 死区设置 (X/Y 合并) -->
-        <v-divider class="my-3" opacity="0.4" />
         <div class="d-flex align-center mb-1">
           <span class="text-caption text-medium-emphasis mr-2">死区 (X/Y)</span>
           <v-chip size="x-small" variant="tonal" class="mono">{{ joyX.deadzone }}</v-chip>
         </div>
-        <v-slider v-model.number="joyX.deadzone" :min="0" :max="500" :step="1" density="compact" hide-details
-          thumb-label :disabled="runningType !== null" @end="debounceDeadzone('joy_xy')" />
+        <v-slider v-model.number="joyX.deadzone" class="dz-slider dz-success" :min="0" :max="500" :step="1" density="compact" hide-details
+          color="success" thumb-label :disabled="runningType !== null" @end="debounceDeadzone('joy_xy')" />
       </v-card-text>
     </v-card>
 
@@ -260,8 +358,8 @@
             <span class="text-caption text-medium-emphasis">LPF α</span>
           </v-col>
           <v-col cols="6">
-            <v-slider v-model.number="lpfAlpha" :min="10" :max="990" :step="10" density="compact" hide-details
-              thumb-label @end="sendLpf" />
+            <v-slider v-model.number="lpfAlpha" class="dz-slider dz-grey" :min="10" :max="990" :step="10" density="compact" hide-details
+              color="grey-lighten-1" thumb-label @end="sendLpf" />
           </v-col>
           <v-col cols="3" class="text-right">
             <v-chip size="small" variant="tonal" class="mono">{{ lpfAlpha }}</v-chip>
@@ -345,6 +443,13 @@ function centerPercent(data: AdcCal): number {
   const range = raw_max - raw_min
   if (range <= 0) return 50
   return ((raw_center - raw_min) / range) * 100
+}
+
+/** IMU 抖动条: 固定 ±10° 窗口, 聚焦静置抖动 */
+const IMU_RANGE = 10
+function imuPercent(v?: number): number {
+  if (v === undefined || v === null) return 50
+  return Math.max(0, Math.min(100, ((v + IMU_RANGE) / (2 * IMU_RANGE)) * 100))
 }
 
 /** 死区高亮段样式: 以中心线为对称轴, 半宽 = deadzone/范围 */
@@ -718,6 +823,55 @@ onUnmounted(async () => {
   font-family: 'Cascadia Mono', 'Consolas', monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+}
+
+/* 独立提示块: 高亮边框 + 有色背景 */
+.cal-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 179, 0, 0.5);
+  background: rgba(255, 179, 0, 0.1);
+  color: rgba(255, 235, 190, 0.9);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+/* 滑块气泡: 加粗等宽数字 + 白色细边框, 配色按各自轨道色 */
+.dz-slider :deep(.v-slider-thumb__label) {
+  font-weight: 700;
+  font-family: 'Cascadia Mono', 'Consolas', monospace;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+/* 扳机死区: primary 气泡 */
+.dz-primary :deep(.v-slider-thumb__label) {
+  background: rgb(var(--v-theme-primary)) !important;
+  color: rgb(var(--v-theme-on-primary)) !important;
+}
+.dz-primary :deep(.v-slider-thumb__label::before) {
+  border-top-color: rgb(var(--v-theme-primary)) !important;
+}
+
+/* 摇杆死区: success 气泡 */
+.dz-success :deep(.v-slider-thumb__label) {
+  background: rgb(var(--v-theme-success)) !important;
+  color: rgb(var(--v-theme-on-success)) !important;
+}
+.dz-success :deep(.v-slider-thumb__label::before) {
+  border-top-color: rgb(var(--v-theme-success)) !important;
+}
+
+/* LPF: grey-lighten-1 气泡 (主题无此变量, 直接用色值 #BDBDBD) */
+.dz-grey :deep(.v-slider-thumb__label) {
+  background: #bdbdbd !important;
+  color: #1a1a1a !important;
+}
+.dz-grey :deep(.v-slider-thumb__label::before) {
+  border-top-color: #bdbdbd !important;
 }
 
 /* 量程条 */
