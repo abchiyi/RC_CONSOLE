@@ -148,7 +148,9 @@ export const useCalibrationStore = defineStore('calibration', () => {
       } else if (st === 'running' || st === 1) {
         lastMessage.value = (json.message as string) || '校准进行中…'
         lastType.value = runningType.value
-        fetchCalData()            // 校准过程中随 500ms cal_status 轮询持续刷新 min/center/max
+        // 校准中固件正在修改 min/center/max 与 gyroBias, 500ms 轮询会把
+        // "校准中间参数"覆盖进 UI 导致量程/百分比/图形/输出全部跳动;
+        // 实时 raw+IMU 已由 STREAM content_type=1 (100ms) 独立推送
       }
       return
     }
