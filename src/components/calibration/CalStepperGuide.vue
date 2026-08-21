@@ -22,8 +22,54 @@
           </v-stepper-header>
 
           <v-stepper-window>
-            <!-- 步骤 0: IMU (内嵌子 stepper) -->
+            <!-- 步骤 0: 选择校准条目 -->
             <v-stepper-window-item :value="0">
+              <v-alert color="primary" icon="mdi-information" density="compact" variant="tonal" class="mb-2">
+                勾选本次需要校准的条目，将按 IMU → 扳机 → 摇杆 的顺序执行已选项。
+              </v-alert>
+
+              <div class="cal-select-item" :class="{ 'cal-selected': selected.imu }" @click="selected.imu = !selected.imu">
+                <v-checkbox v-model="selected.imu" hide-details density="compact" class="mr-1" @click.stop />
+                <v-avatar color="warning" size="30" class="cal-avatar">
+                  <v-icon color="white" size="16">mdi-axis-arrow</v-icon>
+                </v-avatar>
+                <div>
+                  <div class="font-weight-bold">IMU</div>
+                  <div class="text-caption text-medium-emphasis">陀螺仪零偏 + 0 点归零</div>
+                </div>
+              </div>
+
+              <div class="cal-select-item" :class="{ 'cal-selected': selected.trigger }" @click="selected.trigger = !selected.trigger">
+                <v-checkbox v-model="selected.trigger" hide-details density="compact" class="mr-1" @click.stop />
+                <v-avatar color="primary" size="30" class="cal-avatar">
+                  <v-icon color="white" size="16">mdi-gamepad-right</v-icon>
+                </v-avatar>
+                <div>
+                  <div class="font-weight-bold">扳机</div>
+                  <div class="text-caption text-medium-emphasis">扳机零位与行程范围</div>
+                </div>
+              </div>
+
+              <div class="cal-select-item" :class="{ 'cal-selected': selected.joy }" @click="selected.joy = !selected.joy">
+                <v-checkbox v-model="selected.joy" hide-details density="compact" class="mr-1" @click.stop />
+                <v-avatar color="success" size="30" class="cal-avatar">
+                  <v-icon color="white" size="16">mdi-gamepad-variant</v-icon>
+                </v-avatar>
+                <div>
+                  <div class="font-weight-bold">摇杆</div>
+                  <div class="text-caption text-medium-emphasis">摇杆 X/Y 居中与行程范围</div>
+                </div>
+              </div>
+
+              <div class="d-flex justify-space-between mt-3">
+                <v-btn color="grey" variant="text" @click="closeGuide">关闭</v-btn>
+                <v-btn color="primary" prepend-icon="mdi-play" variant="tonal" :disabled="!anySelected"
+                  @click="startSelected">开始校准</v-btn>
+              </div>
+            </v-stepper-window-item>
+
+            <!-- 步骤 1: IMU (内嵌子 stepper) -->
+            <v-stepper-window-item :value="1">
               <v-stepper class="cal-stepper cal-stepper-nested" v-model="imuStep" complete-icon="mdi-check-circle"
                 edit-icon="mdi-cog">
                 <v-stepper-header>
@@ -136,15 +182,15 @@
                     <div class="d-flex justify-space-between mt-3">
                       <v-btn color="grey" variant="text" @click="imuStep = 1">上一步</v-btn>
                       <v-btn color="primary" prepend-icon="mdi-arrow-right" variant="tonal"
-                        @click="nextToTrigger">下一步：扳机</v-btn>
+                        @click="gotoNext(1)">下一步</v-btn>
                     </div>
                   </v-stepper-window-item>
                 </v-stepper-window>
               </v-stepper>
             </v-stepper-window-item>
 
-            <!-- 步骤 1: 扳机 (内嵌子 stepper, 参考摇杆) -->
-            <v-stepper-window-item :value="1">
+            <!-- 步骤 2: 扳机 (内嵌子 stepper, 参考摇杆) -->
+            <v-stepper-window-item :value="2">
               <v-stepper class="cal-stepper cal-stepper-nested" v-model="triggerStep"
                 complete-icon="mdi-check-circle" edit-icon="mdi-cog">
                 <v-stepper-header>
@@ -275,15 +321,15 @@
                     <div class="d-flex justify-space-between mt-3">
                       <v-btn color="grey" variant="text" @click="triggerStep = 1">上一步</v-btn>
                       <v-btn color="primary" prepend-icon="mdi-arrow-right" variant="tonal"
-                        @click="nextToJoy">下一步：摇杆</v-btn>
+                        @click="gotoNext(2)">下一步</v-btn>
                     </div>
                   </v-stepper-window-item>
                 </v-stepper-window>
               </v-stepper>
             </v-stepper-window-item>
 
-            <!-- 步骤 2: 摇杆 (内嵌子 stepper) -->
-            <v-stepper-window-item :value="2">
+            <!-- 步骤 3: 摇杆 (内嵌子 stepper) -->
+            <v-stepper-window-item :value="3">
               <v-stepper class="cal-stepper cal-stepper-nested" v-model="joyStep" complete-icon="mdi-check-circle"
                 edit-icon="mdi-cog">
                 <v-stepper-header>
@@ -444,10 +490,14 @@ const joyY = calStore.joyY
 const imu = calStore.imu
 const { runningType, calProgress, lastMessage, lastType } = storeToRefs(calStore)
 
-// 主 stepper: 0=IMU 1=扳机 2=摇杆
+// 主 stepper: 0=选择条目 1=IMU 2=扳机 3=摇杆
 const step = ref(0)
 const maxStep = ref(0) // 已解锁的最大步骤 (不可跳过)
-const stepTitles = ['IMU', '扳机', '摇杆']
+const stepTitles = ['条目', 'IMU', '扳机', '摇杆']
+
+// 勾选的校准条目 (默认全选); 步骤号: IMU=1 扳机=2 摇杆=3
+const selected = reactive({ imu: true, trigger: true, joy: true })
+const anySelected = computed(() => selected.imu || selected.trigger || selected.joy)
 
 // IMU 子 stepper: 0=误差校准 1=0位校准 2=完成
 const imuStep = ref(0)
@@ -482,9 +532,9 @@ const joyAxes = reactive([
 watch(() => props.modelValue, (v) => {
   if (!v) return
   const rt = calStore.runningType
-  if (rt === 'imu') { step.value = 0; maxStep.value = 0; imuStep.value = 0; joyStep.value = 0 }
-  else if (rt === 'trigger') { step.value = 1; maxStep.value = 1; imuStep.value = 0; triggerStep.value = 0; joyStep.value = 0 }
-  else if (rt === 'joy_xy') { step.value = 2; maxStep.value = 2; imuStep.value = 0; triggerStep.value = 0; joyStep.value = 0 }
+  if (rt === 'imu') { step.value = 1; maxStep.value = 1; imuStep.value = 0; joyStep.value = 0 }
+  else if (rt === 'trigger') { step.value = 2; maxStep.value = 2; imuStep.value = 0; triggerStep.value = 0; joyStep.value = 0 }
+  else if (rt === 'joy_xy') { step.value = 3; maxStep.value = 3; imuStep.value = 0; triggerStep.value = 0; joyStep.value = 0 }
   else { step.value = 0; maxStep.value = 0; imuStep.value = 0; triggerStep.value = 0; joyStep.value = 0 }
 })
 
@@ -492,9 +542,9 @@ watch(() => props.modelValue, (v) => {
 watch(runningType, (nv, ov) => {
   if (!props.modelValue) return
   if (ov !== null && nv === null && lastMessage.value !== '已取消') {
-    if (lastType.value === 'imu' && step.value === 0) {
+    if (lastType.value === 'imu' && step.value === 1) {
       imuStep.value = 1 // 误差校准完成 → 0位校准
-    } else if (lastType.value === 'trigger' && step.value === 1) {
+    } else if (lastType.value === 'trigger' && step.value === 2) {
       if (triggerStep.value === 0) triggerStep.value = 1
       else if (triggerStep.value === 1) {
         triggerStep.value = 2
@@ -539,16 +589,29 @@ async function runZeroIMU(): Promise<void> {
   }
 }
 
-function nextToTrigger(): void {
-  maxStep.value = 1
-  step.value = 1
-  triggerStep.value = 0
+// 返回 after 之后第一个被勾选的步骤 (IMU=1, 扳机=2, 摇杆=3), 无则 -1
+function nextSelectedStep(after: number): number {
+  for (const s of [1, 2, 3]) {
+    if (s <= after) continue
+    if ((s === 1 && selected.imu) || (s === 2 && selected.trigger) || (s === 3 && selected.joy)) return s
+  }
+  return -1
 }
 
-function nextToJoy(): void {
-  maxStep.value = 2
-  step.value = 2
-  joyStep.value = 0
+// 选择页: 跳转第一个被勾选条目
+function startSelected(): void {
+  const s = nextSelectedStep(0)
+  if (s > 0) { step.value = s; maxStep.value = s }
+}
+
+// 当前条目完成后: 跳转下一个被勾选条目, 全部完成则关闭向导
+function gotoNext(after: number): void {
+  const s = nextSelectedStep(after)
+  if (s === -1) { closeGuide(); return }
+  step.value = s
+  maxStep.value = s
+  if (s === 2) triggerStep.value = 0
+  else if (s === 3) joyStep.value = 0
 }
 
 async function cancelCal(): Promise<void> {

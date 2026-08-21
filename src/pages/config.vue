@@ -615,9 +615,10 @@ function chanLivePx(idx: number): { left: number; width: number } | null {
   const r0 = thumbs[0]!.getBoundingClientRect()
   const trackRight = track.getBoundingClientRect().right
   const c0 = r0.left + r0.width / 2 // 左拨杆中心 = output_min 位置
+  const thumbR = r0.width / 2 // 拨杆半径: 右端向外扩展, 使末端圆角覆盖右拨杆圆弧
   return {
-    left: c0 - boxRect.left,
-    width: Math.max(0, (trackRight - c0) * (live.fillPct / 100)),
+    left: c0 - boxRect.left - thumbR, // 左端向左扩展一个半径, 覆盖左拨杆圆弧
+    width: Math.max(0, (trackRight - c0) * (live.fillPct / 100) + thumbR * 2),
   }
 }
 
@@ -1184,7 +1185,8 @@ onUnmounted(() => {
   transform: translateY(-50%);
   height: 24px;
   border-radius: 12px;
-  background: rgba(var(--v-theme-primary), 0.15);
+  background: rgba(var(--v-theme-primary), 0.3);
+  border: 1px solid rgba(var(--v-theme-primary), 0.45);
   transition: left 0.15s ease, width 0.15s ease;
   pointer-events: none;
   z-index: 0;
