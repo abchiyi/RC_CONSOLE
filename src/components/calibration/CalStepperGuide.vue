@@ -1,10 +1,10 @@
 <template>
   <v-dialog v-model="open" max-width="720" persistent>
-    <v-card rounded="lg" elevation="0">
+    <v-card class="cal-dialog-card" rounded="lg" elevation="0">
       <v-card-item>
         <template #prepend>
-          <v-avatar color="primary" size="36" class="cal-avatar">
-            <v-icon color="white" size="20">mdi-wizard-hat</v-icon>
+          <v-avatar color="surface-variant" size="36" class="cal-avatar">
+            <v-icon color="primary" size="20">mdi-wizard-hat</v-icon>
           </v-avatar>
         </template>
         <v-card-title>校准向导</v-card-title>
@@ -15,102 +15,277 @@
       </v-card-item>
 
       <v-card-text>
-        <v-stepper v-model="step" complete-icon="mdi-check-circle" edit-icon="mdi-cog">
+        <v-stepper class="cal-stepper" v-model="step" complete-icon="mdi-check-circle" edit-icon="mdi-cog">
           <v-stepper-header>
             <v-stepper-item v-for="(t, i) in stepTitles" :key="i" :value="i" :title="t"
               :complete="i < step" :disabled="i > maxStep" />
           </v-stepper-header>
 
           <v-stepper-window>
-            <!-- 步骤 0: IMU -->
+            <!-- 步骤 0: IMU (内嵌子 stepper) -->
             <v-stepper-window-item :value="0">
-              <v-alert type="info" density="compact" variant="tonal" class="mb-2">
-                将设备<span class="font-weight-bold">静置不动</span>，自动校准陀螺仪零偏（约 6 秒）。
-              </v-alert>
+              <v-stepper class="cal-stepper cal-stepper-nested" v-model="imuStep" complete-icon="mdi-check-circle"
+                edit-icon="mdi-cog">
+                <v-stepper-header>
+                  <v-stepper-item v-for="(t, i) in imuStepTitles" :key="i" :value="i" :title="t"
+                    :complete="i < imuStep" :disabled="i > imuStep" />
+                </v-stepper-header>
 
-              <div class="d-flex align-center justify-space-between my-3">
-                <span class="text-caption text-medium-emphasis">校准进度</span>
-                <v-chip v-if="runningType === 'imu'" color="warning" size="small" variant="tonal">
-                  <v-progress-circular indeterminate size="14" width="2" class="mr-1" />
-                  {{ calProgress }}%
-                </v-chip>
-              </div>
-              <v-progress-linear v-if="runningType === 'imu'" :model-value="calProgress" color="warning" height="6"
-                rounded />
-              <v-alert v-if="lastMessage && lastType === 'imu'" class="mt-3 py-1" density="compact"
-                :color="runningType === 'imu' ? 'warning' : 'success'" variant="tonal">
-                {{ lastMessage }}
-              </v-alert>
+                <v-stepper-window>
+                  <!-- 子步骤 0: 误差校准 (陀螺仪零偏) -->
+                  <v-stepper-window-item :value="0">
+                    <v-alert color="primary" icon="mdi-information" density="compact" variant="tonal" class="mb-2">
+                      将设备<span class="font-weight-bold">置于桌面</span>（任意姿态）<span class="font-weight-bold">保持静止</span>，自动校准陀螺仪零偏（约 6 秒）。
+                    </v-alert>
 
-              <div v-if="imuDone" class="stat-grid mt-3">
-                <div class="stat-col">
-                  <span class="text-caption text-medium-emphasis">偏置 X</span>
-                  <div class="mono font-weight-bold text-warning">{{ fmtBias(imu.gyro_bias_x) }}</div>
-                </div>
-                <div class="stat-col">
-                  <span class="text-caption text-medium-emphasis">偏置 Y</span>
-                  <div class="mono font-weight-bold text-warning">{{ fmtBias(imu.gyro_bias_y) }}</div>
-                </div>
-                <div class="stat-col">
-                  <span class="text-caption text-medium-emphasis">偏置 Z</span>
-                  <div class="mono font-weight-bold text-warning">{{ fmtBias(imu.gyro_bias_z) }}</div>
-                </div>
-              </div>
+                    <div class="d-flex align-center justify-space-between my-3">
+                      <span class="text-caption text-medium-emphasis">校准进度</span>
+                      <v-chip v-if="runningType === 'imu'" color="primary" size="small" variant="tonal">
+                        <v-progress-circular indeterminate size="14" width="2" class="mr-1" />
+                        {{ calProgress }}%
+                      </v-chip>
+                    </div>
+                    <v-progress-linear v-if="runningType === 'imu'" :model-value="calProgress" color="primary" height="6"
+                      rounded />
+                    <v-alert v-if="lastMessage && lastType === 'imu'" class="mt-3 py-1" density="compact"
+                      :color="runningType === 'imu' ? 'warning' : 'success'" variant="tonal">
+                      {{ lastMessage }}
+                    </v-alert>
 
-              <div class="d-flex justify-space-between mt-3">
-                <v-btn color="grey" variant="text" @click="closeGuide">关闭</v-btn>
-                <v-btn v-if="runningType !== 'imu'" color="warning" prepend-icon="mdi-play" variant="tonal"
-                  @click="startCal('imu')">开始校准</v-btn>
-                <v-btn v-else color="error" variant="tonal" @click="cancelCal">取消</v-btn>
-              </div>
+                    <div class="d-flex justify-space-between mt-3">
+                      <v-btn color="grey" variant="text" @click="closeGuide">关闭</v-btn>
+                      <v-btn v-if="runningType !== 'imu'" color="primary" prepend-icon="mdi-play" variant="tonal"
+                        @click="startCal('imu')">开始校准</v-btn>
+                      <v-btn v-else color="error" variant="tonal" @click="cancelCal">取消</v-btn>
+                    </div>
+                  </v-stepper-window-item>
+
+                  <!-- 子步骤 1: 0位校准 -->
+                  <v-stepper-window-item :value="1">
+                    <v-alert color="primary" icon="mdi-information" density="compact" variant="tonal" class="mb-2">
+                      以<span class="font-weight-bold">舒服的握持姿态</span>握稳设备（保持不动），点击"开始归零"
+                      将当前姿态设为 0 点，重启后仍保持。
+                    </v-alert>
+
+                    <div class="stat-grid mt-3">
+                      <div class="stat-col text-center">
+                        <span class="text-caption text-medium-emphasis">Roll</span>
+                        <div class="mono text-h6 font-weight-bold text-primary">{{ fmtDeg(imu.roll) }}</div>
+                      </div>
+                      <div class="stat-col text-center">
+                        <span class="text-caption text-medium-emphasis">Pitch</span>
+                        <div class="mono text-h6 font-weight-bold text-primary">{{ fmtDeg(imu.pitch) }}</div>
+                      </div>
+                      <div class="stat-col text-center">
+                        <span class="text-caption text-medium-emphasis">Yaw</span>
+                        <div class="mono text-h6 font-weight-bold text-primary">{{ fmtDeg(imu.yaw) }}</div>
+                      </div>
+                    </div>
+
+                    <div v-if="imuDone" class="stat-grid mt-2">
+                      <div class="stat-col">
+                        <span class="text-caption text-medium-emphasis">偏置 X</span>
+                        <div class="mono font-weight-bold text-primary">{{ fmtBias(imu.gyro_bias_x) }}</div>
+                      </div>
+                      <div class="stat-col">
+                        <span class="text-caption text-medium-emphasis">偏置 Y</span>
+                        <div class="mono font-weight-bold text-primary">{{ fmtBias(imu.gyro_bias_y) }}</div>
+                      </div>
+                      <div class="stat-col">
+                        <span class="text-caption text-medium-emphasis">偏置 Z</span>
+                        <div class="mono font-weight-bold text-primary">{{ fmtBias(imu.gyro_bias_z) }}</div>
+                      </div>
+                    </div>
+
+                    <v-alert v-if="lastMessage && lastType === 'imu'" class="mt-3 py-1" density="compact"
+                      :color="zeroing ? 'warning' : 'success'" variant="tonal">
+                      {{ lastMessage }}
+                    </v-alert>
+
+                    <div class="d-flex justify-space-between mt-3">
+                      <v-btn color="grey" variant="text" @click="imuStep = 0">上一步</v-btn>
+                      <v-btn v-if="!zeroing" color="primary" prepend-icon="mdi-crosshairs-gps" variant="tonal"
+                        @click="runZeroIMU">开始归零</v-btn>
+                      <v-btn v-else color="primary" variant="tonal" disabled>
+                        <v-progress-circular indeterminate size="14" width="2" class="mr-1" />归零中…
+                      </v-btn>
+                    </div>
+                  </v-stepper-window-item>
+
+                  <!-- 子步骤 2: 完成 -->
+                  <v-stepper-window-item :value="2">
+                    <v-alert type="success" density="compact" variant="tonal" class="mb-2">
+                      IMU 校准完成！误差与零点均已保存。
+                    </v-alert>
+
+                    <div class="stat-grid mt-3">
+                      <div class="stat-col">
+                        <span class="text-caption text-medium-emphasis">偏置 X</span>
+                        <div class="mono font-weight-bold text-primary">{{ fmtBias(imu.gyro_bias_x) }}</div>
+                      </div>
+                      <div class="stat-col">
+                        <span class="text-caption text-medium-emphasis">偏置 Y</span>
+                        <div class="mono font-weight-bold text-primary">{{ fmtBias(imu.gyro_bias_y) }}</div>
+                      </div>
+                      <div class="stat-col">
+                        <span class="text-caption text-medium-emphasis">偏置 Z</span>
+                        <div class="mono font-weight-bold text-primary">{{ fmtBias(imu.gyro_bias_z) }}</div>
+                      </div>
+                    </div>
+
+                    <div class="d-flex justify-space-between mt-3">
+                      <v-btn color="grey" variant="text" @click="imuStep = 1">上一步</v-btn>
+                      <v-btn color="primary" prepend-icon="mdi-arrow-right" variant="tonal"
+                        @click="nextToTrigger">下一步：扳机</v-btn>
+                    </div>
+                  </v-stepper-window-item>
+                </v-stepper-window>
+              </v-stepper>
             </v-stepper-window-item>
 
-            <!-- 步骤 1: 扳机 -->
+            <!-- 步骤 1: 扳机 (内嵌子 stepper, 参考摇杆) -->
             <v-stepper-window-item :value="1">
-              <v-alert type="info" density="compact" variant="tonal" class="mb-2">
-                正在校准扳机（Trigger）零位与行程，请<span class="font-weight-bold">不要触碰扳机</span>。
-              </v-alert>
+              <v-stepper class="cal-stepper cal-stepper-nested" v-model="triggerStep"
+                complete-icon="mdi-check-circle" edit-icon="mdi-cog">
+                <v-stepper-header>
+                  <v-stepper-item v-for="(t, i) in triggerStepTitles" :key="i" :value="i" :title="t"
+                    :complete="i < triggerStep" :disabled="i > triggerStep" />
+                </v-stepper-header>
 
-              <div class="d-flex align-center justify-space-between my-3">
-                <span class="text-caption text-medium-emphasis">校准进度</span>
-                <v-chip v-if="runningType === 'trigger'" color="warning" size="small" variant="tonal">
-                  <v-progress-circular indeterminate size="14" width="2" class="mr-1" />
-                  {{ calProgress }}%
-                </v-chip>
-              </div>
-              <v-progress-linear v-if="runningType === 'trigger'" :model-value="calProgress" color="warning" height="6"
-                rounded />
-              <v-alert v-if="lastMessage && lastType === 'trigger'" class="mt-3 py-1" density="compact"
-                :color="runningType === 'trigger' ? 'warning' : 'success'" variant="tonal">
-                {{ lastMessage }}
-              </v-alert>
+                <v-stepper-window>
+                  <!-- 子步骤 0: 居中采样 -->
+                  <v-stepper-window-item :value="0">
+                    <v-alert color="primary" icon="mdi-information" density="compact" variant="tonal" class="mb-2">
+                      请将扳机<span class="font-weight-bold">保持自然松开状态，不要触碰</span>，点击"开始采样"（约 1 秒）。
+                    </v-alert>
 
-              <div v-if="triggerDone" class="stat-grid mt-3">
-                <div class="stat-col">
-                  <span class="text-caption text-medium-emphasis">最小</span>
-                  <div class="mono font-weight-bold text-primary">{{ trigger.raw_min ?? '--' }}</div>
-                </div>
-                <div class="stat-col">
-                  <span class="text-caption text-medium-emphasis">中心</span>
-                  <div class="mono font-weight-bold text-primary">{{ trigger.raw_center ?? '--' }}</div>
-                </div>
-                <div class="stat-col">
-                  <span class="text-caption text-medium-emphasis">最大</span>
-                  <div class="mono font-weight-bold text-primary">{{ trigger.raw_max ?? '--' }}</div>
-                </div>
-              </div>
+                    <div class="d-flex align-center mb-1 mt-2">
+                      <span class="text-caption font-weight-bold mr-2 text-primary">扳机</span>
+                      <v-spacer />
+                      <span class="text-caption text-medium-emphasis mr-2">raw</span>
+                      <span class="mono font-weight-bold text-primary">{{ trigger.raw ?? '--' }}</span>
+                    </div>
+                    <div class="range-meter">
+                      <div class="range-scale d-flex text-caption text-medium-emphasis mb-1">
+                        <span class="mono">{{ trigger.raw_min ?? '--' }}</span>
+                        <v-spacer />
+                        <span class="mono text-primary">{{ trigger.raw_center ?? '--' }}</span>
+                        <v-spacer />
+                        <span class="mono">{{ trigger.raw_max ?? '--' }}</span>
+                      </div>
+                      <div class="range-track">
+                        <div class="range-fill"
+                          :style="{ width: rawPercent(trigger) + '%', background: triggerGradient }" />
+                        <div v-if="hasRange(trigger)" class="range-deadzone" :style="deadzoneStyle(trigger)" />
+                        <div v-if="hasRange(trigger)" class="range-center" :style="{ left: centerPercent(trigger) + '%' }" />
+                        <div class="range-thumb" :style="{ left: rawPercent(trigger) + '%' }">
+                          <div class="range-thumb-dot" />
+                        </div>
+                      </div>
+                    </div>
 
-              <div class="d-flex justify-space-between mt-3">
-                <v-btn color="grey" variant="text" @click="closeGuide">关闭</v-btn>
-                <v-btn v-if="runningType !== 'trigger'" color="primary" prepend-icon="mdi-play" variant="tonal"
-                  @click="startCal('trigger')">开始校准</v-btn>
-                <v-btn v-else color="error" variant="tonal" @click="cancelCal">取消</v-btn>
-              </div>
+                    <v-progress-linear v-if="runningType === 'trigger'" :model-value="calProgress" color="primary"
+                      class="mt-3" height="6" rounded />
+                    <v-alert v-if="lastMessage && lastType === 'trigger'" class="mt-3 py-1" density="compact"
+                      :color="runningType === 'trigger' ? 'warning' : 'success'" variant="tonal">
+                      {{ lastMessage }}
+                    </v-alert>
+
+                    <div class="d-flex justify-space-between mt-3">
+                      <v-btn color="grey" variant="text" @click="closeGuide">取消</v-btn>
+                      <v-btn v-if="runningType !== 'trigger'" color="primary" prepend-icon="mdi-play" variant="tonal"
+                        @click="runTriggerStep(1)">开始采样</v-btn>
+                      <v-btn v-else color="error" variant="tonal" @click="cancelCal">取消</v-btn>
+                    </div>
+                  </v-stepper-window-item>
+
+                  <!-- 子步骤 1: 行程扫描 -->
+                  <v-stepper-window-item :value="1">
+                    <v-alert color="primary" icon="mdi-information" density="compact" variant="tonal" class="mb-2">
+                      请将扳机<span class="font-weight-bold">按到行程末端，缓慢往复按压</span>，覆盖全部行程（约 4 秒）。
+                    </v-alert>
+
+                    <div class="d-flex align-center mb-1 mt-2">
+                      <span class="text-caption font-weight-bold mr-2 text-primary">扳机</span>
+                      <v-spacer />
+                      <span class="text-caption text-medium-emphasis mr-2">raw</span>
+                      <span class="mono font-weight-bold text-primary">{{ trigger.raw ?? '--' }}</span>
+                    </div>
+                    <div class="range-meter">
+                      <div class="range-scale d-flex text-caption text-medium-emphasis mb-1">
+                        <span class="mono">{{ trigger.raw_min ?? '--' }}</span>
+                        <v-spacer />
+                        <span class="mono text-primary">{{ trigger.raw_center ?? '--' }}</span>
+                        <v-spacer />
+                        <span class="mono">{{ trigger.raw_max ?? '--' }}</span>
+                      </div>
+                      <div class="range-track">
+                        <div class="range-fill"
+                          :style="{ width: rawPercent(trigger) + '%', background: triggerGradient }" />
+                        <div v-if="hasRange(trigger)" class="range-deadzone" :style="deadzoneStyle(trigger)" />
+                        <div v-if="hasRange(trigger)" class="range-center" :style="{ left: centerPercent(trigger) + '%' }" />
+                        <div class="range-thumb" :style="{ left: rawPercent(trigger) + '%' }">
+                          <div class="range-thumb-dot" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <v-progress-linear v-if="runningType === 'trigger'" :model-value="calProgress" color="primary"
+                      class="mt-3" height="6" rounded />
+                    <v-alert v-if="lastMessage && lastType === 'trigger'" class="mt-3 py-1" density="compact"
+                      :color="runningType === 'trigger' ? 'warning' : 'success'" variant="tonal">
+                      {{ lastMessage }}
+                    </v-alert>
+
+                    <div class="d-flex justify-space-between mt-3">
+                      <v-btn color="grey" variant="text" @click="triggerStep = 0">上一步</v-btn>
+                      <v-btn v-if="runningType !== 'trigger'" color="primary" prepend-icon="mdi-play" variant="tonal"
+                        @click="runTriggerStep(2)">开始采样</v-btn>
+                      <v-btn v-else color="error" variant="tonal" @click="cancelCal">取消</v-btn>
+                    </div>
+                  </v-stepper-window-item>
+
+                  <!-- 子步骤 2: 完成 -->
+                  <v-stepper-window-item :value="2">
+                    <v-alert type="success" density="compact" variant="tonal" class="mb-2">
+                      扳机校准完成！结果已保存，死区可在展示卡片中调整。
+                    </v-alert>
+
+                    <div class="d-flex align-center mb-1 mt-2">
+                      <span class="text-caption font-weight-bold mr-2 text-primary">扳机</span>
+                      <v-spacer />
+                      <span class="text-caption text-medium-emphasis mr-2">raw</span>
+                      <span class="mono font-weight-bold text-primary">{{ trigger.raw ?? '--' }}</span>
+                    </div>
+                    <div class="stat-grid">
+                      <div class="stat-col">
+                        <span class="text-caption text-medium-emphasis">最小</span>
+                        <div class="mono font-weight-bold text-primary">{{ trigger.raw_min ?? '--' }}</div>
+                      </div>
+                      <div class="stat-col">
+                        <span class="text-caption text-medium-emphasis">中心</span>
+                        <div class="mono font-weight-bold text-primary">{{ trigger.raw_center ?? '--' }}</div>
+                      </div>
+                      <div class="stat-col">
+                        <span class="text-caption text-medium-emphasis">最大</span>
+                        <div class="mono font-weight-bold text-primary">{{ trigger.raw_max ?? '--' }}</div>
+                      </div>
+                    </div>
+
+                    <div class="d-flex justify-space-between mt-3">
+                      <v-btn color="grey" variant="text" @click="triggerStep = 1">上一步</v-btn>
+                      <v-btn color="primary" prepend-icon="mdi-arrow-right" variant="tonal"
+                        @click="nextToJoy">下一步：摇杆</v-btn>
+                    </div>
+                  </v-stepper-window-item>
+                </v-stepper-window>
+              </v-stepper>
             </v-stepper-window-item>
 
             <!-- 步骤 2: 摇杆 (内嵌子 stepper) -->
             <v-stepper-window-item :value="2">
-              <v-stepper v-model="joyStep" complete-icon="mdi-check-circle" edit-icon="mdi-cog">
+              <v-stepper class="cal-stepper cal-stepper-nested" v-model="joyStep" complete-icon="mdi-check-circle"
+                edit-icon="mdi-cog">
                 <v-stepper-header>
                   <v-stepper-item v-for="(t, i) in joyStepTitles" :key="i" :value="i" :title="t"
                     :complete="i < joyStep" :disabled="i > joyStep" />
@@ -119,7 +294,7 @@
                 <v-stepper-window>
                   <!-- 子步骤 0: 居中采样 -->
                   <v-stepper-window-item :value="0">
-                    <v-alert type="info" density="compact" variant="tonal" class="mb-2">
+                    <v-alert color="primary" icon="mdi-information" density="compact" variant="tonal" class="mb-2">
                       请将摇杆<span class="font-weight-bold">保持居中不动</span>，点击"开始采样"（约 1 秒）。
                     </v-alert>
 
@@ -149,7 +324,7 @@
                       </div>
                     </template>
 
-                    <v-progress-linear v-if="runningType === 'joy_xy'" :model-value="calProgress" color="warning"
+                    <v-progress-linear v-if="runningType === 'joy_xy'" :model-value="calProgress" color="primary"
                       class="mt-3" height="6" rounded />
                     <v-alert v-if="lastMessage && lastType === 'joy_xy'" class="mt-3 py-1" density="compact"
                       :color="runningType === 'joy_xy' ? 'warning' : 'success'" variant="tonal">
@@ -166,7 +341,7 @@
 
                   <!-- 子步骤 1: 行程扫描 -->
                   <v-stepper-window-item :value="1">
-                    <v-alert type="info" density="compact" variant="tonal" class="mb-2">
+                    <v-alert color="primary" icon="mdi-information" density="compact" variant="tonal" class="mb-2">
                       请将摇杆<span class="font-weight-bold">推到行程两端</span>并缓慢画圈，覆盖全部范围（约 4 秒）。
                     </v-alert>
 
@@ -196,7 +371,7 @@
                       </div>
                     </template>
 
-                    <v-progress-linear v-if="runningType === 'joy_xy'" :model-value="calProgress" color="warning"
+                    <v-progress-linear v-if="runningType === 'joy_xy'" :model-value="calProgress" color="primary"
                       class="mt-3" height="6" rounded />
                     <v-alert v-if="lastMessage && lastType === 'joy_xy'" class="mt-3 py-1" density="compact"
                       :color="runningType === 'joy_xy' ? 'warning' : 'success'" variant="tonal">
@@ -274,6 +449,15 @@ const step = ref(0)
 const maxStep = ref(0) // 已解锁的最大步骤 (不可跳过)
 const stepTitles = ['IMU', '扳机', '摇杆']
 
+// IMU 子 stepper: 0=误差校准 1=0位校准 2=完成
+const imuStep = ref(0)
+const imuStepTitles = ['误差校准', '0位校准', '完成']
+const zeroing = ref(false) // 归零请求进行中 (防重入)
+
+// 扳机子 stepper
+const triggerStep = ref(0)
+const triggerStepTitles = ['居中采样', '行程扫描', '完成']
+
 // 摇杆子 stepper
 const joyStep = ref(0)
 const joyStepTitles = ['居中采样', '行程扫描', '完成']
@@ -283,8 +467,10 @@ const open = computed({
   set: (v: boolean) => emit('update:modelValue', v),
 })
 
-const imuDone = computed(() => maxStep.value >= 1)
-const triggerDone = computed(() => maxStep.value >= 2)
+const imuDone = computed(() => imuStep.value >= 1)
+
+// 扳机量程条渐变 (与 CalWizard 卡片一致)
+const triggerGradient = 'linear-gradient(90deg, rgb(var(--v-theme-primary)), #4fc3f7)'
 
 // 双轴量程展示 (reactive 使嵌套的 joyX/joyY ref 自动解包)
 const joyAxes = reactive([
@@ -296,10 +482,10 @@ const joyAxes = reactive([
 watch(() => props.modelValue, (v) => {
   if (!v) return
   const rt = calStore.runningType
-  if (rt === 'imu') { step.value = 0; maxStep.value = 0; joyStep.value = 0 }
-  else if (rt === 'trigger') { step.value = 1; maxStep.value = 1; joyStep.value = 0 }
-  else if (rt === 'joy_xy') { step.value = 2; maxStep.value = 2; joyStep.value = 0 }
-  else { step.value = 0; maxStep.value = 0; joyStep.value = 0 }
+  if (rt === 'imu') { step.value = 0; maxStep.value = 0; imuStep.value = 0; joyStep.value = 0 }
+  else if (rt === 'trigger') { step.value = 1; maxStep.value = 1; imuStep.value = 0; triggerStep.value = 0; joyStep.value = 0 }
+  else if (rt === 'joy_xy') { step.value = 2; maxStep.value = 2; imuStep.value = 0; triggerStep.value = 0; joyStep.value = 0 }
+  else { step.value = 0; maxStep.value = 0; imuStep.value = 0; triggerStep.value = 0; joyStep.value = 0 }
 })
 
 // 校准完成 (runningType 非空 → null) 后自动推进
@@ -307,11 +493,13 @@ watch(runningType, (nv, ov) => {
   if (!props.modelValue) return
   if (ov !== null && nv === null && lastMessage.value !== '已取消') {
     if (lastType.value === 'imu' && step.value === 0) {
-      maxStep.value = 1
-      step.value = 1
+      imuStep.value = 1 // 误差校准完成 → 0位校准
     } else if (lastType.value === 'trigger' && step.value === 1) {
-      maxStep.value = 2
-      step.value = 2
+      if (triggerStep.value === 0) triggerStep.value = 1
+      else if (triggerStep.value === 1) {
+        triggerStep.value = 2
+        maxStep.value = 2
+      }
     } else if (lastType.value === 'joy_xy') {
       if (joyStep.value === 0) joyStep.value = 1
       else if (joyStep.value === 1) joyStep.value = 2
@@ -325,11 +513,42 @@ async function startCal(type: 'imu' | 'trigger'): Promise<void> {
   calStore.startCalTimeout()
 }
 
+async function runTriggerStep(s: 1 | 2): Promise<void> {
+  if (calStore.runningType) return
+  await calStore.startCalStep('trigger', s)
+  calStore.startStatusPolling()
+  calStore.startCalTimeout()
+}
+
 async function runJoyStep(s: 1 | 2): Promise<void> {
   if (calStore.runningType) return
   await calStore.startCalStep('joy_xy', s)
   calStore.startStatusPolling()
   calStore.startCalTimeout()
+}
+
+/** 0位校准: 等待 cal_zero_imu 响应 (store 内置 3s 超时), 成功进入完成页 */
+async function runZeroIMU(): Promise<void> {
+  if (zeroing.value || calStore.runningType) return
+  zeroing.value = true
+  try {
+    const ok = await calStore.zeroIMU()
+    if (ok) imuStep.value = 2
+  } finally {
+    zeroing.value = false
+  }
+}
+
+function nextToTrigger(): void {
+  maxStep.value = 1
+  step.value = 1
+  triggerStep.value = 0
+}
+
+function nextToJoy(): void {
+  maxStep.value = 2
+  step.value = 2
+  joyStep.value = 0
 }
 
 async function cancelCal(): Promise<void> {
@@ -377,11 +596,39 @@ function fmtBias(v?: number): string {
   if (v === undefined || v === null) return '--'
   return v.toFixed(4)
 }
+
+function fmtDeg(v?: number): string {
+  if (v === undefined || v === null) return '--'
+  return v.toFixed(1) + '°'
+}
 </script>
 
 <style scoped>
 .cal-avatar {
   border-radius: 10px;
+  border: 1px solid rgba(255, 187, 0, 0.25);
+}
+
+/* 对话框卡片: 去除默认 box-shadow, 改用边框 */
+.cal-dialog-card {
+  box-shadow: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* stepper: 扁平, 无阴影, 边框+底色划分区域 */
+.cal-stepper {
+  box-shadow: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.cal-stepper-nested {
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+.cal-stepper :deep(.v-stepper-header) {
+  box-shadow: none !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 /* 等宽数字字体 */
@@ -455,6 +702,7 @@ function fmtBias(v?: number): string {
   border-radius: 10px;
   padding: 6px 8px;
   background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .stat-grid {

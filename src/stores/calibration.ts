@@ -80,11 +80,33 @@ export const useCalibrationStore = defineStore('calibration', () => {
     await serialService.sendCommand('cal_set_lpf_alpha', { alpha })
   }
 
-  async function zeroIMU(): Promise<void> {
-    await serialService.sendCommand('cal_zero_imu')
-    lastMessage.value = 'IMU 已归零'
-    lastType.value = 'imu'
-    setTimeout(() => { lastMessage.value = '' }, 2000)
+  // 0位校准响应确认（cal_zero_imu → {cmd, ok}）
+  let zeroIMUResolvers: Array<(ok: boolean) => void> = []
+  let zeroIMUTimer: ReturnType<typeof setTimeout> | null = null
+
+  function resolveZeroIMU(ok: boolean): void {
+    if (zeroIMUTimer) { clearTimeout(zeroIMUTimer); zeroIMUTimer = null }
+    const resolvers = zeroIMUResolvers
+    zeroIMUResolvers = []
+    resolvers.forEach(r => r(ok))
+  }
+
+  async function zeroIMU(): Promise<boolean> {
+    const ok = await new Promise<boolean>(resolve => {
+      zeroIMUResolvers.push(resolve)
+      zeroIMUTimer = setTimeout(() => {
+        const idx = zeroIMUResolvers.indexOf(resolve)
+        if (idx >= 0) zeroIMUResolvers.splice(idx, 1)
+        resolve(false) // 超时视为失败
+      }, 3000)
+      serialService.sendCommand('cal_zero_imu')
+    })
+    if (ok) {
+      lastMessage.value = 'IMU 已归零'
+      lastType.value = 'imu'
+      setTimeout(() => { lastMessage.value = '' }, 2000)
+    }
+    return ok
   }
 
   // ---- 定时器管理 ----
@@ -151,6 +173,18 @@ export const useCalibrationStore = defineStore('calibration', () => {
         // 校准中固件正在修改 min/center/max 与 gyroBias, 500ms 轮询会把
         // "校准中间参数"覆盖进 UI 导致量程/百分比/图形/输出全部跳动;
         // 实时 raw+IMU 已由 STREAM content_type=1 (100ms) 独立推送
+      }
+      return
+    }
+
+    // cal_zero_imu 响应 (0位校准: 成功 {cmd, ok:true} / 失败 {cmd, ok:false, error, status})
+    if (json.cmd === 'cal_zero_imu') {
+      const ok = json.ok === true
+      resolveZeroIMU(ok)
+      if (!ok) {
+        // status=4 (S_BUSY) = 设备未静止; 其余透传固件 error
+        lastMessage.value = json.status === 4 ? '归零失败：设备未静止，请保持水平稳定后重试' : ('归零失败：' + (json.error ?? '未知错误'))
+        lastType.value = 'imu'
       }
       return
     }

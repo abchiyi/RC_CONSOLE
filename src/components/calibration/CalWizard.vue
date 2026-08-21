@@ -119,9 +119,6 @@
       <v-card-actions>
         <v-btn color="secondary" prepend-icon="mdi-crosshairs-gps" variant="tonal" @click="zeroIMU">归零</v-btn>
         <v-spacer />
-        <v-btn v-if="runningType !== 'imu'" color="warning" prepend-icon="mdi-play" variant="tonal"
-          @click="startCal('imu')">开始校准</v-btn>
-        <v-btn v-else color="error" variant="tonal" @click="cancelCal">取消</v-btn>
       </v-card-actions>
     </v-card>
 
@@ -172,23 +169,6 @@
 
         <v-divider class="my-3" opacity="0.4" />
 
-        <div class="stat-grid">
-          <div class="stat-col">
-            <span class="text-caption text-medium-emphasis">最小</span>
-            <div class="mono font-weight-bold text-primary">{{ trigger.raw_min ?? '--' }}</div>
-          </div>
-          <div class="stat-col">
-            <span class="text-caption text-medium-emphasis">中心</span>
-            <div class="mono font-weight-bold text-primary">{{ trigger.raw_center ?? '--' }}</div>
-          </div>
-          <div class="stat-col">
-            <span class="text-caption text-medium-emphasis">最大</span>
-            <div class="mono font-weight-bold text-primary">{{ trigger.raw_max ?? '--' }}</div>
-          </div>
-        </div>
-
-        <v-divider class="my-3" opacity="0.4" />
-
         <div class="d-flex align-center mb-1">
           <span class="text-caption text-medium-emphasis mr-2">死区</span>
           <v-chip size="x-small" variant="tonal" class="mono">{{ trigger.deadzone }}</v-chip>
@@ -203,13 +183,6 @@
           {{ lastMessage }}
         </v-alert>
       </v-card-text>
-
-      <v-card-actions>
-        <v-spacer />
-        <v-btn v-if="runningType !== 'trigger'" color="primary" prepend-icon="mdi-play" variant="tonal"
-          @click="startCal('trigger')">开始校准</v-btn>
-        <v-btn v-else color="error" variant="tonal" @click="cancelCal">取消</v-btn>
-      </v-card-actions>
     </v-card>
 
     <!-- ==================== 摇杆校准 (性能展示) ==================== -->
@@ -223,7 +196,7 @@
         <v-card-title>
           摇杆
         </v-card-title>
-        <v-card-subtitle>摇杆实时位置与行程范围 (校准在弹窗中进行)</v-card-subtitle>
+        <v-card-subtitle>摇杆实时位置与行程范围 (校准请使用工具栏"校准"向导)</v-card-subtitle>
         <template #append>
           <v-chip v-if="runningType === 'joy_xy'" color="warning" size="small" variant="tonal">
             <v-progress-circular indeterminate size="14" width="2" class="mr-1" />
@@ -268,169 +241,7 @@
         <v-slider v-model.number="joyX.deadzone" :min="0" :max="500" :step="1" density="compact" hide-details
           thumb-label :disabled="runningType !== null" @end="debounceDeadzone('joy_xy')" />
       </v-card-text>
-
-      <v-card-actions>
-        <v-btn block size="large" color="primary" prepend-icon="mdi-play" variant="tonal"
-          @click="openCalDialog">开始校准</v-btn>
-      </v-card-actions>
     </v-card>
-
-    <!-- ==================== 摇杆校准弹窗 (stepper 向导) ==================== -->
-    <v-dialog v-model="calDialog" max-width="560" persistent>
-      <v-card rounded="lg" elevation="0">
-        <v-card-item>
-          <template #prepend>
-            <v-avatar color="success" size="36" class="cal-avatar">
-              <v-icon color="white" size="20">mdi-gamepad-variant</v-icon>
-            </v-avatar>
-          </template>
-          <v-card-title>摇杆校准向导</v-card-title>
-          <v-card-subtitle>按步骤引导完成摇杆校准</v-card-subtitle>
-          <template #append>
-            <v-btn icon="mdi-close" variant="text" size="small" @click="closeCalDialog" />
-          </template>
-        </v-card-item>
-
-        <v-card-text>
-          <v-stepper v-model="calStep" complete-icon="mdi-check-circle" edit-icon="mdi-cog">
-            <v-stepper-header>
-              <v-stepper-item v-for="(title, i) in calStepTitles" :key="i" :value="i" :title="title"
-                :complete="i < calStep" />
-            </v-stepper-header>
-
-            <v-stepper-window>
-              <!-- 步骤1: 居中采样 (X/Y 双轴) -->
-              <v-stepper-window-item :value="0">
-                <v-alert type="info" density="compact" variant="tonal" class="mb-2">
-                  请将摇杆<span class="font-weight-bold">保持居中不动</span>，点击"开始采样"，X/Y 两轴同时采样（约 1 秒）。
-                </v-alert>
-
-                <template v-for="ax in calAxes" :key="ax.key">
-                  <div class="d-flex align-center mb-1 mt-2">
-                    <span class="text-caption font-weight-bold mr-2" :class="'text-' + ax.color">{{ ax.label }}</span>
-                    <v-spacer />
-                    <span class="text-caption text-medium-emphasis mr-2">raw</span>
-                    <span class="mono font-weight-bold" :class="'text-' + ax.color">{{ ax.data.raw ?? '--' }}</span>
-                  </div>
-                  <div class="range-meter">
-                    <div class="range-scale d-flex text-caption text-medium-emphasis mb-1">
-                      <span class="mono">{{ ax.data.raw_min ?? '--' }}</span>
-                      <v-spacer />
-                      <span class="mono" :class="'text-' + ax.color">{{ ax.data.raw_center ?? '--' }}</span>
-                      <v-spacer />
-                      <span class="mono">{{ ax.data.raw_max ?? '--' }}</span>
-                    </div>
-                    <div class="range-track">
-                      <div class="range-fill" :style="{ width: rawPercent(ax.data) + '%', background: ax.gradient }" />
-                      <div v-if="hasRange(ax.data)" class="range-deadzone" :style="deadzoneStyle(ax.data)" />
-                      <div v-if="hasRange(ax.data)" class="range-center" :style="{ left: centerPercent(ax.data) + '%' }" />
-                      <div class="range-thumb" :style="{ left: rawPercent(ax.data) + '%' }">
-                        <div class="range-thumb-dot" />
-                      </div>
-                    </div>
-                  </div>
-                </template>
-
-                <v-progress-linear v-if="runningType === 'joy_xy'" :model-value="calProgress" color="warning" class="mt-3"
-                  height="6" rounded />
-                <v-alert v-if="lastMessage && lastType === 'joy_xy'" class="mt-3 py-1" density="compact"
-                  :color="runningType === 'joy_xy' ? 'warning' : 'success'" variant="tonal">
-                  {{ lastMessage }}
-                </v-alert>
-
-                <div class="d-flex justify-space-between mt-3">
-                  <v-btn color="grey" variant="text" @click="closeCalDialog">取消</v-btn>
-                  <v-btn v-if="runningType !== 'joy_xy'" color="success" prepend-icon="mdi-play" variant="tonal"
-                    @click="runCalStep(1)">开始采样</v-btn>
-                  <v-btn v-else color="error" variant="tonal" @click="cancelCal">取消</v-btn>
-                </div>
-              </v-stepper-window-item>
-
-              <!-- 步骤2: 行程扫描 (X/Y 双轴) -->
-              <v-stepper-window-item :value="1">
-                <v-alert type="info" density="compact" variant="tonal" class="mb-2">
-                  请将摇杆<span class="font-weight-bold">推到行程两端</span>并缓慢画圈，覆盖全部范围（约 4 秒）。
-                </v-alert>
-
-                <template v-for="ax in calAxes" :key="ax.key">
-                  <div class="d-flex align-center mb-1 mt-2">
-                    <span class="text-caption font-weight-bold mr-2" :class="'text-' + ax.color">{{ ax.label }}</span>
-                    <v-spacer />
-                    <span class="text-caption text-medium-emphasis mr-2">raw</span>
-                    <span class="mono font-weight-bold" :class="'text-' + ax.color">{{ ax.data.raw ?? '--' }}</span>
-                  </div>
-                  <div class="range-meter">
-                    <div class="range-scale d-flex text-caption text-medium-emphasis mb-1">
-                      <span class="mono">{{ ax.data.raw_min ?? '--' }}</span>
-                      <v-spacer />
-                      <span class="mono" :class="'text-' + ax.color">{{ ax.data.raw_center ?? '--' }}</span>
-                      <v-spacer />
-                      <span class="mono">{{ ax.data.raw_max ?? '--' }}</span>
-                    </div>
-                    <div class="range-track">
-                      <div class="range-fill" :style="{ width: rawPercent(ax.data) + '%', background: ax.gradient }" />
-                      <div v-if="hasRange(ax.data)" class="range-deadzone" :style="deadzoneStyle(ax.data)" />
-                      <div v-if="hasRange(ax.data)" class="range-center" :style="{ left: centerPercent(ax.data) + '%' }" />
-                      <div class="range-thumb" :style="{ left: rawPercent(ax.data) + '%' }">
-                        <div class="range-thumb-dot" />
-                      </div>
-                    </div>
-                  </div>
-                </template>
-
-                <v-progress-linear v-if="runningType === 'joy_xy'" :model-value="calProgress" color="warning" class="mt-3"
-                  height="6" rounded />
-                <v-alert v-if="lastMessage && lastType === 'joy_xy'" class="mt-3 py-1" density="compact"
-                  :color="runningType === 'joy_xy' ? 'warning' : 'success'" variant="tonal">
-                  {{ lastMessage }}
-                </v-alert>
-
-                <div class="d-flex justify-space-between mt-3">
-                  <v-btn color="grey" variant="text" @click="calStep = 0">上一步</v-btn>
-                  <v-btn v-if="runningType !== 'joy_xy'" color="success" prepend-icon="mdi-play" variant="tonal"
-                    @click="runCalStep(2)">开始采样</v-btn>
-                  <v-btn v-else color="error" variant="tonal" @click="cancelCal">取消</v-btn>
-                </div>
-              </v-stepper-window-item>
-
-              <!-- 步骤3: 完成 -->
-              <v-stepper-window-item :value="2">
-                <v-alert type="success" density="compact" variant="tonal" class="mb-2">
-                  校准完成！X/Y 两轴结果已保存，死区可在展示卡片中调整。
-                </v-alert>
-
-                <template v-for="ax in calAxes" :key="ax.key">
-                  <div class="d-flex align-center mb-1 mt-2">
-                    <span class="text-caption font-weight-bold mr-2" :class="'text-' + ax.color">{{ ax.label }}</span>
-                    <v-spacer />
-                    <span class="text-caption text-medium-emphasis mr-2">raw</span>
-                    <span class="mono font-weight-bold" :class="'text-' + ax.color">{{ ax.data.raw ?? '--' }}</span>
-                  </div>
-                  <div class="stat-grid">
-                    <div class="stat-col">
-                      <span class="text-caption text-medium-emphasis">最小</span>
-                      <div class="mono font-weight-bold" :class="'text-' + ax.color">{{ ax.data.raw_min ?? '--' }}</div>
-                    </div>
-                    <div class="stat-col">
-                      <span class="text-caption text-medium-emphasis">中心</span>
-                      <div class="mono font-weight-bold" :class="'text-' + ax.color">{{ ax.data.raw_center ?? '--' }}</div>
-                    </div>
-                    <div class="stat-col">
-                      <span class="text-caption text-medium-emphasis">最大</span>
-                      <div class="mono font-weight-bold" :class="'text-' + ax.color">{{ ax.data.raw_max ?? '--' }}</div>
-                    </div>
-                  </div>
-                </template>
-
-                <div class="d-flex justify-end mt-3">
-                  <v-btn color="primary" prepend-icon="mdi-check-circle" variant="tonal" @click="closeCalDialog">完成</v-btn>
-                </div>
-              </v-stepper-window-item>
-            </v-stepper-window>
-          </v-stepper>
-        </v-card-text>
-      </v-card>
-    </v-dialog>
 
     <!-- ==================== 全局设置 ==================== -->
     <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
@@ -465,10 +276,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useChannelStore } from '@/stores/channels'
-import { useCalibrationStore, type CalType, type AdcCal } from '@/stores/calibration'
+import { useCalibrationStore, type AdcCal } from '@/stores/calibration'
 
 const chStore = useChannelStore()
 const calStore = useCalibrationStore()
@@ -481,56 +292,6 @@ const imu = calStore.imu
 
 // ref 必须通过 storeToRefs() 保持响应式绑定，否则 auto-unwrap 后变成纯值快照
 const { runningType, calProgress, lastMessage, lastType, lpfAlpha } = storeToRefs(calStore)
-
-// ---- 摇杆校准向导 (stepper) ----
-const calDialog = ref(false)
-const calStep = ref(0) // 0=居中采样 1=行程扫描 2=完成
-const calStepTitles = ['居中采样', '行程扫描', '完成']
-
-// 双轴量程展示 (reactive 使嵌套的 joyX/joyY ref 自动解包)
-const calAxes = reactive([
-  { key: 'joy_x', label: 'X 轴', data: joyX, color: 'success', gradient: 'linear-gradient(90deg, rgb(var(--v-theme-success)), #26c6da)' },
-  { key: 'joy_y', label: 'Y 轴', data: joyY, color: 'info', gradient: 'linear-gradient(90deg, rgb(var(--v-theme-info)), #29b6f6)' },
-])
-
-function openCalDialog(): void {
-  calDialog.value = true
-  if (calStore.runningType === null) {
-    calStep.value = 0
-  }
-}
-
-function closeCalDialog(): void {
-  calDialog.value = false
-}
-
-/** 执行双轴分步采样 (step=1 居中, 2=行程扫描) */
-async function runCalStep(step: 1 | 2): Promise<void> {
-  if (calStore.runningType) return
-  await calStore.startCalStep('joy_xy', step)
-  calStore.startStatusPolling()
-  calStore.startCalTimeout()
-}
-
-// 分步校准完成后自动推进向导
-watch(runningType, (nv, ov) => {
-  if (ov !== null && nv === null && lastType.value === 'joy_xy' && lastMessage.value !== '已取消') {
-    if (calStep.value === 0) calStep.value = 1
-    else if (calStep.value === 1) calStep.value = 2
-  }
-})
-
-// --- 校准控制（封装 Store 方法） ---
-async function startCal(type: CalType): Promise<void> {
-  if (calStore.runningType) return
-  await calStore.startCal(type)
-  calStore.startStatusPolling()
-  calStore.startCalTimeout()
-}
-
-async function cancelCal(): Promise<void> {
-  calStore.cancelCal()
-}
 
 // --- 死区 ---
 const deadzoneTimers: Record<string, ReturnType<typeof setTimeout>> = {}
@@ -641,30 +402,41 @@ const imuCanvas = ref<HTMLCanvasElement | null>(null)
 
 type Vec3 = [number, number, number]
 type Vec2 = { x: number; y: number }
+type Mat3 = [Vec3, Vec3, Vec3]
 
 /** 3×3 矩阵乘法 */
-function mul3(a: number[][], b: number[][]): number[][] {
-  const r: number[][] = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
-  for (let i = 0; i < 3; i++) {
-    for (let j = 0; j < 3; j++) {
-      let s = 0
-      for (let k = 0; k < 3; k++) s += a[i][k] * b[k][j]
-      r[i][j] = s
-    }
-  }
-  return r
+function mul3(a: Mat3, b: Mat3): Mat3 {
+  const [a0, a1, a2] = a
+  const [b0, b1, b2] = b
+  return [
+    [
+      a0[0] * b0[0] + a0[1] * b1[0] + a0[2] * b2[0],
+      a0[0] * b0[1] + a0[1] * b1[1] + a0[2] * b2[1],
+      a0[0] * b0[2] + a0[1] * b1[2] + a0[2] * b2[2],
+    ],
+    [
+      a1[0] * b0[0] + a1[1] * b1[0] + a1[2] * b2[0],
+      a1[0] * b0[1] + a1[1] * b1[1] + a1[2] * b2[1],
+      a1[0] * b0[2] + a1[1] * b1[2] + a1[2] * b2[2],
+    ],
+    [
+      a2[0] * b0[0] + a2[1] * b1[0] + a2[2] * b2[0],
+      a2[0] * b0[1] + a2[1] * b1[1] + a2[2] * b2[1],
+      a2[0] * b0[2] + a2[1] * b1[2] + a2[2] * b2[2],
+    ],
+  ]
 }
 
 /** 单轴旋转矩阵, 弧度制 */
-function rotX(a: number): number[][] {
+function rotX(a: number): Mat3 {
   const c = Math.cos(a), s = Math.sin(a)
   return [[1, 0, 0], [0, c, -s], [0, s, c]]
 }
-function rotY(a: number): number[][] {
+function rotY(a: number): Mat3 {
   const c = Math.cos(a), s = Math.sin(a)
   return [[c, 0, s], [0, 1, 0], [-s, 0, c]]
 }
-function rotZ(a: number): number[][] {
+function rotZ(a: number): Mat3 {
   const c = Math.cos(a), s = Math.sin(a)
   return [[c, -s, 0], [s, c, 0], [0, 0, 1]]
 }
@@ -673,11 +445,11 @@ function rotZ(a: number): number[][] {
  * 设备轴 → 屏幕轴: 固件 Mahony 输出 ZYX 欧拉角 (roll 绕设备 X, pitch 绕设备 Y, yaw 绕设备 Z)
  * roll → 屏幕 Z, pitch → 屏幕 X, yaw → 屏幕 Y
  */
-function deviceToScreen(roll: number, pitch: number, yaw: number): number[][] {
+function deviceToScreen(roll: number, pitch: number, yaw: number): Mat3 {
   return mul3(mul3(rotY(yaw), rotX(pitch)), rotZ(roll))
 }
 
-function apply(R: number[][], v: Vec3): Vec3 {
+function apply(R: Mat3, v: Vec3): Vec3 {
   return [
     R[0][0] * v[0] + R[0][1] * v[1] + R[0][2] * v[2],
     R[1][0] * v[0] + R[1][1] * v[1] + R[1][2] * v[2],
@@ -702,12 +474,12 @@ function makeBox(cx: number, cy: number, cz: number, hw: number, hh: number, hd:
     v(cx + hw, cy + hh, cz + hd), v(cx - hw, cy + hh, cz + hd),
   ]
   const faces: Vec3[][] = [
-    [4, 5, 6, 7].map(i => verts[i]), // +z 前
-    [1, 0, 3, 2].map(i => verts[i]), // -z 后
-    [0, 4, 7, 3].map(i => verts[i]), // -x 左
-    [5, 1, 2, 6].map(i => verts[i]), // +x 右
-    [3, 7, 6, 2].map(i => verts[i]), // +y 上
-    [0, 1, 5, 4].map(i => verts[i]), // -y 下
+    [4, 5, 6, 7].map(i => verts[i]!), // +z 前
+    [1, 0, 3, 2].map(i => verts[i]!), // -z 后
+    [0, 4, 7, 3].map(i => verts[i]!), // -x 左
+    [5, 1, 2, 6].map(i => verts[i]!), // +x 右
+    [3, 7, 6, 2].map(i => verts[i]!), // +y 上
+    [0, 1, 5, 4].map(i => verts[i]!), // -y 下
   ]
   return { verts, faces, fill: '', stroke: '' }
 }
@@ -766,7 +538,7 @@ function drawScene(): void {
   const roll = (imu.roll ?? 0) * deg
   const pitch = (imu.pitch ?? 0) * deg
   const yaw = (imu.yaw ?? 0) * deg
-  const R0: number[][] = [[-1, 0, 0], [0, 1, 0], [0, 0, -1]] // Ry(180°): 0 位时前方朝屏幕内
+  const R0: Mat3 = [[-1, 0, 0], [0, 1, 0], [0, 0, -1]] // Ry(180°): 0 位时前方朝屏幕内
   const R = mul3(deviceToScreen(roll, pitch, yaw), R0)
 
   // 透视投影: focal=200, 相机 z=6 (固定坐标系)
@@ -794,8 +566,9 @@ function drawScene(): void {
         return { x: cx + r[0] * s, y: cy + r[1] * s }
       })
       // 面法向量 n = (p1-p0) × (p2-p0), 屏幕系
-      const u: Vec3 = [rs[1][0] - rs[0][0], rs[1][1] - rs[0][1], rs[1][2] - rs[0][2]]
-      const v2: Vec3 = [rs[2][0] - rs[0][0], rs[2][1] - rs[0][1], rs[2][2] - rs[0][2]]
+      const r0 = rs[0]!, r1 = rs[1]!, r2 = rs[2]!
+      const u: Vec3 = [r1[0] - r0[0], r1[1] - r0[1], r1[2] - r0[2]]
+      const v2: Vec3 = [r2[0] - r0[0], r2[1] - r0[1], r2[2] - r0[2]]
       const nx = u[1] * v2[2] - u[2] * v2[1]
       const ny = u[2] * v2[0] - u[0] * v2[2]
       const nz = u[0] * v2[1] - u[1] * v2[0]
@@ -817,8 +590,8 @@ function drawScene(): void {
 
   for (const f of faces) {
     ctx.beginPath()
-    ctx.moveTo(f.pts[0].x, f.pts[0].y)
-    for (let i = 1; i < f.pts.length; i++) ctx.lineTo(f.pts[i].x, f.pts[i].y)
+    ctx.moveTo(f.pts[0]!.x, f.pts[0]!.y)
+    for (let i = 1; i < f.pts.length; i++) ctx.lineTo(f.pts[i]!.x, f.pts[i]!.y)
     ctx.closePath()
     ctx.fillStyle = f.fill
     ctx.fill()
