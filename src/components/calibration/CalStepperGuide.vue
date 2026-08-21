@@ -57,8 +57,11 @@
                 </div>
               </div>
 
-              <div class="d-flex justify-end mt-3">
+              <div class="d-flex justify-space-between mt-3">
                 <v-btn color="grey" variant="text" @click="closeGuide">关闭</v-btn>
+                <v-btn v-if="runningType !== 'imu'" color="warning" prepend-icon="mdi-play" variant="tonal"
+                  @click="startCal('imu')">开始校准</v-btn>
+                <v-btn v-else color="error" variant="tonal" @click="cancelCal">取消</v-btn>
               </div>
             </v-stepper-window-item>
 
@@ -97,8 +100,11 @@
                 </div>
               </div>
 
-              <div class="d-flex justify-end mt-3">
+              <div class="d-flex justify-space-between mt-3">
                 <v-btn color="grey" variant="text" @click="closeGuide">关闭</v-btn>
+                <v-btn v-if="runningType !== 'trigger'" color="primary" prepend-icon="mdi-play" variant="tonal"
+                  @click="startCal('trigger')">开始校准</v-btn>
+                <v-btn v-else color="error" variant="tonal" @click="cancelCal">取消</v-btn>
               </div>
             </v-stepper-window-item>
 
@@ -286,23 +292,14 @@ const joyAxes = reactive([
   { key: 'joy_y', label: 'Y 轴', data: joyY, color: 'info', gradient: 'linear-gradient(90deg, rgb(var(--v-theme-info)), #29b6f6)' },
 ])
 
-// 打开向导: 定位到正在进行的校准, 否则从 IMU 自动开始
+// 打开向导: 仅定位到正在进行的校准, 不自动启动
 watch(() => props.modelValue, (v) => {
   if (!v) return
   const rt = calStore.runningType
   if (rt === 'imu') { step.value = 0; maxStep.value = 0; joyStep.value = 0 }
   else if (rt === 'trigger') { step.value = 1; maxStep.value = 1; joyStep.value = 0 }
   else if (rt === 'joy_xy') { step.value = 2; maxStep.value = 2; joyStep.value = 0 }
-  else {
-    step.value = 0; maxStep.value = 0; joyStep.value = 0
-    startCal('imu')
-  }
-})
-
-// 进入扳机步骤时自动开始校准 (回看后再次进入, 若未在校准中则重新开始)
-watch(step, (nv, ov) => {
-  if (!props.modelValue) return
-  if (nv === 1 && ov === 0 && calStore.runningType === null) startCal('trigger')
+  else { step.value = 0; maxStep.value = 0; joyStep.value = 0 }
 })
 
 // 校准完成 (runningType 非空 → null) 后自动推进
