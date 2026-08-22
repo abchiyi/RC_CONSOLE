@@ -63,13 +63,8 @@
                 <span class="text-body-2 font-weight-medium">
                   {{ power.state ? battPct(power.state.battery_pct) + '%' : '--' }}
                 </span>
-                <v-progress-linear
-                  v-if="power.state"
-                  :model-value="battPct(power.state.battery_pct)"
-                  :color="battColor(power.state.battery_pct)"
-                  height="6" rounded
-                  style="max-width: 100px;"
-                />
+                <v-progress-linear v-if="power.state" :model-value="battPct(power.state.battery_pct)"
+                  :color="battColor(power.state.battery_pct)" height="6" rounded style="max-width: 100px;" />
               </div>
             </div>
 
@@ -92,11 +87,8 @@
             <!-- 充电状态 -->
             <div class="stat-item" style="flex: 1 1 45%; min-width: 140px;">
               <span class="text-caption text-medium-emphasis">充电状态</span>
-              <v-chip
-                v-if="power.state"
-                :color="chargeColor(power.state.charge)"
-                size="small" variant="tonal" class="mt-1"
-              >
+              <v-chip v-if="power.state" :color="chargeColor(power.state.charge)" size="small" variant="tonal"
+                class="mt-1">
                 {{ chargeLabel(power.state.charge) }}
               </v-chip>
               <span v-else class="text-caption text-grey">--</span>
@@ -142,16 +134,8 @@
                 空闲警告时间 (秒)
               </label>
               <div class="d-flex align-center ga-2">
-                <v-text-field
-                  v-model.number="warnSec"
-                  type="number"
-                  :min="10"
-                  :max="shutdownSec - 10"
-                  density="compact"
-                  variant="outlined"
-                  hide-details
-                  style="max-width: 120px;"
-                />
+                <v-text-field v-model.number="warnSec" type="number" :min="10" :max="shutdownSec - 10" density="compact"
+                  variant="outlined" hide-details style="max-width: 120px;" />
                 <span class="text-caption text-medium-emphasis">≈ {{ fmtSeconds(warnSec) }}</span>
               </div>
               <div class="text-caption text-disabled mt-1">LED 慢闪 + 蜂鸣器提醒</div>
@@ -164,16 +148,8 @@
                 关机超时时间 (秒)
               </label>
               <div class="d-flex align-center ga-2">
-                <v-text-field
-                  v-model.number="shutdownSec"
-                  type="number"
-                  :min="warnSec + 10"
-                  :max="3600"
-                  density="compact"
-                  variant="outlined"
-                  hide-details
-                  style="max-width: 120px;"
-                />
+                <v-text-field v-model.number="shutdownSec" type="number" :min="warnSec + 10" :max="3600"
+                  density="compact" variant="outlined" hide-details style="max-width: 120px;" />
                 <span class="text-caption text-medium-emphasis">≈ {{ fmtSeconds(shutdownSec) }}</span>
               </div>
               <div class="text-caption text-disabled mt-1">LED 倒计时后 Deep Sleep 关机</div>
@@ -191,27 +167,14 @@
               <span class="text-subtitle-1 font-weight-bold">调试模式</span>
             </div>
             <div class="card-badges">
-              <v-switch
-                v-model="debugSwitch"
-                :color="power.debugMode ? 'warning' : undefined"
-                :loading="debugLoading"
-                density="compact"
-                hide-details
-                inset
-                @update:model-value="toggleDebugMode"
-              />
+              <v-switch v-model="debugSwitch" :color="power.debugMode ? 'warning' : undefined" :loading="debugLoading"
+                density="compact" hide-details inset @update:model-value="toggleDebugMode" />
             </div>
           </div>
 
           <div class="mt-2">
-            <v-alert
-              v-if="power.debugMode"
-              color="warning"
-              variant="tonal"
-              density="compact"
-              icon="mdi-alert"
-              class="mb-2"
-            >
+            <v-alert v-if="power.debugMode" color="warning" variant="tonal" density="compact" icon="mdi-alert"
+              class="mb-2">
               调试模式已开启：USB 供电和串口通讯不再阻止空闲关机计时。
               调试完成后请关闭此开关。
             </v-alert>
@@ -249,15 +212,9 @@
             </v-alert>
 
             <div class="mt-3">
-              <v-btn
-                color="error"
-                size="small"
-                variant="tonal"
-                prepend-icon="mdi-delete-alert"
-                :disabled="!serial.connected || factoryResetBusy"
-                :loading="factoryResetBusy"
-                @click="factoryResetDialog = true"
-              >
+              <v-btn color="error" size="small" variant="tonal" prepend-icon="mdi-delete-alert"
+                :disabled="!serial.connected || factoryResetBusy" :loading="factoryResetBusy"
+                @click="factoryResetDialog = true">
                 抹除 NVS 并重启
               </v-btn>
             </div>
@@ -275,12 +232,7 @@
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" :disabled="factoryResetBusy" @click="factoryResetDialog = false">取消</v-btn>
-          <v-btn
-            color="error"
-            variant="tonal"
-            :loading="factoryResetBusy"
-            @click="startFactoryResetNvs"
-          >
+          <v-btn color="error" variant="tonal" :loading="factoryResetBusy" @click="startFactoryResetNvs">
             确认抹除
           </v-btn>
         </v-card-actions>
@@ -291,12 +243,12 @@
 
     <!-- 底栏操作按钮: Teleport 到全局底栏右侧槽 (App.vue) -->
     <Teleport to="#global-footer-right">
-      <v-btn v-if="serial.connected && cfgDirty" class="btn-secondary me-2" prepend-icon="mdi-content-save"
-        size="small" :loading="power.loading" @click="saveSettings">
+      <v-btn v-if="serial.connected && cfgDirty" class="btn-secondary me-2" prepend-icon="mdi-content-save" size="small"
+        :loading="power.loading" @click="saveSettings">
         <span class="btn-text">保存到设备</span>
       </v-btn>
-      <v-btn v-if="serial.connected" class="btn-secondary" prepend-icon="mdi-upload-network"
-        size="small" @click="upgradeDialog = true">
+      <v-btn v-if="serial.connected" class="btn-secondary" prepend-icon="mdi-upload-network" size="small"
+        @click="upgradeDialog = true">
         <span class="btn-text">固件升级</span>
       </v-btn>
     </Teleport>
@@ -457,6 +409,12 @@ watch(() => serial.connected, (connected) => {
   }
 })
 
+// OTA 对话框打开时停止轮询，关闭后恢复（避免 OTA 锁丢弃日志干扰）
+watch(upgradeDialog, (open) => {
+  if (open) stopPoll()
+  else if (serial.connected) startPoll()
+})
+
 async function reloadAll() {
   stateError.value = ''
   try {
@@ -548,7 +506,7 @@ onUnmounted(() => {
 }
 
 /* 顶部工具栏保持原边缘对齐, 内容区仍缩进 16px */
-.system-page > .v-toolbar {
+.system-page>.v-toolbar {
   margin: 0 -16px;
 }
 

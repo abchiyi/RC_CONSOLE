@@ -1,10 +1,5 @@
 <template>
-  <v-dialog
-    :model-value="modelValue"
-    max-width="640"
-    persistent
-    @update:model-value="onUpdateModelValue"
-  >
+  <v-dialog :model-value="modelValue" max-width="640" persistent @update:model-value="onUpdateModelValue">
     <v-card>
       <v-card-title class="d-flex align-center text-body-1">
         <v-icon class="mr-2" color="primary">mdi-upload-network</v-icon>
@@ -20,31 +15,16 @@
           请先连接设备，再上传固件镜像。
         </v-alert>
 
-        <v-file-input
-          :model-value="firmwareFile"
-          accept=".bin,application/octet-stream"
-          clearable
-          density="compact"
-          variant="outlined"
-          hide-details="auto"
-          label="选择固件文件"
-          prepend-icon="mdi-file"
-          show-size
-          :disabled="firmwareBusy || !serial.connected"
-          @update:model-value="onFirmwareFileChange"
-        />
+        <v-file-input :model-value="firmwareFile" accept=".bin,application/octet-stream" clearable density="compact"
+          variant="outlined" hide-details="auto" label="选择固件文件" prepend-icon="mdi-file" show-size
+          :disabled="firmwareBusy || !serial.connected" @update:model-value="onFirmwareFileChange" />
 
         <div v-if="firmwareBusy" class="mt-4">
           <div class="d-flex align-center justify-space-between mb-1">
             <span class="text-caption text-medium-emphasis">上传进度</span>
             <span class="text-caption font-weight-medium">{{ firmwareProgress }}%</span>
           </div>
-          <v-progress-linear
-            :model-value="firmwareProgress"
-            color="primary"
-            height="10"
-            rounded
-          />
+          <v-progress-linear :model-value="firmwareProgress" color="primary" height="10" rounded />
         </div>
 
         <v-alert v-if="firmwareError" color="error" variant="tonal" density="compact" class="mt-3">
@@ -57,24 +37,13 @@
 
       <v-card-actions>
         <v-spacer />
-        <v-btn
-          size="small"
-          variant="text"
-          prepend-icon="mdi-delete-outline"
-          :disabled="firmwareBusy || !firmwareFile"
-          @click="clearFirmwareSelection"
-        >
+        <v-btn size="small" variant="text" prepend-icon="mdi-delete-outline" :disabled="firmwareBusy || !firmwareFile"
+          @click="clearFirmwareSelection">
           清空
         </v-btn>
         <v-btn variant="text" :disabled="firmwareBusy" @click="close">关闭</v-btn>
-        <v-btn
-          color="warning"
-          variant="tonal"
-          prepend-icon="mdi-upload"
-          :disabled="!canFlashFirmware"
-          :loading="firmwareBusy"
-          @click="startFirmwareUpdate"
-        >
+        <v-btn color="warning" variant="tonal" prepend-icon="mdi-upload" :disabled="!canFlashFirmware"
+          :loading="firmwareBusy" @click="startFirmwareUpdate">
           上传并刷写
         </v-btn>
       </v-card-actions>
@@ -185,22 +154,56 @@ async function startFirmwareUpdate() {
     const uploadChunkSize = Number.isFinite(serverChunkSize) && serverChunkSize > 0 ? serverChunkSize : chunkSize
     const totalChunks = Math.max(1, Math.ceil(data.byteLength / uploadChunkSize))
 
-    for (let index = 0; index < totalChunks; index++) {
+    // 流水线+窗口确认: 每 WINDOW_SIZE 个 chunk 等一次响应同步, 兼顾速度和可靠性
+    const WINDOW_SIZE = 16
+    let lastError: string | null = null
+    let lastWritten = 0
+    let shouldStop = false
+    const errorHandler = (obj: Record<string, unknown>) => {
+      if (obj.cmd === 'ota_chunk') {
+        if (obj.ok === false) {
+          lastError = String(obj.error || '分片写入失败')
+          shouldStop = true
+        }
+        else if (typeof obj.total_written === 'number') lastWritten = obj.total_written
+      }
+    }
+    serialService.onObject(errorHandler)
+
+    let sentBytes = 0
+    for (let index = 0; index < totalChunks && !shouldStop; index++) {
       const start = index * uploadChunkSize
       const end = Math.min(start + uploadChunkSize, data.byteLength)
       const chunk = data.subarray(start, end)
-      // 二进制协议 ota_chunk 直传原始字节（无 index/base64）
-      const chunkResp = await sendCommandAndWait('ota_chunk', { data: chunk }, 10000)
-      console.log(`[OTA] chunk ${index}/${totalChunks} offset=${start} len=${chunk.length} resp:`, chunkResp)
+      await serialService.sendCommand('ota_chunk', { data: chunk })
+      sentBytes += chunk.length
+      firmwareProgress.value = Math.round((sentBytes / data.byteLength) * 100)
 
-      if (chunkResp.ok !== true) {
-        throw new Error(String(chunkResp.error || `分片写入失败: ${index}`))
+      // 每窗口等一次同步: 确认固件已收到且队列未溢出
+      if ((index + 1) % WINDOW_SIZE === 0 || index === totalChunks - 1) {
+        const syncStart = Date.now()
+        // 等 lastWritten 追上已发字节, 最多 5s
+        while (lastWritten < sentBytes && Date.now() - syncStart < 5000 && !shouldStop) {
+          await new Promise(r => setTimeout(r, 10))
+        }
+        if (shouldStop) break
+        if (lastWritten < sentBytes) {
+          shouldStop = true
+          lastError = `固件响应滞后: 已发 ${sentBytes} / 固件确认 ${lastWritten}`
+          break
+        }
       }
-
-      firmwareProgress.value = Math.round(((index + 1) / totalChunks) * 100)
+      // 每 64 个 chunk 让出事件循环
+      if (index % 64 === 63) await new Promise(r => setTimeout(r, 0))
     }
 
-    const finishResp = await sendCommandAndWait('ota_finish', {}, 20000)
+    serialService.removeObjectListener(errorHandler)
+    if (shouldStop) throw new Error(lastError || '传输中断')
+    if (lastWritten !== data.byteLength) {
+      throw new Error(`数据不完整: 已写 ${lastWritten} / 应写 ${data.byteLength}`)
+    }
+
+    const finishResp = await sendCommandAndWait('ota_finish', {}, 60000)
     if (finishResp.ok !== true) {
       throw new Error(String(finishResp.error || 'OTA 结束失败'))
     }
