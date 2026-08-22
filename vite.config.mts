@@ -3,6 +3,7 @@ import Components from 'unplugin-vue-components/vite'
 import Vue from '@vitejs/plugin-vue'
 import Vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
 import VueRouter from 'unplugin-vue-router/vite'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 
 // Utilities
 import { defineConfig } from 'vite'
@@ -12,6 +13,8 @@ import { fileURLToPath, URL } from 'node:url'
 export default defineConfig({
   base: './', // GitHub Pages / Electron 需要相对路径，否则资源加载失败
   plugins: [
+    // Web Bluetooth 要求安全上下文 (HTTPS)，自签名证书供局域网手机调试
+    basicSsl(),
     VueRouter({
       dts: 'src/typed-router.d.ts',
     }),
@@ -55,5 +58,6 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    host: true, // 监听 0.0.0.0，允许局域网手机访问
   },
 })

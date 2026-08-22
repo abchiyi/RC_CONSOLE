@@ -33,6 +33,8 @@ export class BleService {
   private handler = new BinaryHandler()
   private _connected = false
   private _deviceName = ''
+  /** OTA 期间非 OTA 命令直接丢弃，避免轮询干扰传输 */
+  private otaInProgress = false
 
   constructor() {
     this.handler.onObject(obj => {
@@ -136,9 +138,16 @@ export class BleService {
     this.device = null
   }
 
-  /** 发送二进制命令帧（自动按 20B 切块写入 NUS RX，队列满时降块重试） */
+  /** 发送二进制命令帧（自动切块写入 NUS RX，队列满时降块重试，OTA 期间加大节流） */
   async sendCommand(cmd: string, params?: Record<string, unknown>): Promise<void> {
     if (!this.isConnected || !this.rx) return
+    // OTA 锁: ota_begin 加锁, ota_finish/ota_abort 解锁, ota_chunk 允许, 其他命令丢弃
+    if (cmd === 'ota_begin') this.otaInProgress = true
+    else if (cmd === 'ota_finish' || cmd === 'ota_abort') this.otaInProgress = false
+    else if (this.otaInProgress && cmd !== 'ota_chunk') {
+      console.warn(`[BLE] OTA in progress, dropping: ${cmd}`)
+      return
+    }
     let frames: Uint8Array[]
     try {
       frames = encodeRequest(cmd, params)
@@ -149,33 +158,41 @@ export class BleService {
     if (cmd === 'stream_start') {
       this.handler.setStreamFlags(Number(params?.flags ?? 0))
     }
+    const isOta = cmd === 'ota_begin' || cmd === 'ota_chunk' || cmd === 'ota_finish' || cmd === 'ota_abort'
     // 调试：打印实际写入 BLE 的帧字节
     const hex = frames.map(f =>
       Array.from(f).map(b => b.toString(16).padStart(2, '0')).join(' '),
     ).join(' | ')
     console.log(`[BLE TX] ${cmd} (${frames.length} frame): ${hex}`)
     try {
-      // 固件 MAX_MTU=247 → ATT payload = MTU-3 = 244B; 一次写入整块, 替代 13 次 20B 写
-      const CHUNK = 244
-      // 节流对齐 BLE 连接间隔(12×1.25=15ms), 避免瞬时打爆固件 NimBLE RX mbuf
-      const PACE_MS = 15
+      // PC Chrome 协商 MTU=247 → 244B；OTA 期间固定 244 不降块，避免与前端切片错位
+      const chunkSize = 244
+      // OTA 严格请求-响应：加大节流避免与响应撞 TX；普通命令对齐连接间隔即可
+      const PACE_MS = isOta ? 40 : 15
       for (const f of frames) {
-        const multiChunk = f.length > CHUNK
-        for (let i = 0; i < f.length; i += CHUNK) {
-          const chunk = f.subarray(i, i + CHUNK)
+        const multiChunk = f.length > chunkSize
+        for (let i = 0; i < f.length; i += chunkSize) {
+          const chunk = f.subarray(i, i + chunkSize)
           const ab = new Uint8Array(chunk).buffer
-          try {
-            await this.rx!.writeValueWithoutResponse(ab)
-          } catch {
-            // 特征队列满 / 状态异常：稍候降块重试一次
-            await new Promise(resolve => setTimeout(resolve, 20))
-            try { await this.rx!.writeValueWithoutResponse(ab) } catch { /* ignore */ }
+          let sent = false
+          for (let attempt = 0; attempt < 3 && !sent; attempt++) {
+            try {
+              await this.rx!.writeValueWithoutResponse(ab)
+              sent = true
+            } catch {
+              // 特征队列满 / 状态异常：退避后重试 (OTA 不降块, 避免切片错位)
+              await new Promise(resolve => setTimeout(resolve, 20 * (attempt + 1)))
+            }
           }
-          // 块间节流(仅当还有后续块): 对齐连接间隔
-          if (multiChunk && i + CHUNK < f.length)
+          if (!sent) {
+            console.warn(`[BLE TX] ${cmd} chunk@${i} dropped after retries`)
+            continue
+          }
+          // 块间节流(仅当还有后续块)
+          if (multiChunk && i + chunkSize < f.length)
             await new Promise(resolve => setTimeout(resolve, PACE_MS))
         }
-        // 帧间节流(多分片帧时): 分片帧间无间隔是打爆 mbuf 的主因之一
+        // 帧间节流(多分片帧时)
         if (f !== frames[frames.length - 1])
           await new Promise(resolve => setTimeout(resolve, PACE_MS))
       }

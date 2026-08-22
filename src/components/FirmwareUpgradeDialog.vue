@@ -191,6 +191,7 @@ async function startFirmwareUpdate() {
       const chunk = data.subarray(start, end)
       // 二进制协议 ota_chunk 直传原始字节（无 index/base64）
       const chunkResp = await sendCommandAndWait('ota_chunk', { data: chunk }, 10000)
+      console.log(`[OTA] chunk ${index}/${totalChunks} offset=${start} len=${chunk.length} resp:`, chunkResp)
 
       if (chunkResp.ok !== true) {
         throw new Error(String(chunkResp.error || `分片写入失败: ${index}`))
@@ -222,11 +223,12 @@ async function startFirmwareUpdate() {
       }
     }, 3000)
   } catch (e: unknown) {
+    console.error('[OTA] failed:', e)
     if (otaStarted) {
       try {
         await serialService.sendCommand('ota_abort')
-      } catch {
-        // ignore
+      } catch (abortErr) {
+        console.error('[OTA] abort also failed:', abortErr)
       }
     }
     firmwareError.value = `升级失败: ${e instanceof Error ? e.message : String(e)}`

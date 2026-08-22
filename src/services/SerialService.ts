@@ -44,6 +44,8 @@ export class SerialService {
   private objListeners: Set<(obj: Record<string, unknown>) => void> = new Set()
   private disconnectCallback: (() => void) | null = null
   private handler = new BinaryHandler()
+  /** OTA 期间非 OTA 命令直接丢弃，避免轮询干扰传输 */
+  private otaInProgress = false
 
   constructor() {
     // 二进制帧 → 对象分发；ESP_LOG 混流中的 crash 行 → lineListeners
@@ -199,6 +201,13 @@ export class SerialService {
 
   async sendCommand(cmd: string, params?: Record<string, unknown>): Promise<void> {
     if (this.closing || !this.writer) return
+    // OTA 锁: ota_begin 加锁, ota_finish/ota_abort 解锁, ota_chunk 允许, 其他命令丢弃
+    if (cmd === 'ota_begin') this.otaInProgress = true
+    else if (cmd === 'ota_finish' || cmd === 'ota_abort') this.otaInProgress = false
+    else if (this.otaInProgress && cmd !== 'ota_chunk') {
+      console.warn(`[Serial] OTA in progress, dropping: ${cmd}`)
+      return
+    }
     let frames: Uint8Array[]
     try {
       frames = encodeRequest(cmd, params)
