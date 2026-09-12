@@ -8,6 +8,7 @@
 import '@/styles/mdi-subset.css'
 import '@/styles/selects.css'
 import 'vuetify/styles'
+import '@/styles/switches.css'
 
 // Composables
 import { createVuetify } from 'vuetify'
@@ -18,6 +19,16 @@ import { createVuetify } from 'vuetify'
 const bfOrange = '#FFBB00'
 
 export default createVuetify({
+  // 全站 v-switch 统一样式: 紧凑尺寸 + 隐藏详情 + 内嵌布局 + 默认主色
+  // (各页仅在需要语义色时显式传 color; 视觉规范见 styles/switches.css)
+  defaults: {
+    VSwitch: {
+      color: 'primary',
+      density: 'compact',
+      hideDetails: true,
+      inset: true,
+    },
+  },
   theme: {
     defaultTheme: 'system',
     themes: {

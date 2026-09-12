@@ -81,6 +81,8 @@ export const CMD = {
   ELRS_BIND_START: 0x0708,
   ELRS_BLE_START: 0x0709,
   ELRS_BLE_STOP: 0x070A,
+  MAVLINK_LINK_STATS: 0x0803,
+  SET_TELEM2: 0x0804,
 } as const
 
 /** 事件 ID */
@@ -133,6 +135,7 @@ export const CMD_NAME_TO_ID: Record<string, number> = {
   elrs_bind_start: CMD.ELRS_BIND_START,
   elrs_ble_start: CMD.ELRS_BLE_START,
   elrs_ble_stop: CMD.ELRS_BLE_STOP,
+  set_telem2: CMD.SET_TELEM2,
 }
 
 const CMD_ID_TO_NAME: Record<number, string> = Object.fromEntries(

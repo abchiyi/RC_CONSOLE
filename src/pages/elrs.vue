@@ -80,9 +80,6 @@
               v-model="dynPwrSwitch"
               :color="dynPwrSwitch ? 'warning' : 'success'"
               :loading="dynPwrToggling"
-              density="compact"
-              hide-details
-              inset
               @update:model-value="toggleDynPower"
             />
             <v-chip class="ml-2" :color="link.dynPowerOn ? 'warning' : 'success'" size="x-small" variant="tonal">
@@ -158,7 +155,7 @@
             <div class="text-body-2 font-weight-medium">高级</div>
             <div class="text-caption text-medium-emphasis">字段配置表</div>
           </div>
-          <v-switch v-model="showAdvanced" color="info" hide-details inset />
+          <v-switch v-model="showAdvanced" color="info" />
         </div>
       </v-card-text>
     </v-card>
@@ -181,9 +178,6 @@
           <div class="d-flex flex-wrap align-center ga-2 mb-2">
             <v-switch
               v-model="elrsShowHidden"
-              density="compact"
-              hide-details
-              inset
               color="info"
             >
               <template #label>
@@ -271,22 +265,39 @@ const elrsMsgOk = ref(true)
 const elrsUpdatingFieldId = ref<number | null>(null)
 const elrsShowHidden = ref(false)
 
-const txPwrColor = computed(() => {
+// CRSF 上报的 uplink_TX_Power 是"功率代号"而非 dBm，代号是乱序的。
+// 对应 ELRS 的 powerToCrsfPower():
+//   10mW=1, 25mW=2, 50mW=8, 100mW=3, 250mW=7, 500mW=4, 1000mW=5, 2000mW=6
+// 各档位 dBm: 10/14/17/20/24/27/30/33
+const crsfPowerToDbm: Record<number, number> = {
+  1: 10,
+  2: 14,
+  8: 17,
+  3: 20,
+  7: 24,
+  4: 27,
+  5: 30,
+  6: 33,
+}
+
+// 由代号换算出真实发射功率 (dBm)，0 表示未知
+const txPowerDbm = computed(() => {
   const v = link.txPower
-  if (v >= 30) return 'error'
-  if (v >= 20) return 'warning'
-  if (v > 0) return 'success'
+  if (v <= 0) return 0
+  return crsfPowerToDbm[v] ?? 0
+})
+
+const txPwrColor = computed(() => {
+  const dbm = txPowerDbm.value
+  if (dbm >= 30) return 'error'
+  if (dbm >= 20) return 'warning'
+  if (dbm > 0) return 'success'
   return 'grey'
 })
 
 const txPowerLabel = computed(() => {
-  const v = link.txPower
-  if (v <= 0) return '--'
-  if (v <= 7) {
-    const dbmMap = [10, 14, 17, 20, 24, 27, 30, 33]
-    return `${dbmMap[v] ?? v} dBm`
-  }
-  return `${v} dBm`
+  const dbm = txPowerDbm.value
+  return dbm > 0 ? `${dbm} dBm` : '--'
 })
 
 // LQ 颜色：>80 绿色，>50 黄色，<=50 红色（与 AppBar 一致）

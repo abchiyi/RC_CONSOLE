@@ -68,9 +68,6 @@
       <v-col class="d-flex align-center justify-center gap-2">
         <v-switch
           v-model="pollEnabled"
-          color="primary"
-          density="compact"
-          hide-details
           label="实时监控"
           @update:model-value="togglePoll"
         />

@@ -27,7 +27,7 @@
             <span class="text-caption font-weight-bold">
               <v-icon size="16" class="me-1">mdi-tune-variant</v-icon>
               输出响应曲线 (模型级)</span>
-            <v-switch v-model="modelCurveEnabled" color="primary" density="compact" hide-details />
+            <v-switch v-model="modelCurveEnabled" />
           </div>
           <div class="text-caption text-medium-emphasis mt-1">
             开启后连续量通道输出按「传感器」页对应曲线整形；关闭则原样输出。默认开启。
@@ -159,7 +159,7 @@
                           <v-divider class="my-2" />
                           <div class="param-group">
                             <span class="text-caption font-weight-bold">反向</span>
-                            <v-switch v-model="ch.reverse" color="warning" density="compact" hide-details />
+                            <v-switch v-model="ch.reverse" />
                           </div>
                           <template v-if="isImuSource(ch.source)">
                             <v-divider class="my-2" />
@@ -199,7 +199,7 @@
                             <v-divider class="my-2" />
                             <div class="param-group">
                               <span class="text-caption font-weight-bold">启用混合</span>
-                              <v-switch v-model="ch.mix_enabled" color="primary" density="compact" hide-details />
+                              <v-switch v-model="ch.mix_enabled" />
                             </div>
                             <div v-if="ch.mix_enabled" class="mt-2">
                               <div v-for="(mi, miIdx) in ch.mix_items" :key="miIdx"
@@ -216,8 +216,7 @@
                                 </div>
                                 <!-- 行2: 反向 -->
                                 <div class="d-flex align-center ga-3">
-                                  <v-switch v-model="mi.reverse" color="warning" density="compact"
-                                    hide-details label="反向" />
+                                  <v-switch v-model="mi.reverse" color="warning" label="反向" />
                                 </div>
                               </div>
                               <v-btn v-if="(ch.mix_items?.length ?? 0) < 4" class="btn-secondary" size="x-small"
@@ -236,7 +235,7 @@
                           <div class="param-group">
                             <span class="text-caption font-weight-bold"
                               style="color:rgb(var(--v-theme-warning))">&#9888; 条件覆盖</span>
-                            <v-switch v-model="ch.condition.enabled" color="warning" density="compact" hide-details />
+                            <v-switch v-model="ch.condition.enabled" />
                           </div>
                           <v-expand-transition>
                             <div v-if="ch.condition.enabled">
@@ -290,7 +289,7 @@
                             <span class="text-caption font-weight-bold">&#128274;
                               安全锁 (CH4 &gt;
                               1500μs 时解锁)</span>
-                            <v-switch v-model="ch.lock_enabled" color="primary" density="compact" hide-details />
+                            <v-switch v-model="ch.lock_enabled" />
                           </div>
                           <v-expand-transition>
                             <div v-if="ch.lock_enabled">
@@ -1332,45 +1331,7 @@ onUnmounted(() => {
   opacity: 0.35 !important;
 }
 
-/* switch 配色 */
-/* 开启 (on): 滑槽主色 + 拨杆白色 */
-:deep(.v-switch .v-selection-control--dirty .v-switch__track) {
-  background: rgb(var(--v-theme-primary)) !important;
-  opacity: 1 !important;
-}
-
-/* 未开启 (off): 滑槽 #404040 + 拨杆 #FFFFFF */
-:deep(.v-switch .v-switch__track) {
-  background: #404040 !important;
-  opacity: 1 !important;
-}
-
-:deep(.v-switch .v-switch__thumb) {
-  background: #ffffff !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-
-/* 开启时拨杆与滑槽同色 (主色) */
-:deep(.v-switch .v-selection-control--dirty .v-switch__thumb) {
-  background: rgb(var(--v-theme-primary)) !important;
-}
-
-/* 禁用态: 拨杆 #727272 + 滑槽 #262626 */
-:deep(.v-switch .v-selection-control--disabled .v-switch__track) {
-  background: #262626 !important;
-  opacity: 1 !important;
-}
-
-:deep(.v-switch .v-selection-control--disabled .v-switch__thumb) {
-  background: #727272 !important;
-}
-
-/* 强化 switch 点击涟漪波纹动画 (主色) */
-:deep(.v-switch .v-selection-control__ripple) {
-  color: rgb(var(--v-theme-primary)) !important;
-  opacity: 0.35 !important;
-}
+/* switch 配色已统一到 src/styles/switches.css (全局) */
 
 /* 静态刻度: 按数值百分比定位 + 竖线标记 */
 .range-ticks {

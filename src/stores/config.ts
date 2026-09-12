@@ -89,6 +89,14 @@ export const useConfigStore = defineStore('config', () => {
   const rr = new RequestResponseHandler()
   let _pendingModelSlot: number | null = null
 
+  // ---- 遥测转发端口开关 (SET_TELEM2, 掩码 bit0=USB / bit1=BLE; 文档 §5.13) ----
+  const telem2Usb = ref(false)
+  const telem2Bt = ref(false)
+  /** null = 尚未从设备读到; false = 固件 get_config 无 0x05 项 (不支持) */
+  const telem2Supported = ref<boolean | null>(null)
+  const telem2Busy = ref(false)
+  const telem2Error = ref<string | null>(null)
+
   // 已同步到固件 RAM 的模型 baseline (差分同步对比基准)
   const syncedModels = ref<Record<number, ModelConfig>>({})
 
@@ -302,8 +310,60 @@ export const useConfigStore = defineStore('config', () => {
     await serialService.sendCommand('reset')
   }
 
+  // ---- 遥测转发端口开关 ----
+
+  function applyTelem2Mask(mask: number): void {
+    telem2Usb.value = (mask & 0x01) !== 0
+    telem2Bt.value = (mask & 0x02) !== 0
+    telem2Supported.value = true
+  }
+
+  /** 读取当前掩码 (随 get_config 的 tag 0x05 返回; 旧固件无此项则保持未知) */
+  async function fetchTelem2(): Promise<void> {
+    const p = rr.wait('get_config', 3000)
+    await serialService.sendCommand('get_config')
+    try { await p } catch { /* 旧固件或当前口已被占用: 保持未知 */ }
+  }
+
+  /** 切换遥测转发端口 (一次写入; usb/bt 不可同时为 true — 固件拒绝 mask=0x03) */
+  async function setTelem2(usb: boolean, bt: boolean): Promise<boolean> {
+    const mask = (usb ? 0x01 : 0) | (bt ? 0x02 : 0)
+    telem2Busy.value = true
+    telem2Error.value = null
+    const p = rr.wait('set_telem2', 3000)
+    try {
+      await serialService.sendCommand('set_telem2', { mask })
+      const ok = await p
+      if (ok === false && !telem2Error.value) telem2Error.value = '设置被设备拒绝'
+      return ok !== false
+    } catch {
+      telem2Error.value = '设置超时：该口可能已被占为纯遥测口'
+      return false
+    } finally {
+      telem2Busy.value = false
+    }
+  }
+
   function handleResponse(json: Record<string, unknown>): void {
     const cmd = json.cmd as string | undefined
+
+    // set_telem2 响应: 回显生效后的掩码
+    if (cmd === 'set_telem2') {
+      const ok = json.ok !== false
+      if (ok && typeof json.telem2_mask === 'number') applyTelem2Mask(json.telem2_mask)
+      if (!ok) {
+        telem2Error.value = (json.error as string) || '遥测端口设置失败'
+        error.value = telem2Error.value
+      }
+      rr.tryResolve('set_telem2', ok)
+      return
+    }
+
+    // get_config 中的遥测端口掩码 (tag 0x05): 无此项 = 固件不支持
+    if (cmd === 'get_config') {
+      if (typeof json.telem2_mask === 'number') applyTelem2Mask(json.telem2_mask)
+      else telem2Supported.value = false
+    }
 
     // 通用错误响应 (无 cmd 字段): 匹配当前等待中的请求并记录错误
     if (json.error && !cmd) {
@@ -433,6 +493,13 @@ export const useConfigStore = defineStore('config', () => {
     saveConfig,
     loadConfig,
     resetConfig,
+    telem2Usb,
+    telem2Bt,
+    telem2Supported,
+    telem2Busy,
+    telem2Error,
+    setTelem2,
+    fetchTelem2,
     handleResponse,
   }
 })

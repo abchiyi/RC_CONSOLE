@@ -1,0 +1,40 @@
+/**
+ * switches.css — v-switch 全局统一样式
+ *
+ * 所有页面的开关共用同一套视觉规范（关闭态轨道 / 拨杆 / 禁用态 / 涟漪）；
+ * 开启态轨道与拨杆跟随组件 color，默认 primary（语义色如 warning/info 仍然有效）。
+ * 几何与布局由 plugins/vuetify.ts 的 defaults.VSwitch 统一（color/density/hide-details/inset）。
+ * 本文件须在 vuetify/styles 之后引入以覆盖默认皮肤。
+ */
+
+/* 关闭 (off): 轨道统一深灰 #404040 */
+.v-switch .v-switch__track {
+  background: #404040 !important;
+  opacity: 1 !important;
+}
+
+.v-switch .v-switch__thumb {
+  background: #ffffff !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* 开启 (on): 轨道/拨杆颜色由组件 color 决定, 这里只保证不透明 */
+.v-switch .v-selection-control--dirty .v-switch__track {
+  opacity: 1 !important;
+}
+
+/* 禁用态: 轨道 #262626 + 拨杆 #727272 */
+.v-switch .v-selection-control--disabled .v-switch__track {
+  background: #262626 !important;
+  opacity: 1 !important;
+}
+
+.v-switch .v-selection-control--disabled .v-switch__thumb {
+  background: #727272 !important;
+}
+
+/* 点击涟漪: 跟随组件 color, 统一透明度 */
+.v-switch .v-selection-control__ripple {
+  opacity: 0.35 !important;
+}

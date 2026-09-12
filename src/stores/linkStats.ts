@@ -15,7 +15,7 @@ export interface LinkStats {
   dlRssi: number    // 下行 RSSI (dBm, 负值)
   dlLq: number      // 下行链路质量 (0~100%)
   rfMode: number    // RF 模式
-  txPower: number   // 发射功率 dBm
+  txPower: number   // 发射功率代号 (CRSF uplink_TX_Power, 需查表才能换算为 dBm)
 }
 
 export interface ElrsFieldInfo {
