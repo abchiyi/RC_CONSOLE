@@ -65,7 +65,7 @@
                                   :style="{ left: l.left + 'px', width: l.width + 'px' }" />
                                 <v-range-slider :model-value="[ch.output_min ?? 1000, ch.output_max ?? 2000]"
                                   @update:model-value="onBtnOutputRangeChange(idx, $event)" :min="1000" :max="2000"
-                                  :step="1" density="compact" hide-details thumb-label />
+                                  :step="50" density="compact" hide-details thumb-label />
                               </div>
                               <div class="range-ticks">
                                 <span v-for="t in tickValues" :key="t" class="range-tick"
@@ -82,7 +82,7 @@
                                   :style="{ left: l.left + 'px', width: l.width + 'px' }" />
                                 <v-range-slider :model-value="[ch.output_min ?? 1000, ch.output_max ?? 2000]"
                                   @update:model-value="(v: number[]) => { ch.output_min = v[0]!; ch.output_max = v[1]! }"
-                                  :min="1000" :max="2000" :step="1" density="compact" hide-details thumb-label />
+                                  :min="1000" :max="2000" :step="50" density="compact" hide-details thumb-label />
                                 <!-- 中心值竖线: 可拖动设置输出中心, 拖动时显示气泡 -->
                                 <div class="center-mark" :style="{ left: centerMarkLeftPx(idx) + 'px' }"
                                   @pointerdown="startCenterDrag(idx, $event)"
@@ -129,7 +129,7 @@
                                 <template v-if="btnEntryCount(ch) >= 2">
                                   <v-icon class="mx-1" size="16">mdi-arrow-right</v-icon>
                                   <v-number-input v-model="entry.value" :reverse="false"
-                                    :min="ch.output_min ?? 1000" :max="ch.output_max ?? 2000" :step="1" class="param-val"
+                                    :min="ch.output_min ?? 1000" :max="ch.output_max ?? 2000" :step="50" class="param-val"
                                     controlVariant="stacked" density="compact" hide-details :hideInput="false"
                                     :inset="false" variant="outlined" style="width:130px" />
                                 </template>
@@ -167,6 +167,8 @@
                             <div class="detail-slider-wide">
                               <div class="d-flex align-center mb-1">
                                 <span class="text-caption font-weight-bold mr-2" style="min-width:90px">输入角度限制</span>
+                                <!-- 辅助文本: 实时显示已选角度范围 -->
+                                <span class="text-caption text-medium-emphasis">{{ ch.input_min ?? 0 }}° ~ {{ ch.input_max ?? 0 }}°</span>
                               </div>
                               <div class="range-wrap">
                                 <v-range-slider :model-value="[ch.input_min ?? 0, ch.input_max ?? 0]"
@@ -188,7 +190,7 @@
                             <div class="param-group">
                               <span class="text-caption font-weight-bold">EC11 步长 (µs/格)</span>
                               <span class="param-input-wrap">
-                                <v-number-input v-model="ch.ec11_step" :min="1" :max="500" :step="1"
+                                <v-number-input v-model="ch.ec11_step" :min="1" :max="500" :step="50"
                                   controlVariant="stacked" density="compact" hide-details :hideInput="false"
                                   :inset="false" variant="outlined" style="min-width:100px" />
                               </span>
@@ -255,7 +257,7 @@
                                   <div class="cond-action-half">
                                     <template v-if="!ch.condition.switch_source">
                                       <span class="text-caption font-weight-bold">输出值 (μs)</span>
-                                      <v-number-input v-model="ch.condition.value" :min="1000" :max="2000" :step="1"
+                                      <v-number-input v-model="ch.condition.value" :min="1000" :max="2000" :step="50"
                                         controlVariant="stacked" density="compact" hide-details :hideInput="false"
                                         :inset="false" variant="outlined" />
                                     </template>
@@ -297,7 +299,7 @@
                               <div class="param-group">
                                 <span class="text-caption font-weight-bold">锁定输出值 (μs)</span>
                                 <span class="param-input-wrap">
-                                  <v-number-input v-model="ch.lock_value" :min="1000" :max="2000" :step="1"
+                                  <v-number-input v-model="ch.lock_value" :min="1000" :max="2000" :step="50"
                                     controlVariant="stacked" density="compact" hide-details :hideInput="false"
                                     :inset="false" variant="outlined" style="min-width:100px" />
                                 </span>
@@ -700,11 +702,13 @@ function centerMarkLeftPx(idx: number): number {
   const v = Math.min(Math.max(ch.output_center ?? 1500, 1000), 2000)
   return r.left - boxRect.left + ((v - 1000) / 1000) * r.width
 }
+// 中心值步长: 与输出范围滑块 :step="50" 对齐, 拖动时吸附到 50 的整数倍
+const CENTER_STEP = 50
 function centerValueFromClientX(idx: number, clientX: number): number {
   const track = sliderBoxRefs.get(idx)?.querySelector<HTMLElement>('.v-slider-track')
   if (!track) return 1500
   const r = track.getBoundingClientRect()
-  const v = Math.round(1000 + ((clientX - r.left) / r.width) * 1000)
+  const v = Math.round((1000 + ((clientX - r.left) / r.width) * 1000) / CENTER_STEP) * CENTER_STEP
   return Math.min(Math.max(v, 1000), 2000)
 }
 const centerDragShow = ref(false)
@@ -1448,9 +1452,20 @@ onUnmounted(() => {
   color: #fff !important;
 }
 
-/* 禁用按钮: 深色底 + 浅灰文字 (覆盖 Vuetify 默认 disabled 半透明) */
-:deep(.v-btn--disabled),
-:deep(.v-btn--disabled .v-btn__overlay) {
+/* 禁用按钮: 深色底 + 浅灰文字 (覆盖 Vuetify 默认 disabled 半透明)
+   只匹配页面自定义实色按钮: 若用 .v-btn--disabled 全匹配会透传到 Vuetify 内部按钮
+   (v-number-input 的 ± / 工具栏图标按钮), 使 overlay 被强制全不透明 —— 既会出现
+   灰底块, 又在禁用↔可用切换时先渲染一帧高亮再淡出(闪烁)。内部按钮保持官方禁用态 */
+:deep(.v-btn.btn-primary:disabled),
+:deep(.v-btn.btn-secondary:disabled),
+:deep(.v-btn.btn-accent:disabled),
+:deep(.v-btn.btn-danger:disabled) {
+  opacity: 1 !important;
+}
+:deep(.v-btn.btn-primary:disabled .v-btn__overlay),
+:deep(.v-btn.btn-secondary:disabled .v-btn__overlay),
+:deep(.v-btn.btn-accent:disabled .v-btn__overlay),
+:deep(.v-btn.btn-danger:disabled .v-btn__overlay) {
   opacity: 1 !important;
 }
 :deep(.v-btn.btn-primary:disabled),

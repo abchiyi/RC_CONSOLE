@@ -33,6 +33,8 @@
 .mdi-check-circle:before { content: "\F05E0"; }
 .mdi-checkbox-blank-outline:before { content: "\F0131"; }
 .mdi-checkbox-marked:before { content: "\F0132"; }
+.mdi-chevron-down:before { content: "\F0140"; }
+.mdi-chevron-up:before { content: "\F0143"; }
 .mdi-chip:before { content: "\F061A"; }
 .mdi-circle:before { content: "\F0765"; }
 .mdi-close:before { content: "\F0156"; }
@@ -54,6 +56,7 @@
 .mdi-information-outline:before { content: "\F02FD"; }
 .mdi-link-variant:before { content: "\F0339"; }
 .mdi-menu:before { content: "\F035C"; }
+.mdi-menu-down:before { content: "\F035D"; }
 .mdi-minus:before { content: "\F0374"; }
 .mdi-monitor-dashboard:before { content: "\F0A07"; }
 .mdi-numeric:before { content: "\F03A0"; }

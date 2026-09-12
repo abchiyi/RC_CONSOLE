@@ -45,3 +45,11 @@
 .v-number-input .v-number-input__control {
   color: rgba(var(--v-theme-on-surface), 0.7);
 }
+
+/* 到达上下限: 禁用态只降图标色, 不整体降不透明度
+   (Vuetify 默认 .v-btn--disabled opacity .26 会与上面 .7 的图标色叠乘成 ~18%, 过淡);
+   颜色用主题变量, 深浅色下都自然 */
+.v-number-input .v-number-input__control .v-btn--disabled {
+  opacity: 1 !important;
+  color: rgba(var(--v-theme-on-surface), 0.26) !important;
+}

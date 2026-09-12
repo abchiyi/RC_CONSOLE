@@ -7,9 +7,14 @@
  * 本文件须在 vuetify/styles 之后引入以覆盖默认皮肤。
  */
 
-/* 关闭 (off): 轨道统一深灰 #404040 */
+/* 未激活 (off) 且可用: 轨道统一深灰 #404040
+   (须排除激活态: 开启态颜色由 Vuetify 的 bg-<color> 类提供, 默认 primary, 语义色仍有效) */
+.v-switch .v-selection-control:not(.v-selection-control--dirty):not(.v-selection-control--disabled) .v-switch__track {
+  background-color: #404040 !important;
+}
+
+/* 轨道常显不透明 (Vuetify 默认 0.6), 开启与关闭通用 */
 .v-switch .v-switch__track {
-  background: #404040 !important;
   opacity: 1 !important;
 }
 
@@ -17,11 +22,6 @@
   background: #ffffff !important;
   border: none !important;
   box-shadow: none !important;
-}
-
-/* 开启 (on): 轨道/拨杆颜色由组件 color 决定, 这里只保证不透明 */
-.v-switch .v-selection-control--dirty .v-switch__track {
-  opacity: 1 !important;
 }
 
 /* 禁用态: 轨道 #262626 + 拨杆 #727272 */

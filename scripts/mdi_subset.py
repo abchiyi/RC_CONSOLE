@@ -30,7 +30,13 @@ CSS_RE = re.compile(r"\.mdi-([a-z0-9-]+)::before\s*\{[^}]*content:\s*\"\\F([0-9A
 
 # Vuetify 内部组件(如 v-number-input 的加减按钮)渲染的图标，源码中没有显式 mdi-* 字符串，
 # 需手动补充，否则子集字体中缺少对应字形导致图标显示空白。
-EXTRA_ICONS = {"minus", "plus", "radiobox-blank", "radiobox-marked", "checkbox-blank-outline", "checkbox-marked"}
+# 对应别名见 vuetify/lib/iconsets/mdi.js：
+#   $collapse/$expand → chevron-up/chevron-down (v-number-input 默认 stacked 加减按钮)
+#   $dropdown         → menu-down                   (v-select 下拉箭头)
+EXTRA_ICONS = {
+    "minus", "plus", "radiobox-blank", "radiobox-marked", "checkbox-blank-outline", "checkbox-marked",
+    "chevron-up", "chevron-down", "menu-down",
+}
 
 
 def collect_icons() -> set[str]:
