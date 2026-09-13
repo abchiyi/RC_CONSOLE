@@ -57,10 +57,7 @@ function routeObject(obj: Record<string, unknown>): void {
     return
   }
   if (cmd === 'elrs_list_fields' || cmd === 'elrs_set_param' ||
-      cmd === 'elrs_rescan_fields' ||
-      cmd === 'elrs_wifi_start' || cmd === 'elrs_wifi_stop' ||
-      cmd === 'elrs_ble_start' || cmd === 'elrs_ble_stop' ||
-      cmd === 'elrs_bind_start') {
+      cmd === 'elrs_rescan_fields') {
     useLinkStatsStore().handleElrsResponse(obj)
     return
   }

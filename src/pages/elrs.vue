@@ -1,207 +1,128 @@
 <template>
-  <div>
+  <div class="elrs-page">
+    <v-snackbar v-model="snackbarVisible" color="info" timeout="2000">
+      {{ elrsMsg }}
+    </v-snackbar>
+
     <v-toolbar color="transparent" density="compact">
-      <v-toolbar-title class="text-h6">
+      <v-toolbar-title class="text-h6 page-title">
         <v-icon class="mr-2">mdi-antenna</v-icon>
         ELRS
       </v-toolbar-title>
-
-      <v-spacer />
     </v-toolbar>
 
-    <v-alert v-if="!serial.connected" class="ma-3" color="info" icon="mdi-information" variant="tonal">
+    <!-- 未连接 -->
+    <v-alert v-if="!serial.connected" class="ma-3" color="primary" border="start" border-color="primary"
+      icon="mdi-information" variant="tonal">
       请先连接设备以管理 ELRS 参数
     </v-alert>
 
-    <!-- ========== 链路概览 ========== -->
-    <v-card class="ma-3" variant="tonal">
-      <v-card-item>
-        <v-card-title class="text-subtitle-1">
-          <v-icon class="mr-2" color="primary">mdi-view-dashboard</v-icon>
-          链路概览
-          <v-chip v-if="link.moduleAlive" class="ml-2" color="success" size="x-small" variant="tonal">
-            {{ link.fieldCount }} 字段
-          </v-chip>
-          <v-chip v-else class="ml-2" color="grey" size="x-small" variant="tonal">未就绪</v-chip>
-        </v-card-title>
-      </v-card-item>
-
-      <v-card-text>
-        <div v-if="!serial.connected || (!link.valid && !link.moduleAlive)" class="d-flex align-center ga-2">
-          <v-icon size="20" color="grey">mdi-information</v-icon>
-          <span class="text-caption text-medium-emphasis">
-            {{ !serial.connected ? '请先连接设备' : 'ELRS 模块未响应，无法读取配置' }}
-          </span>
-        </div>
-
-        <template v-else>
-          <div class="d-flex flex-wrap align-center mb-4">
-            <v-icon size="18" class="mr-2" :color="txPwrColor">mdi-broadcast</v-icon>
-            <span class="text-caption text-medium-emphasis">当前 TX 功率：</span>
-            <v-chip class="ml-2" :color="txPwrColor" size="x-small" variant="tonal">
-              {{ txPowerLabel }}
+    <div v-if="serial.connected" class="elrs-root">
+      <!-- 链路概览卡片 -->
+      <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
+        <v-card-item class="pb-0">
+          <template #prepend>
+            <v-avatar color="primary" size="36" class="cal-avatar">
+              <v-icon color="white" size="20">mdi-access-point-network</v-icon>
+            </v-avatar>
+          </template>
+          <v-card-title>链路概览</v-card-title>
+          <v-card-subtitle>CRSF 实时上报的上下行链路质量与 RF 模式</v-card-subtitle>
+          <template #append>
+            <v-chip v-if="link.moduleAlive" color="success" size="x-small" variant="tonal">
+              <v-icon start size="12">mdi-circle</v-icon>
+              {{ link.fieldCount }} 字段
             </v-chip>
+            <v-chip v-else color="grey" size="x-small" variant="tonal">未就绪</v-chip>
+          </template>
+        </v-card-item>
+
+        <v-card-text class="pt-2 pb-3">
+          <div v-if="!link.valid && !link.moduleAlive" class="cal-hint hint-neutral">
+            <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
+            <span>ELRS 模块未响应，链路统计暂不可用</span>
           </div>
 
-          <!-- 上行链路 -->
-          <div class="d-flex flex-wrap align-center mb-2">
-            <v-icon size="18" class="mr-2" :color="ulLqColor">mdi-arrow-up-bold</v-icon>
-            <span class="text-caption text-medium-emphasis">上行 (UL)：</span>
-            <v-chip class="ml-2" :color="ulLqColor" size="x-small" variant="tonal">
-              RSSI {{ link.ulRssi }} dBm · LQ {{ link.ulLq }}%
-            </v-chip>
-          </div>
+          <div v-else class="stat-groups">
+            <!-- 上行链路 -->
+            <div class="stat-group">
+              <div class="stat-group-title">上行 UL</div>
+              <div class="stat-kv-grid">
+                <div class="stat-kv">
+                  <span class="stat-label">RSSI</span>
+                  <span class="stat-value mono">{{ rssiText(link.ulRssi) }} dBm</span>
+                </div>
+                <div class="stat-kv">
+                  <span class="stat-label">LQ</span>
+                  <span class="stat-value">
+                    <v-chip :color="ulLqColor" size="x-small" variant="tonal">{{ link.ulLq }}%</v-chip>
+                  </span>
+                </div>
+              </div>
+            </div>
 
-          <!-- 下行链路 -->
-          <div class="d-flex flex-wrap align-center mb-2">
-            <v-icon size="18" class="mr-2" :color="dlLqColor">mdi-arrow-down-bold</v-icon>
-            <span class="text-caption text-medium-emphasis">下行 (DL)：</span>
-            <v-chip class="ml-2" :color="dlLqColor" size="x-small" variant="tonal">
-              RSSI {{ link.dlRssi }} dBm · LQ {{ link.dlLq }}%
-            </v-chip>
-          </div>
+            <!-- 下行链路 -->
+            <div class="stat-group">
+              <div class="stat-group-title">下行 DL</div>
+              <div class="stat-kv-grid">
+                <div class="stat-kv">
+                  <span class="stat-label">RSSI</span>
+                  <span class="stat-value mono">{{ rssiText(link.dlRssi) }} dBm</span>
+                </div>
+                <div class="stat-kv">
+                  <span class="stat-label">LQ</span>
+                  <span class="stat-value">
+                    <v-chip :color="dlLqColor" size="x-small" variant="tonal">{{ link.dlLq }}%</v-chip>
+                  </span>
+                </div>
+              </div>
+            </div>
 
-          <!-- RF 模式 -->
-          <div v-if="link.rfMode" class="d-flex flex-wrap align-center mb-2">
-            <v-icon size="18" class="mr-2" color="primary">mdi-speedometer</v-icon>
-            <span class="text-caption text-medium-emphasis">RF 模式：</span>
-            <v-chip class="ml-2" color="primary" size="x-small" variant="tonal">
-              {{ rfModeLabel }}
-            </v-chip>
+            <!-- 发射功率 -->
+            <div class="stat-group">
+              <div class="stat-group-title">发射功率</div>
+              <div class="stat-kv-grid">
+                <div class="stat-kv">
+                  <span class="stat-label">TX</span>
+                  <span class="stat-value mono">{{ txPowerLabel }}</span>
+                </div>
+              </div>
+            </div>
           </div>
+        </v-card-text>
+      </v-card>
 
-          <div v-if="link.dynPowerOn !== null" class="d-flex flex-wrap align-center">
-            <v-icon size="18" class="mr-2" :color="link.dynPowerOn ? 'warning' : 'success'">
-              mdi-shimmer
-            </v-icon>
-            <span class="text-caption text-medium-emphasis">动态功率：</span>
-            <v-switch
-              class="ml-2"
-              v-model="dynPwrSwitch"
-              :color="dynPwrSwitch ? 'warning' : 'success'"
-              :loading="dynPwrToggling"
-              @update:model-value="toggleDynPower"
-            />
-            <v-chip class="ml-2" :color="link.dynPowerOn ? 'warning' : 'success'" size="x-small" variant="tonal">
-              {{ link.dynPowerOn ? '开' : '关' }}
-            </v-chip>
-          </div>
-          <div v-else class="d-flex align-center ga-2">
-            <v-icon size="20" color="amber">mdi-help-circle</v-icon>
-            <span class="text-caption text-medium-emphasis">未找到动态功率字段，请刷新字段列表</span>
-          </div>
+      <!-- 字段配置卡片 -->
+      <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
+        <v-card-item class="pb-0">
+          <template #prepend>
+            <v-avatar color="primary" size="36" class="cal-avatar">
+              <v-icon color="white" size="20">mdi-file-tree</v-icon>
+            </v-avatar>
+          </template>
+          <v-card-title>字段配置</v-card-title>
+          <v-card-subtitle>读取并写入 ELRS 模块的参数字段</v-card-subtitle>
+          <template #append>
+            <v-chip color="success" size="x-small" variant="tonal">{{ link.fields.length }} 个字段</v-chip>
+          </template>
+        </v-card-item>
 
-          <div v-if="link.dynPowerField" class="mt-2">
-            <span class="text-caption text-disabled">字段名: {{ link.dynPowerField }}</span>
-          </div>
-
-          <div v-if="elrsMsg" class="mt-2">
-            <v-chip :color="elrsMsgOk ? 'success' : 'error'" size="x-small" variant="tonal">
-              {{ elrsMsg }}
-            </v-chip>
-          </div>
-        </template>
-      </v-card-text>
-    </v-card>
-
-    <!-- ========== 快速控制（移动友好） ========== -->
-    <v-card v-if="serial.connected" class="ma-3" variant="tonal">
-      <v-card-item>
-        <v-card-title class="text-subtitle-1">
-          <v-icon class="mr-2" color="primary">mdi-gamepad-variant</v-icon>
-          快速控制
-        </v-card-title>
-      </v-card-item>
-      <v-card-text>
-        <!-- TX WiFi -->
-        <div class="d-flex align-center mb-2">
-          <v-icon size="24" class="mr-3" color="primary">mdi-wifi</v-icon>
-          <div class="flex-grow-1">
-            <div class="text-body-2 font-weight-medium">TX WiFi 控制台</div>
-          </div>
-          <v-btn size="small" color="success" variant="tonal" class="mr-2"
-                 :disabled="!link.moduleAlive" :loading="wifiBusy" @click="wifiStart">
-            开启
-          </v-btn>
-          <v-btn size="small" color="error" variant="tonal"
-                 :disabled="!link.moduleAlive" :loading="wifiBusy" @click="wifiStop">
-            关闭
-          </v-btn>
-        </div>
-        <!-- 蓝牙摇杆 -->
-        <div class="d-flex align-center mb-2">
-          <v-icon size="24" class="mr-3" color="bluetooth">mdi-bluetooth</v-icon>
-          <div class="flex-grow-1">
-            <div class="text-body-2 font-weight-medium">蓝牙摇杆</div>
-          </div>
-          <v-btn size="small" color="success" variant="tonal" class="mr-2"
-                 :disabled="!link.moduleAlive" :loading="bleBusy" @click="bleStart">
-            开启
-          </v-btn>
-          <v-btn size="small" color="error" variant="tonal"
-                 :disabled="!link.moduleAlive" :loading="bleBusy" @click="bleStop">
-            关闭
-          </v-btn>
-        </div>
-        <!-- 对频 -->
-        <v-btn block size="large" color="warning" class="mt-2" prepend-icon="mdi-link-variant"
-               :disabled="!link.moduleAlive" :loading="bindBusy" @click="doBind">
-          对频
-        </v-btn>
-        <v-divider class="my-3" />
-        <!-- 高级 -->
-        <div class="d-flex align-center">
-          <div class="flex-grow-1">
-            <div class="text-body-2 font-weight-medium">高级</div>
-            <div class="text-caption text-medium-emphasis">字段配置表</div>
-          </div>
-          <v-switch v-model="showAdvanced" color="info" />
-        </div>
-      </v-card-text>
-    </v-card>
-
-    <!-- ========== 字段配置（高级，默认隐藏） ========== -->
-    <v-card v-if="serial.connected && showAdvanced" class="ma-3" variant="tonal">
-      <v-card-item>
-        <v-card-title class="text-subtitle-1">
-          <v-icon class="mr-2" color="primary">mdi-file-tree</v-icon>
-          字段配置
-          <v-chip class="ml-2" color="success" size="x-small" variant="tonal">{{ link.fields.length }} 个字段</v-chip>
-        </v-card-title>
-      </v-card-item>
-      <v-card-text>
-        <div v-if="!link.valid && !link.moduleAlive" class="d-flex align-center ga-2 mb-2">
-          <v-icon size="20" color="grey">mdi-information</v-icon>
-          <span class="text-caption text-medium-emphasis">ELRS 模块未响应，无法读取配置</span>
-        </div>
-        <template v-else>
-          <div class="d-flex flex-wrap align-center ga-2 mb-2">
-            <v-switch
-              v-model="elrsShowHidden"
-              color="info"
-            >
-              <template #label>
-                <span class="text-caption">显示隐藏字段</span>
-              </template>
-            </v-switch>
+        <v-card-text class="pt-2 pb-3">
+          <div v-if="!link.valid && !link.moduleAlive" class="cal-hint hint-neutral">
+            <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
+            <span>ELRS 模块未响应，无法读取配置</span>
           </div>
 
           <ElrsFieldTree
+            v-else
             :key="link.fieldsVersion"
             :fields="link.fields"
-            :show-hidden="elrsShowHidden"
             :updating-id="elrsUpdatingFieldId"
             @set="applyElrsFieldValue"
           />
-        </template>
-
-        <div v-if="elrsMsg" class="mt-3">
-          <v-chip :color="elrsMsgOk ? 'success' : 'error'" size="x-small" variant="tonal">
-            {{ elrsMsg }}
-          </v-chip>
-        </div>
-      </v-card-text>
-    </v-card>
+        </v-card-text>
+      </v-card>
+    </div>
   </div>
 </template>
 
@@ -216,54 +137,19 @@ const serial = useSerialStore()
 const link = useLinkStatsStore()
 const chStore = useChannelStore()
 
-// ---- 快速控制（按钮直发命令，无状态机） ----
-const showAdvanced = ref(false)
-const wifiBusy = ref(false)
-const bleBusy = ref(false)
-const bindBusy = ref(false)
-
-async function wifiStart() {
-  wifiBusy.value = true
-  const ok = await link.wifiStart()
-  wifiBusy.value = false
-  showElrsMsg(ok ? 'WiFi 已开启' : 'WiFi 开启失败（字段未就绪或未找到）', ok)
-}
-
-async function wifiStop() {
-  wifiBusy.value = true
-  const ok = await link.wifiStop()
-  wifiBusy.value = false
-  showElrsMsg(ok ? 'WiFi 已关闭' : 'WiFi 关闭失败（字段未就绪或未找到）', ok)
-}
-
-async function bleStart() {
-  bleBusy.value = true
-  const ok = await link.bleStart()
-  bleBusy.value = false
-  showElrsMsg(ok ? '蓝牙摇杆已开启' : '蓝牙摇杆开启失败（字段未就绪或未找到）', ok)
-}
-
-async function bleStop() {
-  bleBusy.value = true
-  const ok = await link.bleStop()
-  bleBusy.value = false
-  showElrsMsg(ok ? '蓝牙摇杆已关闭' : '蓝牙摇杆关闭失败（字段未就绪或未找到）', ok)
-}
-
-async function doBind() {
-  bindBusy.value = true
-  const ok = await link.bindStart()
-  bindBusy.value = false
-  showElrsMsg(ok ? '对频指令已发送' : '对频失败（字段未就绪或未找到）', ok)
-}
-
 // ---- 链路概览 / 字段配置 ----
-const dynPwrSwitch = ref(link.dynPowerOn ?? false)
-const dynPwrToggling = ref(false)
 const elrsMsg = ref('')
-const elrsMsgOk = ref(true)
+const snackbarVisible = ref(false)
 const elrsUpdatingFieldId = ref<number | null>(null)
-const elrsShowHidden = ref(false)
+
+/** RSSI 带符号显示: 正值补 '+', 负值保留 '-', 0 不补符号 */
+function rssiText(v: number): string {
+  return v > 0 ? `+${v}` : `${v}`
+}
+
+// LQ 颜色：>80 绿色，>50 黄色，<=50 红色（与 AppBar 一致）
+const ulLqColor = computed(() => link.ulLq > 80 ? 'success' : link.ulLq > 50 ? 'warning' : 'error')
+const dlLqColor = computed(() => link.dlLq > 80 ? 'success' : link.dlLq > 50 ? 'warning' : 'error')
 
 // CRSF 上报的 uplink_TX_Power 是"功率代号"而非 dBm，代号是乱序的。
 // 对应 ELRS 的 powerToCrsfPower():
@@ -280,74 +166,42 @@ const crsfPowerToDbm: Record<number, number> = {
   6: 33,
 }
 
-// 由代号换算出真实发射功率 (dBm)，0 表示未知
-const txPowerDbm = computed(() => {
-  const v = link.txPower
-  if (v <= 0) return 0
-  return crsfPowerToDbm[v] ?? 0
-})
-
-const txPwrColor = computed(() => {
-  const dbm = txPowerDbm.value
-  if (dbm >= 30) return 'error'
-  if (dbm >= 20) return 'warning'
-  if (dbm > 0) return 'success'
-  return 'grey'
-})
-
+/** 发射功率: 代号换算为 dBm, 未上报或未知代号显示 -- */
 const txPowerLabel = computed(() => {
-  const dbm = txPowerDbm.value
+  const dbm = link.txPower > 0 ? crsfPowerToDbm[link.txPower] ?? 0 : 0
   return dbm > 0 ? `${dbm} dBm` : '--'
 })
-
-// LQ 颜色：>80 绿色，>50 黄色，<=50 红色（与 AppBar 一致）
-const ulLqColor = computed(() => link.ulLq > 80 ? 'success' : link.ulLq > 50 ? 'warning' : 'error')
-const dlLqColor = computed(() => link.dlLq > 80 ? 'success' : link.dlLq > 50 ? 'warning' : 'error')
-
-// RF 模式：暂直接显示原始索引，映射问题后续再修复
-const rfModeLabel = computed(() => `${link.rfMode}`)
 
 async function applyElrsFieldValue(payload: { field: ElrsFieldInfo; value: number }) {
   const { field, value } = payload
   elrsUpdatingFieldId.value = field.id
-  elrsMsg.value = ''
   try {
     const ok = await link.setParam(field.id, value)
-    if (ok) {
-      showElrsMsg(`已写入 ${field.name}`, true)
-    } else {
-      showElrsMsg(`写入失败: ${field.name}`, false)
-    }
+    showElrsMsg(ok ? `已写入 ${field.name}` : `写入失败: ${field.name}`)
   } catch {
-    showElrsMsg(`写入失败: ${field.name}`, false)
+    showElrsMsg(`写入失败: ${field.name}`)
   }
   elrsUpdatingFieldId.value = null
 }
 
-function showElrsMsg(msg: string, ok: boolean) {
+function showElrsMsg(msg: string) {
   elrsMsg.value = msg
-  elrsMsgOk.value = ok
-  setTimeout(() => {
-    elrsMsg.value = ''
-  }, 3000)
+  snackbarVisible.value = true
 }
 
 /** 手动重扫：无条件清空固件缓存并强制重新发现字段 */
 async function refreshElrsFields() {
-  elrsMsg.value = ''
   await link.rescanFields()
   if (link.fields.length > 0) {
-    dynPwrSwitch.value = link.dynPowerOn ?? false
-    showElrsMsg(`字段缓存已重建，加载 ${link.fields.length} 个字段`, true)
+    showElrsMsg(`字段缓存已重建，加载 ${link.fields.length} 个字段`)
   } else {
-    showElrsMsg('重新扫描超时，可稍后重试', false)
+    showElrsMsg('重新扫描超时，可稍后重试')
   }
 }
 
 /** 自动加载：连接/模块上线时仅拉取当前缓存（缓存为空时固件自动触发发现） */
 async function autoLoadFields() {
   await link.fetchFields()
-  dynPwrSwitch.value = link.dynPowerOn ?? false
 }
 
 /** 全局底栏「从设备加载」: 重新扫描字段 (清空固件缓存强制重建), 完成后回报 App 关闭全局按钮 loading */
@@ -358,30 +212,6 @@ async function onGlobalReload() {
     window.dispatchEvent(new CustomEvent('app:reload-done'))
   }
 }
-
-async function toggleDynPower(v: boolean | null) {
-  dynPwrToggling.value = true
-  elrsMsg.value = ''
-  try {
-    const ok = await link.toggleDynPower(v ?? false)
-    if (ok) {
-      showElrsMsg(v ? '动态功率已开启' : '动态功率已关闭', true)
-    } else {
-      dynPwrSwitch.value = !v
-      showElrsMsg('设置失败，请先刷新字段列表', false)
-    }
-  } catch {
-    dynPwrSwitch.value = !v
-    showElrsMsg('设置失败', false)
-  }
-  dynPwrToggling.value = false
-}
-
-watch(() => link.moduleAlive, (alive) => {
-  if (alive && link.dynPowerOn === null) {
-    autoLoadFields()
-  }
-})
 
 /** 进入页面/连接建立后：停通道流 → 开链路流 → 拉字段 */
 async function enterPage(): Promise<void> {
@@ -408,3 +238,122 @@ onUnmounted(async () => {
   await chStore.startPolling()     // 恢复通道流
 })
 </script>
+
+<style scoped>
+/* ── 页面布局 (与 config / system 页一致) ── */
+.elrs-page {
+  padding: 0 16px 96px;
+}
+
+/* 顶部工具栏保持原边缘对齐, 内容区仍缩进 16px */
+.elrs-page>.v-toolbar {
+  margin: 0 -16px;
+}
+
+/* 页面标题左侧主题色高亮 */
+.page-title {
+  border-left: 4px solid rgb(var(--v-theme-primary));
+  padding-left: 12px;
+}
+
+/* 单列堆叠容器 */
+.elrs-root {
+  width: 100%;
+}
+
+/* 卡片外壳 (与校准页 CalWizard 一致: 纯色底 + 通栏细边框) */
+.cal-card {
+  background: #1e1e1e !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  transition: border-color 0.3s, background-color 0.3s;
+}
+
+.cal-card:hover {
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+/* ── 卡片内容排版: 分组面板 + 自适应键值网格 ── */
+.stat-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.stat-group {
+  flex: 1 1 200px;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.stat-group-title {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 5px;
+}
+
+.stat-kv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 5px 14px;
+}
+
+.stat-kv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.stat-label {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.stat-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 数值: 等宽 + 表格数字, 消除刷新时的宽度跳动 */
+.mono {
+  font-family: 'Cascadia Mono', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* ── 提示条 (与 system 页一致) ── */
+.cal-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 179, 0, 0.5);
+  background: rgba(255, 179, 0, 0.1);
+  color: rgba(255, 235, 190, 0.9);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.hint-neutral {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+</style>

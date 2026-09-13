@@ -541,10 +541,16 @@ function decodeLinkStats(r: Reader, name: string): Record<string, unknown> {
     out.ul_lq = r.u8()
     out.dl_rssi = r.i8()
     out.dl_lq = r.u8()
-    out.rf_mode = r.u8()
+    r.u8()  // rf_mode: 协议占位, 前端不再消费, 必须读取以保持字节对齐
     out.tx_power = r.u8()
   }
   return out
+}
+
+/** 清理 ELRS 字段文本：剔除非法解码残留（U+FFFD）与不可见控制字符，并去除首尾空白 */
+function sanitizeFieldText(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/[\u0000-\u001F\u007F-\u009F\uFFFD]/g, '').trim()
 }
 
 function decodeElrsFields(r: Reader, name: string): Record<string, unknown> {
@@ -560,18 +566,18 @@ function decodeElrsFields(r: Reader, name: string): Record<string, unknown> {
       min: r.i32(),
       max: r.i32(),
       step: r.i32(),
-      name: r.str(),
-      unit: r.str(),
+      name: sanitizeFieldText(r.str()),
+      unit: sanitizeFieldText(r.str()),
     }
     if (f.value_valid) {
       f.value = r.i32()
-      f.text = r.str()
+      f.text = sanitizeFieldText(r.str())
     }
     if (f.type === 9) {
       const optCount = r.u8()
       if (optCount > 0) {
         const opts: string[] = []
-        for (let j = 0; j < optCount; j++) opts.push(r.str())
+        for (let j = 0; j < optCount; j++) opts.push(sanitizeFieldText(r.str()))
         f.options = opts
       }
     }

@@ -22,7 +22,6 @@
         <ElrsFieldTree
           :fields="fields"
           :parent-id="field.id"
-          :show-hidden="showHidden"
           :updating-id="updatingId"
           @set="$emit('set', $event)"
         />
@@ -36,7 +35,6 @@
               <v-icon size="18" :color="elrsFieldIconColor(field)">{{ elrsFieldIcon(field) }}</v-icon>
               <span class="text-body-2 font-weight-medium">{{ field.name }}</span>
               <v-chip size="x-small" variant="tonal">{{ elrsFieldTypeLabel(field) }}</v-chip>
-              <v-chip v-if="field.hidden" size="x-small" color="grey" variant="tonal">隐藏</v-chip>
             </div>
             <div class="text-caption text-medium-emphasis mt-1">
               ID {{ field.id }}
@@ -142,22 +140,18 @@ import type { ElrsFieldInfo } from '@/stores/linkStats'
 const props = defineProps<{
   fields: ElrsFieldInfo[]
   parentId?: number
-  showHidden?: boolean
   updatingId?: number | null
 }>()
 
 const emit = defineEmits<{ set: [payload: { field: ElrsFieldInfo; value: number }] }>()
 
+/** 可见子字段：固件标记为隐藏的字段直接丢弃，不参与渲染 */
 const children = computed(() =>
-  props.fields.filter(
-    field =>
-      (field.parent ?? 0) === (props.parentId ?? 0) &&
-      (props.showHidden || !field.hidden),
-  ),
+  props.fields.filter(field => (field.parent ?? 0) === (props.parentId ?? 0) && !field.hidden),
 )
 
 function childCount(folder: ElrsFieldInfo): number {
-  return props.fields.filter(f => (f.parent ?? 0) === folder.id && (props.showHidden || !f.hidden)).length
+  return props.fields.filter(f => (f.parent ?? 0) === folder.id && !f.hidden).length
 }
 
 function apply(field: ElrsFieldInfo, value: number) {

@@ -75,12 +75,8 @@ export const CMD = {
   GET_LINK_STATS: 0x0601,
   ELRS_LIST_FIELDS: 0x0701,
   ELRS_SET_PARAM: 0x0702,
-  ELRS_WIFI_START: 0x0703,
-  ELRS_WIFI_STOP: 0x0704,
+  // 0x0703/0x0704 与 0x0708~0x070A：原快速控制命令（WiFi 控制台/BLE 摇杆/对频），已废弃，编号可复用
   ELRS_RESCAN_FIELDS: 0x0705,
-  ELRS_BIND_START: 0x0708,
-  ELRS_BLE_START: 0x0709,
-  ELRS_BLE_STOP: 0x070A,
   MAVLINK_LINK_STATS: 0x0803,
   SET_TELEM2: 0x0804,
 } as const
@@ -129,12 +125,7 @@ export const CMD_NAME_TO_ID: Record<string, number> = {
   get_link_stats: CMD.GET_LINK_STATS,
   elrs_list_fields: CMD.ELRS_LIST_FIELDS,
   elrs_set_param: CMD.ELRS_SET_PARAM,
-  elrs_wifi_start: CMD.ELRS_WIFI_START,
-  elrs_wifi_stop: CMD.ELRS_WIFI_STOP,
   elrs_rescan_fields: CMD.ELRS_RESCAN_FIELDS,
-  elrs_bind_start: CMD.ELRS_BIND_START,
-  elrs_ble_start: CMD.ELRS_BLE_START,
-  elrs_ble_stop: CMD.ELRS_BLE_STOP,
   set_telem2: CMD.SET_TELEM2,
 }
 
