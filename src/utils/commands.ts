@@ -171,6 +171,17 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
     case CMD.OTA_CHUNK:
       if (params.data instanceof Uint8Array) w.bytes(params.data)
       break
+    case CMD.ELRS_FLASH_BEGIN:
+      // §5.14: u32 offset + u32 image_size + u8 flags(bit0=烧录前整片擦除)
+      w.u32(Number(params.offset ?? 0))
+      w.u32(Number(params.image_size ?? 0))
+      w.u8(Number(params.flags ?? 0))
+      break
+    case CMD.ELRS_FLASH_CHUNK:
+      // §5.14: u32 offset(本片首字节绝对地址) + 原始固件字节
+      w.u32(Number(params.offset ?? 0))
+      if (params.data instanceof Uint8Array) w.bytes(params.data)
+      break
     default:
       break
   }
@@ -393,6 +404,30 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
         return { cmd: name, ok: true, total_written: r.u32(), this_chunk: r.u32() }
       case CMD.OTA_FINISH:
         return { cmd: name, ok: true, total_written: r.u32(), message: r.str() }
+      // ── 外部模块烧录会话（§5.14）──
+      case CMD.ELRS_FLASH_BEGIN:
+        return {
+          cmd: name,
+          ok: true,
+          chunk_hint: r.u16(),
+          block_size: r.u32(),
+          image_size: r.u32(),
+          target_flash_size: r.u32(),
+          // 尾字段: 整片擦除耗时(0=未做整片擦除)。旧固件无此字段, 缺失按 0 处理
+          erase_ms: r.remaining >= 4 ? r.u32() : 0,
+        }
+      case CMD.ELRS_FLASH_CHUNK:
+        return { cmd: name, ok: true, accepted_total: r.u32(), written_total: r.u32() }
+      case CMD.ELRS_FLASH_FINISH:
+        return {
+          cmd: name,
+          ok: true,
+          total_written: r.u32(),
+          chunks: r.u32(),
+          elapsed_ms: r.u32(),
+          md5_ok: !!r.u8(),
+          error: r.remaining >= 1 ? r.str() : '',
+        }
       case CMD.STREAM_START:
         return { cmd: name, content_type: r.u8(), interval_ms: r.u16(), flags: r.u8() }
       case CMD.SET_TELEM2:

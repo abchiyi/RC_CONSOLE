@@ -31,7 +31,7 @@
           <template #append>
             <v-chip v-if="link.moduleAlive" color="success" size="x-small" variant="tonal">
               <v-icon start size="12">mdi-circle</v-icon>
-              {{ link.fieldCount }} 字段
+              {{ link.fieldCount }} 项参数
             </v-chip>
             <v-chip v-else color="grey" size="x-small" variant="tonal">未就绪</v-chip>
           </template>
@@ -92,18 +92,18 @@
         </v-card-text>
       </v-card>
 
-      <!-- 字段配置卡片 -->
+      <!-- 模块参数卡片 -->
       <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
         <v-card-item class="pb-0">
           <template #prepend>
             <v-avatar color="primary" size="36" class="cal-avatar">
-              <v-icon color="white" size="20">mdi-file-tree</v-icon>
+              <v-icon color="white" size="20">mdi-tune-variant</v-icon>
             </v-avatar>
           </template>
-          <v-card-title>字段配置</v-card-title>
-          <v-card-subtitle>读取并写入 ELRS 模块的参数字段</v-card-subtitle>
+          <v-card-title>模块参数</v-card-title>
+          <v-card-subtitle>读取并修改 ELRS 模块的运行参数</v-card-subtitle>
           <template #append>
-            <v-chip color="success" size="x-small" variant="tonal">{{ link.fields.length }} 个字段</v-chip>
+            <v-chip color="success" size="x-small" variant="tonal">{{ link.fields.length }} 项参数</v-chip>
           </template>
         </v-card-item>
 
@@ -122,6 +122,7 @@
           />
         </v-card-text>
       </v-card>
+
     </div>
   </div>
 </template>
@@ -137,7 +138,7 @@ const serial = useSerialStore()
 const link = useLinkStatsStore()
 const chStore = useChannelStore()
 
-// ---- 链路概览 / 字段配置 ----
+// ---- 链路概览 / 模块参数 ----
 const elrsMsg = ref('')
 const snackbarVisible = ref(false)
 const elrsUpdatingFieldId = ref<number | null>(null)
@@ -189,11 +190,11 @@ function showElrsMsg(msg: string) {
   snackbarVisible.value = true
 }
 
-/** 手动重扫：无条件清空固件缓存并强制重新发现字段 */
+/** 手动重扫：无条件清空固件缓存并强制重新发现参数 */
 async function refreshElrsFields() {
   await link.rescanFields()
   if (link.fields.length > 0) {
-    showElrsMsg(`字段缓存已重建，加载 ${link.fields.length} 个字段`)
+    showElrsMsg(`参数缓存已重建，加载 ${link.fields.length} 项参数`)
   } else {
     showElrsMsg('重新扫描超时，可稍后重试')
   }
@@ -204,7 +205,7 @@ async function autoLoadFields() {
   await link.fetchFields()
 }
 
-/** 全局底栏「从设备加载」: 重新扫描字段 (清空固件缓存强制重建), 完成后回报 App 关闭全局按钮 loading */
+/** 全局底栏「从设备加载」: 重新扫描参数 (清空固件缓存强制重建), 完成后回报 App 关闭全局按钮 loading */
 async function onGlobalReload() {
   try {
     await refreshElrsFields()
@@ -213,7 +214,7 @@ async function onGlobalReload() {
   }
 }
 
-/** 进入页面/连接建立后：停通道流 → 开链路流 → 拉字段 */
+/** 进入页面/连接建立后：停通道流 → 开链路流 → 拉参数 */
 async function enterPage(): Promise<void> {
   if (!serial.connected) return
   await chStore.stopPolling()      // 停通道流，释放单流会话
@@ -354,6 +355,12 @@ onUnmounted(async () => {
   border-color: rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.03);
   color: rgba(255, 255, 255, 0.7);
+}
+
+/* 次要按钮: 深色底 + 白字 (与 config / system 页一致) */
+.btn-secondary {
+  background-color: rgb(var(--v-theme-surface-variant)) !important;
+  color: #fff !important;
 }
 
 </style>

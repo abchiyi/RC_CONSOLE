@@ -31,7 +31,12 @@
     <!-- 全局底栏: 左状态右操作双槽, 容器常驻 DOM (Teleport 目标), 未连接时隐藏 -->
     <v-app-bar v-show="serial.connected" location="bottom" color="surface" density="comfortable" elevation="0"
       class="px-3 global-footer">
-      <div id="global-footer-left" class="global-footer-slot" />
+      <div id="global-footer-left" class="global-footer-slot">
+        <!-- 固件升级: 外部 ELRS 模块整片镜像烧录, 常驻底栏左槽, 任意页面可用 -->
+        <v-btn class="footer-btn-secondary" prepend-icon="mdi-chip" size="small" @click="moduleFwDialog = true">
+          <span class="btn-text">固件升级</span>
+        </v-btn>
+      </div>
 
       <v-spacer />
 
@@ -43,16 +48,22 @@
         </v-btn>
       </div>
     </v-app-bar>
+
+    <!-- 模块固件烧录对话框: 挂在全局, 烧录过程中切换页面也不会中断 -->
+    <ElrsFlashDialog v-model="moduleFwDialog" />
   </v-app>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import AppBar from '@/components/AppBar.vue'
+import ElrsFlashDialog from '@/components/elrs/ElrsFlashDialog.vue'
 import { useSerialStore } from '@/stores/serial'
 
 const drawer = ref(true)
 const serial = useSerialStore()
+/** 模块固件烧录对话框开关 (底栏左槽常驻入口) */
+const moduleFwDialog = ref(false)
 
 // ---- 全局「从设备加载」: 点击广播事件, 当前页面监听并执行自己的加载逻辑, 完成后回报 ----
 const reloading = ref(false)

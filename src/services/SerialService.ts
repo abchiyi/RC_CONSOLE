@@ -201,11 +201,12 @@ export class SerialService {
 
   async sendCommand(cmd: string, params?: Record<string, unknown>): Promise<void> {
     if (this.closing || !this.writer) return
-    // OTA 锁: ota_begin 加锁, ota_finish/ota_abort 解锁, ota_chunk 允许, 其他命令丢弃
-    if (cmd === 'ota_begin') this.otaInProgress = true
-    else if (cmd === 'ota_finish' || cmd === 'ota_abort') this.otaInProgress = false
-    else if (this.otaInProgress && cmd !== 'ota_chunk') {
-      console.warn(`[Serial] OTA in progress, dropping: ${cmd}`)
+    // 大流量会话锁: OTA / 外部模块烧录 的 begin 加锁, finish/abort 解锁, chunk 放行, 其他命令丢弃
+    if (cmd === 'ota_begin' || cmd === 'elrs_flash_begin') this.otaInProgress = true
+    else if (cmd === 'ota_finish' || cmd === 'ota_abort' ||
+      cmd === 'elrs_flash_finish' || cmd === 'elrs_flash_abort') this.otaInProgress = false
+    else if (this.otaInProgress && cmd !== 'ota_chunk' && cmd !== 'elrs_flash_chunk') {
+      console.warn(`[Serial] session in progress, dropping: ${cmd}`)
       return
     }
     let frames: Uint8Array[]

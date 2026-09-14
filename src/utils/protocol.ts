@@ -77,9 +77,18 @@ export const CMD = {
   ELRS_SET_PARAM: 0x0702,
   // 0x0703/0x0704 与 0x0708~0x070A：原快速控制命令（WiFi 控制台/BLE 摇杆/对频），已废弃，编号可复用
   ELRS_RESCAN_FIELDS: 0x0705,
+  // 0x070B：原"外部模块烧录链路探测"，已废弃（固件侧 BEGIN 内部自行握手），编号可复用
+  // 外部模块(ESP32-C3) 烧录会话：BEGIN → CHUNK* → FINISH / ABORT（文档 §5.14）
+  ELRS_FLASH_BEGIN: 0x070C,     // 开始：u32 offset + u32 image_size + u8 flags(可选)
+  ELRS_FLASH_CHUNK: 0x070D,     // 数据：u32 offset + 原始固件字节
+  ELRS_FLASH_FINISH: 0x070E,    // 结束：目标侧 MD5 校验 + 目标重启
+  ELRS_FLASH_ABORT: 0x070F,     // 中止（幂等）：复位目标并交还 UART
   MAVLINK_LINK_STATS: 0x0803,
   SET_TELEM2: 0x0804,
 } as const
+
+/** ELRS_FLASH_BEGIN 的 flags 位（对齐固件 protocol.h FlashBeginFlags） */
+export const FLASH_BEGIN_ERASE_ALL = 0x01
 
 /** 事件 ID */
 export const EVENT_STREAM_DATA = 0x0001
@@ -126,6 +135,10 @@ export const CMD_NAME_TO_ID: Record<string, number> = {
   elrs_list_fields: CMD.ELRS_LIST_FIELDS,
   elrs_set_param: CMD.ELRS_SET_PARAM,
   elrs_rescan_fields: CMD.ELRS_RESCAN_FIELDS,
+  elrs_flash_begin: CMD.ELRS_FLASH_BEGIN,
+  elrs_flash_chunk: CMD.ELRS_FLASH_CHUNK,
+  elrs_flash_finish: CMD.ELRS_FLASH_FINISH,
+  elrs_flash_abort: CMD.ELRS_FLASH_ABORT,
   set_telem2: CMD.SET_TELEM2,
 }
 

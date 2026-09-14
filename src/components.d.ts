@@ -16,6 +16,7 @@ declare module 'vue' {
     CalWizard: typeof import('./components/calibration/CalWizard.vue')['default']
     ChannelGrid: typeof import('./components/channel/ChannelGrid.vue')['default']
     ElrsFieldTree: typeof import('./components/elrs/ElrsFieldTree.vue')['default']
+    ElrsFlashDialog: typeof import('./components/elrs/ElrsFlashDialog.vue')['default']
     FirmwareUpgradeDialog: typeof import('./components/FirmwareUpgradeDialog.vue')['default']
     OutputCurveEditor: typeof import('./components/config/OutputCurveEditor.vue')['default']
     OutputCurvePanel: typeof import('./components/calibration/OutputCurvePanel.vue')['default']
