@@ -585,9 +585,11 @@ function drawScene(): void {
 
   // 姿态 → 旋转矩阵 (模型先绕 Y 轴 180°: 0 位时前方由朝向屏幕外 → 朝向屏幕内)
   const deg = Math.PI / 180
-  const roll = (imu.roll ?? 0) * deg
+  // 显示侧方向适配: 横滚/偏航的旋向与手柄实际动作相反, 取反以贴合手感
+  // (仅作用于本视图的渲染, 不改变固件送出的原始姿态与通道输出)
+  const roll = -(imu.roll ?? 0) * deg
   const pitch = (imu.pitch ?? 0) * deg
-  const yaw = (imu.yaw ?? 0) * deg
+  const yaw = -(imu.yaw ?? 0) * deg
   const R0: Mat3 = [[-1, 0, 0], [0, 1, 0], [0, 0, -1]] // Ry(180°): 0 位时前方朝屏幕内
   const R = mul3(deviceToScreen(roll, pitch, yaw), R0)
 
@@ -599,7 +601,8 @@ function drawScene(): void {
   const proj = (v: Vec3): Vec2 => {
     const r = apply(R, v)
     const s = focal / (camZ - r[2])
-    return { x: cx + r[0] * s, y: cy + r[1] * s }
+    // canvas +y 向下 → 取反, 否则模型 +Y 被画到屏幕下方, 画面整体上下镜像且手性变左手系
+    return { x: cx + r[0] * s, y: cy - r[1] * s }
   }
 
   // 全部面按深度从远到近绘制 (画家算法); 按朝向区分亮/暗边框
@@ -613,7 +616,7 @@ function drawScene(): void {
       const pts = rs.map(r => {
         avgZ += r[2]
         const s = focal / (camZ - r[2])
-        return { x: cx + r[0] * s, y: cy + r[1] * s }
+        return { x: cx + r[0] * s, y: cy - r[1] * s }
       })
       // 面法向量 n = (p1-p0) × (p2-p0), 屏幕系
       const r0 = rs[0]!, r1 = rs[1]!, r2 = rs[2]!
