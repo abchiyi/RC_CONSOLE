@@ -1,3 +1,4 @@
+import type { FirmwareFlashResult } from './SerialService'
 /**
  * BleService - Web Bluetooth (NUS) 后端
  *
@@ -13,7 +14,6 @@
  */
 import { BinaryHandler } from '@/utils/binaryHandler'
 import { encodeRequest } from '@/utils/commands'
-import type { FirmwareFlashResult } from './SerialService'
 
 /** Nordic UART Service (NUS) */
 const NUS_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
@@ -36,39 +36,47 @@ export class BleService {
   /** OTA 期间非 OTA 命令直接丢弃，避免轮询干扰传输 */
   private otaInProgress = false
 
-  constructor() {
+  constructor () {
     this.handler.onObject(obj => {
-      this.objListeners.forEach(cb => { try { cb(obj) } catch { /* ignore */ } })
+      for (const cb of this.objListeners) {
+        try {
+          cb(obj)
+        } catch { /* ignore */ }
+      }
     })
     this.handler.onLog(line => {
-      this.lineListeners.forEach(cb => { try { cb(line) } catch { /* ignore */ } })
+      for (const cb of this.lineListeners) {
+        try {
+          cb(line)
+        } catch { /* ignore */ }
+      }
     })
   }
 
-  static isSupported(): boolean {
+  static isSupported (): boolean {
     return typeof navigator !== 'undefined' && 'bluetooth' in navigator
   }
 
-  get isConnected(): boolean {
+  get isConnected (): boolean {
     return this._connected && !!this.server?.connected
   }
 
-  get portInfo(): null {
+  get portInfo (): null {
     return null
   }
 
-  get deviceName(): string {
+  get deviceName (): string {
     return this._deviceName
   }
 
   /** 弹出系统蓝牙选择框并连接 NUS 设备（需在用户手势中调用） */
-  async connect(): Promise<boolean> {
+  async connect (): Promise<boolean> {
     await this.disconnect()
 
     try {
       // Web Bluetooth 类型未随 DOM lib 提供，这里就地声明
       const bt = navigator as Navigator & {
-        bluetooth: { requestDevice(options: object): Promise<any> }
+        bluetooth: { requestDevice: (options: object) => Promise<any> }
       }
       const device = await bt.bluetooth.requestDevice({
         filters: [{ services: [NUS_SERVICE_UUID] }],
@@ -101,11 +109,21 @@ export class BleService {
       }>
       for (const c of chrs) {
         const props: string[] = []
-        if (c.properties.read) props.push('read')
-        if (c.properties.write) props.push('write')
-        if (c.properties.writeWithoutResponse) props.push('writeWithoutResponse')
-        if (c.properties.notify) props.push('notify')
-        if (c.properties.indicate) props.push('indicate')
+        if (c.properties.read) {
+          props.push('read')
+        }
+        if (c.properties.write) {
+          props.push('write')
+        }
+        if (c.properties.writeWithoutResponse) {
+          props.push('writeWithoutResponse')
+        }
+        if (c.properties.notify) {
+          props.push('notify')
+        }
+        if (c.properties.indicate) {
+          props.push('indicate')
+        }
         console.log(`[BLE]   char ${c.uuid} → ${props.join(', ')}`)
       }
 
@@ -117,8 +135,8 @@ export class BleService {
 
       this._connected = true
       return true
-    } catch (e) {
-      console.error('[BLE] connect failed:', e)
+    } catch (error) {
+      console.error('[BLE] connect failed:', error)
       this._connected = false
       this.server = null
       this.rx = null
@@ -128,40 +146,53 @@ export class BleService {
   }
 
   /** 断开 BLE 连接 */
-  async disconnect(): Promise<void> {
+  async disconnect (): Promise<void> {
     this._connected = false
-    try { await this.tx?.stopNotifications() } catch { /* ignore */ }
-    try { this.server?.disconnect() } catch { /* ignore */ }
+    try {
+      await this.tx?.stopNotifications()
+    } catch { /* ignore */ }
+    try {
+      this.server?.disconnect()
+    } catch { /* ignore */ }
     this.server = null
     this.rx = null
     this.tx = null
     this.device = null
   }
 
-  /** 发送二进制命令帧（自动切块写入 NUS RX，队列满时降块重试，OTA 期间加大节流） */
-  async sendCommand(cmd: string, params?: Record<string, unknown>): Promise<void> {
-    if (!this.isConnected || !this.rx) return
+  /**
+   * 发送二进制命令帧（自动切块写入 NUS RX，队列满时降块重试，OTA 期间加大节流）
+   * @returns 首帧的帧头 seq；未发送（未连接/未知命令/被会话锁丢弃）时返回 undefined。
+   *   固件构建 RESPONSE 时原样回显该 seq，调用方可据此精确匹配响应。
+   */
+  async sendCommand (cmd: string, params?: Record<string, unknown>): Promise<number | undefined> {
+    if (!this.isConnected || !this.rx) {
+      return undefined
+    }
     // 大流量会话锁: OTA / 外部模块烧录 的 begin 加锁, finish/abort 解锁, chunk 放行, 其他命令丢弃
-    if (cmd === 'ota_begin' || cmd === 'elrs_flash_begin') this.otaInProgress = true
-    else if (cmd === 'ota_finish' || cmd === 'ota_abort' ||
-      cmd === 'elrs_flash_finish' || cmd === 'elrs_flash_abort') this.otaInProgress = false
-    else if (this.otaInProgress && cmd !== 'ota_chunk' && cmd !== 'elrs_flash_chunk') {
+    if (cmd === 'ota_begin' || cmd === 'elrs_flash_begin') {
+      this.otaInProgress = true
+    } else if (cmd === 'ota_finish' || cmd === 'ota_abort'
+      || cmd === 'elrs_flash_finish' || cmd === 'elrs_flash_abort') {
+      this.otaInProgress = false
+    } else if (this.otaInProgress && cmd !== 'ota_chunk' && cmd !== 'elrs_flash_chunk') {
       console.warn(`[BLE] session in progress, dropping: ${cmd}`)
-      return
+      return undefined
     }
     let frames: Uint8Array[]
     try {
       frames = encodeRequest(cmd, params)
-    } catch (e) {
-      console.error('[BLE] 未知命令:', cmd, e)
-      return
+    } catch (error) {
+      console.error('[BLE] 未知命令:', cmd, error)
+      return undefined
     }
     if (cmd === 'stream_start') {
       this.handler.setStreamFlags(Number(params?.flags ?? 0))
     }
-    const isOta = cmd === 'ota_begin' || cmd === 'ota_chunk' || cmd === 'ota_finish' || cmd === 'ota_abort' ||
-      cmd === 'elrs_flash_begin' || cmd === 'elrs_flash_chunk' ||
-      cmd === 'elrs_flash_finish' || cmd === 'elrs_flash_abort'
+    const seq = frames[0]?.[7]
+    const isOta = cmd === 'ota_begin' || cmd === 'ota_chunk' || cmd === 'ota_finish' || cmd === 'ota_abort'
+      || cmd === 'elrs_flash_begin' || cmd === 'elrs_flash_chunk'
+      || cmd === 'elrs_flash_finish' || cmd === 'elrs_flash_abort'
     // 调试：打印实际写入 BLE 的帧字节
     const hex = frames.map(f =>
       Array.from(f).map(b => b.toString(16).padStart(2, '0')).join(' '),
@@ -192,53 +223,56 @@ export class BleService {
             continue
           }
           // 块间节流(仅当还有后续块)
-          if (multiChunk && i + chunkSize < f.length)
+          if (multiChunk && i + chunkSize < f.length) {
             await new Promise(resolve => setTimeout(resolve, PACE_MS))
+          }
         }
         // 帧间节流(多分片帧时)
-        if (f !== frames[frames.length - 1])
+        if (f !== frames[frames.length - 1]) {
           await new Promise(resolve => setTimeout(resolve, PACE_MS))
+        }
       }
     } catch { /* ignore */ }
+    return seq
   }
 
   /** 注册行监听器（crash 日志行） */
-  onLine(cb: (line: string) => void): void {
+  onLine (cb: (line: string) => void): void {
     this.addLineListener(cb)
   }
 
-  addLineListener(cb: (line: string) => void): void {
+  addLineListener (cb: (line: string) => void): void {
     this.lineListeners.add(cb)
   }
 
-  removeLineListener(cb: (line: string) => void): void {
+  removeLineListener (cb: (line: string) => void): void {
     this.lineListeners.delete(cb)
   }
 
   /** 注册解析后的响应/事件对象回调 */
-  onObject(cb: (obj: Record<string, unknown>) => void): void {
+  onObject (cb: (obj: Record<string, unknown>) => void): void {
     this.objListeners.add(cb)
   }
 
-  removeObjectListener(cb: (obj: Record<string, unknown>) => void): void {
+  removeObjectListener (cb: (obj: Record<string, unknown>) => void): void {
     this.objListeners.delete(cb)
   }
 
   /** 注册断开回调 */
-  onDisconnect(cb: () => void): void {
+  onDisconnect (cb: () => void): void {
     this.disconnectCallback = cb
   }
 
-  onFirmwareLog(): () => void {
-    return () => { }
+  onFirmwareLog (): () => void {
+    return () => {}
   }
 
   /** BLE 无 DTR 信号，不支持硬件复位 */
-  async resetDevice(): Promise<boolean> {
+  async resetDevice (): Promise<boolean> {
     return false
   }
 
-  async flashFirmware(): Promise<FirmwareFlashResult> {
+  async flashFirmware (): Promise<FirmwareFlashResult> {
     return { success: false, error: 'BLE 模式不支持桌面刷写，请使用 USB 串口或页面内 OTA' }
   }
 
@@ -249,7 +283,7 @@ export class BleService {
    * 紧接着的 getPrimaryService 会因连接被挤断而抛 "GATT Server is disconnected"。
    * 失败时等待 300ms，若 server 已断开则重新 gatt.connect() 后重试。
    */
-  private async getServiceWithRetry(
+  private async getServiceWithRetry (
     server: BluetoothRemoteGATTServer,
     uuid: string,
     retries = 1,
@@ -257,19 +291,25 @@ export class BleService {
     for (let i = 0; i <= retries; i++) {
       try {
         return await server.getPrimaryService(uuid)
-      } catch (e) {
-        if (i === retries) throw e
+      } catch (error) {
+        if (i === retries) {
+          throw error
+        }
         await new Promise(r => setTimeout(r, 300))
-        if (!server.connected) await server.connect()
+        if (!server.connected) {
+          await server.connect()
+        }
       }
     }
     throw new Error('getPrimaryService failed')
   }
 
-  private handleNotify(ev: Event): void {
+  private handleNotify (ev: Event): void {
     const char = ev.target as BluetoothRemoteGATTCharacteristic
     const value = char.value
-    if (!value) return
+    if (!value) {
+      return
+    }
     const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
     this.handler.feed(bytes)
   }

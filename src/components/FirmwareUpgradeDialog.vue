@@ -165,10 +165,17 @@ async function startFirmwareUpdate() {
           lastError = String(obj.error || '分片写入失败')
           shouldStop = true
         }
-        else if (typeof obj.total_written === 'number') lastWritten = obj.total_written
+        // 取 max 而非覆盖: chunk 响应是"已入队"的乐观值, 探针响应是"已写完"的真实值,
+        // 两者交错时较小的真实值会把进度拉回去, 导致窗口同步误判为饥饿
+        else if (typeof obj.total_written === 'number') lastWritten = Math.max(lastWritten, obj.total_written)
       }
     }
     serialService.onObject(errorHandler)
+
+    // 进度探针: 空负载的 ota_chunk。固件对 len==0 走早期分支, 只回读 g_ota_bytes_written
+    // (不写 flash)。这是唯一能主动催出 OTA 进度的手段 —— OTA_CHUNK 是被动响应,
+    // 窗口同步若只是"停发干等", 就再不会有响应抵达, lastWritten 冻结, 必然假超时。
+    const probeChunk = new Uint8Array(0)
 
     let sentBytes = 0
     for (let index = 0; index < totalChunks && !shouldStop; index++) {
@@ -182,9 +189,12 @@ async function startFirmwareUpdate() {
       // 每窗口等一次同步: 确认固件已收到且队列未溢出
       if ((index + 1) % WINDOW_SIZE === 0 || index === totalChunks - 1) {
         const syncStart = Date.now()
-        // 等 lastWritten 追上已发字节, 最多 5s
+        // 等 lastWritten 追上已发字节, 最多 5s。
+        // 必须边等边发探针: 否则停发即断流, lastWritten 冻结 —— 后台 worker 其实早已
+        // 写完(它不依赖上位机发片), 却永远不会被上报, 于是每次窗口同步都假超时。
         while (lastWritten < sentBytes && Date.now() - syncStart < 5000 && !shouldStop) {
-          await new Promise(r => setTimeout(r, 10))
+          await serialService.sendCommand('ota_chunk', { data: probeChunk })
+          await new Promise(r => setTimeout(r, 20))
         }
         if (shouldStop) break
         if (lastWritten < sentBytes) {

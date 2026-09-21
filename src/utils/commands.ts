@@ -149,9 +149,6 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
       w.u16(Number(params.idle_warning_s ?? 0))
       w.u16(Number(params.idle_shutdown_s ?? 0))
       break
-    case CMD.SET_DEBUG_MODE:
-      w.u8(params.enable ? 1 : 0)
-      break
     case CMD.ELRS_SET_PARAM:
       w.u8(Number(params.field_id ?? 0))
       w.i32(Number(params.value ?? 0))
@@ -395,7 +392,6 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
       case CMD.CAL_GET: return decodeCalGet(r, name)
       case CMD.GET_POWER_CFG: return { cmd: name, idle_warning_s: r.u16(), idle_shutdown_s: r.u16() }
       case CMD.GET_POWER_STATE: return decodePowerState(r, name)
-      case CMD.GET_DEBUG_MODE: return { cmd: name, debug_mode: !!r.u8() }
       case CMD.GET_LINK_STATS: return decodeLinkStats(r, name)
       case CMD.ELRS_LIST_FIELDS: return decodeElrsFields(r, name)
       case CMD.OTA_BEGIN:
@@ -554,13 +550,13 @@ function decodePowerState(r: Reader, name: string): Record<string, unknown> {
     state: 'normal',
     charge: chargeStatusMap(r.u8()),
     battery_mv: r.u16(),
-    battery_pct: r.u8(),
+    battery_level: r.u8(), // 电量档位 0~4 (0=空 4=满, 每档约 20% 容量)
     vbus_mv: r.u16(),
     sys_mv: r.u16(),
     temp: r.i16() / 10,
     charge_current_ma: r.u16(),
     irq_count: r.u32(),
-    debug_mode: !!r.u8(),
+    activity_src: r.u8(), // 活动源位掩码 (复用原 debug_mode 占位字节; 必须在 irq_count 之后读, 与固件布局一致)
     idle_s: r.u16(),
     vbus_type: r.u8(),
     idpm_limit_ma: r.u16(),

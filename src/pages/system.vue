@@ -66,7 +66,19 @@
               <div class="stat-kv-grid">
                 <div class="stat-kv">
                   <span class="stat-label">电量</span>
-                  <span class="stat-value mono">{{ power.state ? battPct(power.state.battery_pct) + '%' : '--' }}</span>
+                  <span class="stat-value">
+                    <span v-if="power.state" class="batt-wrap">
+                      <span class="batt" :style="{ '--batt-c': battColorVar }" :title="battTitle">
+                        <span class="batt-cap"></span>
+                        <span class="batt-body">
+                          <i v-for="n in 4" :key="n" class="batt-cell"
+                            :class="{ 'batt-cell-on': n <= battLevel }"></i>
+                        </span>
+                      </span>
+                      <span class="batt-text">{{ battLabel }}</span>
+                    </span>
+                    <span v-else class="text-grey">--</span>
+                  </span>
                 </div>
                 <div class="stat-kv">
                   <span class="stat-label">电池电压</span>
@@ -98,8 +110,6 @@
                   <span class="stat-value mono">{{ power.state ? (power.state.idpm_limit_ma / 1000).toFixed(2) + ' A' : '--' }}</span>
                 </div>
               </div>
-              <v-progress-linear v-if="power.state" :model-value="battPct(power.state.battery_pct)"
-                :color="battColor(power.state.battery_pct)" height="3" rounded class="mt-2" />
             </div>
           </div>
         </v-card-text>
@@ -126,10 +136,13 @@
             @keydown.enter.prevent="openTimeDialog" @keydown.space.prevent="openTimeDialog">
             <div class="idle-row-main">
               <div class="idle-row-title">关机超时</div>
-              <div class="idle-row-sub">超时后播关机音效并彻底断电</div>
+              <div class="idle-row-sub">
+                {{ shutdownSec ? '超时后播关机音效并彻底断电' : '设为 0 关闭空闲关机' }}
+              </div>
             </div>
             <div class="idle-row-value">
-              <span class="mono">{{ shutdownTime }}</span>
+              <span v-if="shutdownSec" class="mono">{{ shutdownTime }}</span>
+              <span v-else>关闭</span>
               <v-icon size="16">mdi-pencil-outline</v-icon>
             </div>
           </div>
@@ -137,10 +150,41 @@
           <!-- 空闲警告: 由关机超时推导(-30s), 只读说明 -->
           <div class="idle-warn">
             <v-icon size="13">mdi-bell-outline</v-icon>
-            <span v-if="warnSec > 0">
+            <span v-if="!shutdownSec">
+              空闲检测已关闭：不计空闲时长，永不自动关机，也不告警
+            </span>
+            <span v-else-if="warnSec > 0">
               无操作 {{ warnTime }} 起 LED 慢闪 + 蜂鸣提醒，{{ shutdownTime }} 自动关机
             </span>
             <span v-else>无操作满 {{ shutdownTime }} 直接关机，不再单独提醒</span>
+          </div>
+
+          <!-- 实时空闲倒计时: 固件 idle_s 每秒刷新, 轮询间隔靠本地时钟插值平滑 -->
+          <div class="idle-count" :class="`tone-${countdownColor}`">
+            <div class="idle-count-head">
+              <v-icon size="14">mdi-timer-sand</v-icon>
+              <span v-if="idleDisabled">空闲检测已关闭（设备当前超时为 0，保存后立即生效）</span>
+              <span v-else-if="remainS !== null">
+                距自动关机 <span class="mono idle-count-val">{{ countdownText }}</span>
+                <span class="idle-count-elapsed">(已空闲 {{ elapsedText }})</span>
+              </span>
+              <span v-else>未连接设备，倒计时不可用</span>
+            </div>
+            <template v-if="!idleDisabled">
+              <v-progress-linear :model-value="countdownPct" :color="countdownColor" height="3" rounded
+                class="mt-1" />
+
+              <!-- 消除误导: 明确"到点了也不会关机"的两种情形 -->
+              <div v-if="vbusPresent" class="idle-count-note idle-count-warn">
+                <v-icon size="12">mdi-usb</v-icon>
+                <span>USB 已接入，不会自动关机</span>
+              </div>
+              <div v-if="activityLabels.length" class="idle-count-note">
+                <v-icon size="12">mdi-motion</v-icon>
+                <span>计时已重置：{{ activityLabels.join(' / ') }}</span>
+                <span v-if="blockingSrc" class="idle-count-badge">持续中，设备不会关机</span>
+              </div>
+            </template>
           </div>
         </v-card-text>
       </v-card>
@@ -192,33 +236,6 @@
               两个端口不能同时开启（至少保留一个配置通道）。开启后该口转为纯 MAVLink 遥测口，
               其上的配置指令会被设备静默丢弃；若误开了正在使用的端口，请改用另一个端口关闭。
             </span>
-          </div>
-        </v-card-text>
-      </v-card>
-
-      <!-- 调试模式卡片 -->
-      <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
-        <v-card-item class="pb-0">
-          <template #prepend>
-            <v-avatar :color="power.debugMode ? 'warning' : 'grey'" size="36" class="cal-avatar">
-              <v-icon color="white" size="20">mdi-bug</v-icon>
-            </v-avatar>
-          </template>
-          <v-card-title>调试模式</v-card-title>
-          <v-card-subtitle>关闭后 USB 供电与串口通讯将阻止空闲关机</v-card-subtitle>
-          <template #append>
-            <v-switch v-model="debugSwitch" :color="power.debugMode ? 'warning' : undefined" :loading="debugLoading"
-              @update:model-value="toggleDebugMode" />
-          </template>
-        </v-card-item>
-
-        <v-card-text class="pt-3">
-          <div class="cal-hint" :class="power.debugMode ? '' : 'hint-neutral'">
-            <v-icon size="16" class="mt-0.5">{{ power.debugMode ? 'mdi-alert' : 'mdi-information-outline' }}</v-icon>
-            <span v-if="power.debugMode">
-              调试模式已开启：USB 供电和串口通讯不再阻止空闲关机计时，调试完成后请关闭此开关。
-            </span>
-            <span v-else>开启后，USB 供电和串口通讯将不阻止空闲关机，方便调试验证超时关机功能。</span>
           </div>
         </v-card-text>
       </v-card>
@@ -372,6 +389,71 @@ const warnSec = computed(() => Math.max(0, shutdownSec.value - WARN_LEAD_S))
 const warnTime = computed(() => toTimeStr(warnSec.value))
 const shutdownTime = computed(() => toTimeStr(shutdownSec.value))
 
+// ========== 实时空闲倒计时 ==========
+/** 设备当前是否关闭空闲检测 (关机超时 = 0): 固件此时不计时/不告警/不关机 */
+const idleDisabled = computed(() => power.cfg.idle_shutdown_s === 0)
+
+/** 1s 心跳: 驱动插值重算 (固件每秒刷新 idle_s, 前端每 2s 轮询一次) */
+const tick = ref(0)
+let tickTimer: ReturnType<typeof setInterval> | null = null
+/** 最近一次收到固件 idle_s 的本地时刻 (ms), 作为插值起点 */
+let idleSyncMs = 0
+watch(() => power.state?.idle_s, () => { idleSyncMs = Date.now() })
+
+/** 当前已空闲秒数: 固件值 + 距上次同步经过的时间; 未连接/无状态返回 null */
+const idleNowS = computed(() => {
+  const base = power.state?.idle_s
+  if (typeof base !== 'number' || !serial.connected) return null
+  void tick.value // 依赖心跳触发重算
+  return base + (idleSyncMs ? (Date.now() - idleSyncMs) / 1000 : 0)
+})
+
+/** 距自动关机的剩余秒数 (以设备当前生效的超时为准), 未连接或已关闭检测为 null */
+const remainS = computed(() => {
+  const idle = idleNowS.value
+  if (idle === null || idleDisabled.value) return null
+  return Math.max(0, Math.ceil(power.cfg.idle_shutdown_s - idle))
+})
+
+const countdownText = computed(() => remainS.value === null ? '--:--:--' : toTimeStr(remainS.value))
+const elapsedText = computed(() => toTimeStr(Math.floor(idleNowS.value ?? 0)))
+/** 已空闲进度 (0~100): 供进度条展示"消耗了多少" */
+const countdownPct = computed(() => {
+  const idle = idleNowS.value
+  if (idle === null) return 0
+  const total = power.cfg.idle_shutdown_s || 1
+  return Math.min(100, Math.max(0, (idle / total) * 100))
+})
+/** 分档配色: 剩 ≤10s 危险 / 已进入告警区 警告 / 其余正常 */
+const countdownColor = computed(() => {
+  const r = remainS.value
+  if (r === null) return 'grey'
+  if (r <= 10) return 'error'
+  const warnLead = power.cfg.idle_shutdown_s - power.cfg.idle_warning_s
+  if (power.cfg.idle_warning_s > 0 && warnLead > 0 && r <= warnLead) return 'warning'
+  return 'primary'
+})
+
+// ---- 为何到点也不关机: 活动源 + USB 供电 ----
+/** 活动源位掩码 → 标签 (与固件 ActivitySrc 一致) */
+const ACT_SRC_BITS: Array<[number, string]> = [
+  [0x01, '按键'],
+  [0x02, '摇杆/扳机'],
+  [0x04, '旋钮'],
+  [0x08, 'IMU 移动'],
+  [0x10, 'RF 链路'],
+  [0x20, '上位机交互'],
+]
+/** 持续型活动源: 会不断重置计时, 设备实际不会关机 */
+const ACT_SRC_BLOCKING = 0x08 | 0x10
+
+const activitySrc = computed(() => power.state?.activity_src ?? 0)
+const activityLabels = computed(() =>
+  ACT_SRC_BITS.filter(([bit]) => activitySrc.value & bit).map(([, label]) => label))
+const blockingSrc = computed(() => (activitySrc.value & ACT_SRC_BLOCKING) !== 0)
+/** VBUS 有输入: 硬件断不了电 (阈值同固件 PMU_VBUS_PRESENT_MV) */
+const vbusPresent = computed(() => (power.state?.vbus_mv ?? 0) >= 4000)
+
 // ========== 关机超时时间选择弹窗 ==========
 const timeDialog = ref(false)
 /** picker 的双向绑定字符串 (仅作展示载体) */
@@ -379,8 +461,8 @@ const timeDraft = ref('00:00:00')
 /** 编辑中的秒数: 由 picker 每次回传解析得到, 写回以它为准 (解析失败则保留上次有效值) */
 const timeDraftSec = ref(0)
 
-/** 可选范围: 10s ~ 1h */
-const SHUTDOWN_MIN_S = 10
+/** 可选范围: 0 ~ 1h (0 = 关闭空闲检测) */
+const SHUTDOWN_MIN_S = 0
 const SHUTDOWN_MAX_S = 3600
 const timeMin = toTimeStr(SHUTDOWN_MIN_S)
 const timeMax = toTimeStr(SHUTDOWN_MAX_S)
@@ -407,10 +489,6 @@ const stateError = ref('')
 // ========== 操作提示 (snackbar) ==========
 const snackbarVisible = ref(false)
 const snackbarMsg = ref('')
-
-// ========== 调试模式 ==========
-const debugSwitch = ref(power.debugMode)
-const debugLoading = ref(false)
 
 // ========== 恢复出厂设置（抹除 NVS） ==========
 const factoryResetBusy = ref(false)
@@ -475,16 +553,6 @@ async function startFactoryResetNvs() {
   }
 }
 
-async function toggleDebugMode(v: boolean | null) {
-  debugLoading.value = true
-  try {
-    await power.setDebugMode(v ?? false)
-  } catch {
-    debugSwitch.value = !v  // 失败回滚
-  }
-  debugLoading.value = false
-}
-
 // ========== 遥测转发端口开关 ==========
 const telemError = ref('')
 /** 待确认的开关操作: 开启当前连接口会失去配置通道, 需二次确认 */
@@ -527,11 +595,6 @@ async function confirmTelem2(): Promise<void> {
   await applyTelem2(c.usb, c.bt)
 }
 
-
-// 同步 store → switch (来自 get_power_state 轮询)
-watch(() => power.debugMode, (v) => {
-  debugSwitch.value = v
-})
 
 // 同步 store → 表单
 watch(() => power.cfg, (c) => {
@@ -643,16 +706,25 @@ function fmtSeconds(s: number): string {
   return parts.join('')
 }
 
-function battPct(raw: number): number {
-  return Math.min(100, Math.max(0, Math.round(raw)))
-}
+// ========== 电量显示 (四段电池, 不显示百分比) ==========
+/** 固件上报的电量档位 0~4; 越界夹紧, 并对旧固件 (上报 0~100 百分比) 折算成档位 */
+const battLevel = computed(() => {
+  const raw = power.state?.battery_level ?? 0
+  const lv = raw > 4 ? Math.round(raw / 25) : raw
+  return Math.min(4, Math.max(0, lv))
+})
 
-function battColor(raw: number): string {
-  const p = battPct(raw)
-  if (p > 50) return 'success'
-  if (p > 20) return 'warning'
-  return 'error'
-}
+/** 档位 → 文字: 平台区电压分辨率只够分 5 档, 百分比没有意义 */
+const battLabel = computed(() => ['空', '低', '中', '高', '满'][battLevel.value])
+/** 档位 → 悬浮说明 */
+const battTitle = computed(() => `电量${battLabel.value}：${battLevel.value} / 4 格`)
+/** 档位 → 图标配色 (Vuetify 主题变量, 随明暗主题自动切换) */
+const battColorVar = computed(() => {
+  const lv = battLevel.value
+  if (lv >= 3) return 'rgb(var(--v-theme-success))'
+  if (lv >= 2) return 'rgb(var(--v-theme-warning))'
+  return 'rgb(var(--v-theme-error))'
+})
 
 function stateColor(s: string): string {
   return { normal: 'success', warning: 'warning', shutdown: 'error' }[s] ?? 'grey'
@@ -673,10 +745,12 @@ function chargeLabel(c: string): string {
 onMounted(() => {
   if (serial.connected) enterPage()
   window.addEventListener('app:reload-from-device', onGlobalReload)
+  tickTimer = setInterval(() => { tick.value++ }, 1000)
 })
 
 onUnmounted(() => {
   stopPoll()
+  if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
   window.removeEventListener('app:reload-from-device', onGlobalReload)
 })
 </script>
@@ -805,6 +879,58 @@ onUnmounted(() => {
   letter-spacing: 0.02em;
 }
 
+/* ── 电量: 四段电池图标 (固件上报 0~4 档, 不再显示百分比) ── */
+.batt-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 档位配色经内联 --batt-c 传入, 边框/亮格/文字统一取 currentColor */
+.batt {
+  display: inline-flex;
+  align-items: center;
+  color: var(--batt-c, rgba(255, 255, 255, 0.45));
+}
+
+/* 正极帽 */
+.batt-cap {
+  width: 2px;
+  height: 8px;
+  margin-right: 1px;
+  border-radius: 0 2px 2px 0;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+/* 壳体 */
+.batt-body {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+}
+
+/* 单格: 熄灭为半透明底, 点亮为档位配色 */
+.batt-cell {
+  display: inline-block;
+  width: 8px;
+  height: 9px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.batt-cell-on {
+  background: currentColor;
+}
+
+.batt-text {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+}
+
 /* ── 空闲关机: 单行配置条, 整行可点, 值右对齐 ── */
 .idle-row {
   display: flex;
@@ -856,6 +982,67 @@ onUnmounted(() => {
   margin-top: 8px;
   font-size: 0.7rem;
   color: rgba(255, 255, 255, 0.42);
+}
+
+/* ── 实时空闲倒计时 ── */
+.idle-count {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.idle-count-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.idle-count-val {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.idle-count-elapsed {
+  margin-left: 2px;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.tone-error .idle-count-val {
+  color: rgb(var(--v-theme-error));
+}
+
+.tone-warning .idle-count-val {
+  color: rgb(var(--v-theme-warning));
+}
+
+.tone-primary .idle-count-val {
+  color: rgb(var(--v-theme-primary));
+}
+
+/* ── 倒计时附注: 说明为何到点也不会关机 ── */
+.idle-count-note {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  font-size: 0.66rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.idle-count-warn {
+  color: rgb(var(--v-theme-warning));
+}
+
+.idle-count-badge {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(var(--v-theme-warning), 0.16);
+  color: rgb(var(--v-theme-warning));
 }
 
 /* ── 遥测转发: 端口开关行 (布局同 idle-row, 整行不可点) ── */

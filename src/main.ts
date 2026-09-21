@@ -68,8 +68,8 @@ function routeObject(obj: Record<string, unknown>): void {
     return
   }
 
-  // get_power_cfg / set_power_cfg / get_power_state / set_debug_mode / get_debug_mode → 电源 Store
-  if (cmd.includes('power') || cmd.includes('debug')) {
+  // get_power_cfg / set_power_cfg / get_power_state → 电源 Store
+  if (cmd.includes('power')) {
     usePowerStore().handleResponse(obj)
     return
   }

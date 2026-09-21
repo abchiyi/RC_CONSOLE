@@ -9,12 +9,15 @@
  * - ESP_LOG 格式: X (timestamp) TAG: message (X∈{E,W,I,D,V})
  */
 
-import { classifyLine, type LineClass } from '@/utils/serialLineClassify'
+// ── BLE 后端（Web Bluetooth NUS） ──
+import type { BleService } from './BleService'
 import { BinaryHandler } from '@/utils/binaryHandler'
 import { encodeRequest } from '@/utils/commands'
+import { classifyLine, type LineClass } from '@/utils/serialLineClassify'
+// ── 导入 Electron 后端（延迟导入避免循环依赖） ──
+import { ElectronSerialService, electronSerialService } from './ElectronSerialService'
 
-// 重新导出供 ElectronSerialService 使用
-export { classifyLine, type LineClass } from '@/utils/serialLineClassify'
+export { bleService, BleService } from './BleService'
 
 export interface SerialOptions {
   baudRate?: number
@@ -46,23 +49,35 @@ export class SerialService {
   private handler = new BinaryHandler()
   /** OTA 期间非 OTA 命令直接丢弃，避免轮询干扰传输 */
   private otaInProgress = false
+  /** 会话锁丢弃日志节流（轮询命令每 5s 一条会淹没日志） */
+  private lastDropLog = 0
 
-  constructor() {
+  constructor () {
     // 二进制帧 → 对象分发；ESP_LOG 混流中的 crash 行 → lineListeners
     this.handler.onObject(obj => {
-      this.objListeners.forEach(cb => { try { cb(obj) } catch { /* ignore */ } })
+      for (const cb of this.objListeners) {
+        try {
+          cb(obj)
+        } catch { /* ignore */ }
+      }
     })
     this.handler.onLog(line => {
-      this.lineListeners.forEach(cb => { try { cb(line) } catch { /* ignore */ } })
+      for (const cb of this.lineListeners) {
+        try {
+          cb(line)
+        } catch { /* ignore */ }
+      }
     })
   }
 
-  static isSupported(): boolean {
+  static isSupported (): boolean {
     return 'serial' in navigator
   }
 
-  async requestPort(): Promise<SerialPort | null> {
-    if (!navigator.serial) return null
+  async requestPort (): Promise<SerialPort | null> {
+    if (!navigator.serial) {
+      return null
+    }
     try {
       const port = await navigator.serial.requestPort()
       this.port = port
@@ -72,16 +87,20 @@ export class SerialService {
     }
   }
 
-  async connect(port?: SerialPort, options: SerialOptions = {}): Promise<boolean> {
+  async connect (port?: SerialPort, options: SerialOptions = {}): Promise<boolean> {
     // 确保先完全断开上次连接
     await this.disconnect()
 
     try {
-      if (port) this.port = port
-      if (!this.port) return false
+      if (port) {
+        this.port = port
+      }
+      if (!this.port) {
+        return false
+      }
 
       await this.port.open({
-        baudRate: options.baudRate ?? 115200,
+        baudRate: options.baudRate ?? 115_200,
         dataBits: options.dataBits ?? 8,
         stopBits: options.stopBits ?? 1,
         parity: options.parity ?? 'none',
@@ -92,7 +111,9 @@ export class SerialService {
     }
 
     if (!this.port.readable || !this.port.writable) {
-      try { await this.port.close() } catch { /* ignore */ }
+      try {
+        await this.port.close()
+      } catch { /* ignore */ }
       this.port = null
       return false
     }
@@ -103,8 +124,10 @@ export class SerialService {
     return true
   }
 
-  async disconnect(): Promise<void> {
-    if (!this.port) return
+  async disconnect (): Promise<void> {
+    if (!this.port) {
+      return
+    }
 
     this.closing = true
 
@@ -115,7 +138,9 @@ export class SerialService {
         await reader.cancel()
       } catch {
         // cancel 失败，尝试直接释放锁
-        try { reader.releaseLock() } catch { /* ignore */ }
+        try {
+          reader.releaseLock()
+        } catch { /* ignore */ }
       }
       this.reader = null
     }
@@ -124,27 +149,35 @@ export class SerialService {
     if (this.writer) {
       const writer = this.writer
       this.writer = null
-      try { await writer.close() } catch { /* ignore */ }
-      try { writer.releaseLock() } catch { /* ignore */ }
+      try {
+        await writer.close()
+      } catch { /* ignore */ }
+      try {
+        writer.releaseLock()
+      } catch { /* ignore */ }
     }
 
     // 3. 关闭底层串口
     if (this.port) {
       const port = this.port
       this.port = null
-      try { await port.close() } catch { /* ignore */ }
+      try {
+        await port.close()
+      } catch { /* ignore */ }
     }
 
     // 4. 给操作系统一点时间释放设备
     await this.delay(200)
   }
 
-  get isConnected(): boolean {
+  get isConnected (): boolean {
     return this.port !== null && !!this.writer && !this.closing
   }
 
-  get portInfo(): { vid?: number; pid?: number } | null {
-    if (!this.port) return null
+  get portInfo (): { vid?: number, pid?: number } | null {
+    if (!this.port) {
+      return null
+    }
     const info = this.port.getInfo()
     return {
       vid: info.usbVendorId,
@@ -153,8 +186,10 @@ export class SerialService {
   }
 
   /** 通过 DTR 信号复位设备（硬件复位，适用于设备跑飞时） */
-  async resetDevice(): Promise<boolean> {
-    if (!this.port) return false
+  async resetDevice (): Promise<boolean> {
+    if (!this.port) {
+      return false
+    }
     try {
       const serialPort = this.port as SerialPort & {
         setSignals?: (signals: { dataTerminalReady: boolean }) => Promise<void>
@@ -163,82 +198,110 @@ export class SerialService {
       await this.delay(100)
       await serialPort.setSignals?.({ dataTerminalReady: false })
       return true
-    } catch { return false }
+    } catch {
+      return false
+    }
   }
 
-  async flashFirmware(): Promise<FirmwareFlashResult> {
+  async flashFirmware (): Promise<FirmwareFlashResult> {
     return { success: false, error: '浏览器模式不支持在线升级，请使用桌面版应用' }
   }
 
-  onLine(cb: (line: string) => void): void {
+  onLine (cb: (line: string) => void): void {
     this.addLineListener(cb)
   }
 
-  addLineListener(cb: (line: string) => void): void {
+  addLineListener (cb: (line: string) => void): void {
     this.lineListeners.add(cb)
   }
 
-  removeLineListener(cb: (line: string) => void): void {
+  removeLineListener (cb: (line: string) => void): void {
     this.lineListeners.delete(cb)
   }
 
   /** 注册解析后的响应/事件对象回调 */
-  onObject(cb: (obj: Record<string, unknown>) => void): void {
+  onObject (cb: (obj: Record<string, unknown>) => void): void {
     this.objListeners.add(cb)
   }
 
-  removeObjectListener(cb: (obj: Record<string, unknown>) => void): void {
+  removeObjectListener (cb: (obj: Record<string, unknown>) => void): void {
     this.objListeners.delete(cb)
   }
 
-  onDisconnect(cb: () => void): void {
+  onDisconnect (cb: () => void): void {
     this.disconnectCallback = cb
   }
 
-  onFirmwareLog(): () => void {
-    return () => { }
+  onFirmwareLog (): () => void {
+    return () => {}
   }
 
-  async sendCommand(cmd: string, params?: Record<string, unknown>): Promise<void> {
-    if (this.closing || !this.writer) return
+  /**
+   * @returns 首帧的帧头 seq；未发送（未连接/未知命令/被会话锁丢弃）时返回 undefined。
+   *   固件构建 RESPONSE 时原样回显该 seq，调用方可据此精确匹配响应。
+   */
+  async sendCommand (cmd: string, params?: Record<string, unknown>): Promise<number | undefined> {
+    if (this.closing || !this.writer) {
+      return undefined
+    }
     // 大流量会话锁: OTA / 外部模块烧录 的 begin 加锁, finish/abort 解锁, chunk 放行, 其他命令丢弃
-    if (cmd === 'ota_begin' || cmd === 'elrs_flash_begin') this.otaInProgress = true
-    else if (cmd === 'ota_finish' || cmd === 'ota_abort' ||
-      cmd === 'elrs_flash_finish' || cmd === 'elrs_flash_abort') this.otaInProgress = false
-    else if (this.otaInProgress && cmd !== 'ota_chunk' && cmd !== 'elrs_flash_chunk') {
-      console.warn(`[Serial] session in progress, dropping: ${cmd}`)
-      return
+    if (cmd === 'ota_begin' || cmd === 'elrs_flash_begin') {
+      this.otaInProgress = true
+    } else if (cmd === 'ota_finish' || cmd === 'ota_abort'
+      || cmd === 'elrs_flash_finish' || cmd === 'elrs_flash_abort') {
+      this.otaInProgress = false
+    } else if (this.otaInProgress && cmd !== 'ota_chunk' && cmd !== 'elrs_flash_chunk') {
+      // 烧录/OTA 会话期间丢弃其它命令是设计行为（避免轮询干扰传输），但后台轮询
+      // 每 5s 触发一次会把日志淹没 —— 每秒最多留一条
+      const nowDrop = Date.now()
+      if (nowDrop - this.lastDropLog >= 1000) {
+        this.lastDropLog = nowDrop
+        console.warn(`[Serial] session in progress, dropping: ${cmd}`)
+      }
+      return undefined
     }
     let frames: Uint8Array[]
     try {
       frames = encodeRequest(cmd, params)
-    } catch (e) {
-      console.error('[Serial] 未知命令:', cmd, e)
-      return
+    } catch (error) {
+      console.error('[Serial] 未知命令:', cmd, error)
+      return undefined
     }
     if (cmd === 'stream_start') {
       this.handler.setStreamFlags(Number(params?.flags ?? 0))
     }
+    const seq = frames[0]?.[7]
     try {
-      for (const f of frames) await this.writer.write(f)
+      for (const f of frames) {
+        await this.writer.write(f)
+      }
     } catch {
       // write 失败说明设备断开，触发清理
     }
+    return seq
   }
 
-  private startReadLoop(): void {
-    if (!this.port?.readable) return
+  private startReadLoop (): void {
+    if (!this.port?.readable) {
+      return
+    }
     const port = this.port
-    if (!port.readable) return
+    if (!port.readable) {
+      return
+    }
     this.reader = port.readable.getReader()
     const capturedReader = this.reader
 
     const read = async () => {
       try {
         while (true) {
-          if (!capturedReader) return
+          if (!capturedReader) {
+            return
+          }
           const { value, done } = await capturedReader.read()
-          if (done) break
+          if (done) {
+            break
+          }
           if (value) {
             // 字节流 → 二进制帧解码（内部同步帧头/校验 CRC/过滤 ESP_LOG）
             this.handler.feed(value)
@@ -249,19 +312,27 @@ export class SerialService {
       } finally {
         // 清理 reader
         if (capturedReader) {
-          try { capturedReader.releaseLock() } catch { /* ignore */ }
+          try {
+            capturedReader.releaseLock()
+          } catch { /* ignore */ }
         }
 
         // 清理 writer
         if (this.writer) {
-          try { this.writer.close() } catch { /* ignore */ }
-          try { this.writer.releaseLock() } catch { /* ignore */ }
+          try {
+            this.writer.close()
+          } catch { /* ignore */ }
+          try {
+            this.writer.releaseLock()
+          } catch { /* ignore */ }
           this.writer = null
         }
 
         // 关闭端口
         if (this.port) {
-          try { await this.port.close() } catch { /* ignore */ }
+          try {
+            await this.port.close()
+          } catch { /* ignore */ }
           this.port = null
         }
 
@@ -276,28 +347,20 @@ export class SerialService {
     read()
   }
 
-  private delay(ms: number): Promise<void> {
+  private delay (ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
   }
 }
 
 export const webSerialService = new SerialService()
 
-// ── 导入 Electron 后端（延迟导入避免循环依赖） ──
-import { ElectronSerialService, electronSerialService } from './ElectronSerialService'
-// ── BLE 后端（Web Bluetooth NUS） ──
-import { BleService, bleService } from './BleService'
-
-export { ElectronSerialService, electronSerialService }
-export { BleService, bleService }
-
-export function isElectronEnv(): boolean {
+export function isElectronEnv (): boolean {
   return ElectronSerialService.isSupported()
 }
 
 export type SerialBackend = SerialService | ElectronSerialService | BleService
 
-export function getSerialService(): SerialBackend {
+export function getSerialService (): SerialBackend {
   if (ElectronSerialService.isSupported()) {
     return electronSerialService
   }
@@ -314,11 +377,15 @@ export function getSerialService(): SerialBackend {
 export let serialService: SerialBackend = getSerialService()
 
 /** 切换当前活动后端（如切到 BLE）。所有 import 该实例的模块自动跟随。 */
-export function setSerialBackend(svc: SerialBackend): void {
+export function setSerialBackend (svc: SerialBackend): void {
   serialService = svc
 }
 
 /** 切回默认后端（按当前环境自动选择） */
-export function resetSerialBackend(): void {
+export function resetSerialBackend (): void {
   serialService = getSerialService()
 }
+
+export { ElectronSerialService, electronSerialService } from './ElectronSerialService'
+// 重新导出供 ElectronSerialService 使用
+export { classifyLine, type LineClass } from '@/utils/serialLineClassify'

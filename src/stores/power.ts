@@ -17,13 +17,15 @@ export interface PowerState {
   charge: 'none' | 'charging' | 'full'
   idle_s: number
   battery_mv: number
-  battery_pct: number
+  /** 电量档位 0~4 (0=空 4=满, 每档约 20% 容量); 固件不再上报百分比 */
+  battery_level: number
   vbus_mv: number
   sys_mv: number
   temp: number
   charge_current_ma: number
   irq_count: number
-  debug_mode: boolean
+  /** 最近命中过的空闲活动源位掩码 (固件 ActivitySrc, 3s 有效期) */
+  activity_src: number
   vbus_type: number
   idpm_limit_ma: number
 }
@@ -31,7 +33,6 @@ export interface PowerState {
 export const usePowerStore = defineStore('power', () => {
   const cfg = ref<PowerCfg>({ idle_warning_s: 300, idle_shutdown_s: 360 })
   const state = ref<PowerState | null>(null)
-  const debugMode = ref(false)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -61,29 +62,11 @@ export const usePowerStore = defineStore('power', () => {
     try { await p } catch { /* 轮询超时不报错 */ }
   }
 
-  async function setDebugMode(enable: boolean): Promise<void> {
-    const p = rr.wait('set_debug_mode')
-    await serialService.sendCommand('set_debug_mode', { enable })
-    try { await p } catch (e) { error.value = (e as Error).message }
-  }
-
-  async function fetchDebugMode(): Promise<void> {
-    const p = rr.wait('get_debug_mode')
-    await serialService.sendCommand('get_debug_mode')
-    try { await p } catch (e) { error.value = (e as Error).message }
-  }
-
   function handleResponse(json: Record<string, unknown>): void {
     // get_power_cfg 响应
     if (typeof json.idle_warning_s === 'number' && typeof json.idle_shutdown_s === 'number') {
       cfg.value = json as unknown as PowerCfg
       rr.tryResolve('get_power_cfg')
-      return
-    }
-
-    // set_debug_mode 响应 { cmd, ok: true }（先于通用 ok 分支，避免误判）
-    if (json.cmd === 'set_debug_mode' && json.ok === true) {
-      rr.tryResolve('set_debug_mode')
       return
     }
 
@@ -96,18 +79,7 @@ export const usePowerStore = defineStore('power', () => {
     // get_power_state 响应
     if (typeof json.state === 'string' && typeof json.idle_s === 'number') {
       state.value = json as unknown as PowerState
-      if (typeof json.debug_mode === 'boolean') {
-        debugMode.value = json.debug_mode
-      }
       rr.tryResolve('get_power_state')
-      return
-    }
-
-    // get_debug_mode / set_debug_mode 响应
-    if (typeof json.debug_mode === 'boolean') {
-      debugMode.value = json.debug_mode
-      rr.tryResolve('get_debug_mode')
-      rr.tryResolve('set_debug_mode')
       return
     }
   }
@@ -115,14 +87,11 @@ export const usePowerStore = defineStore('power', () => {
   return {
     cfg,
     state,
-    debugMode,
     loading,
     error,
     fetchCfg,
     saveCfg,
     fetchState,
-    setDebugMode,
-    fetchDebugMode,
     handleResponse,
   }
 })
