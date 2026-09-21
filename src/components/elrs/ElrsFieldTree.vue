@@ -20,19 +20,23 @@
             :fields="fields"
             :parent-id="field.id"
             :updating-id="updatingId"
+            :pending-values="pendingValues"
+            :running-commands="runningCommands"
             @set="emit('set', $event)"
           />
         </div>
       </div>
 
       <!-- 参数行 -->
-      <div v-else class="ft-row" :class="{ 'is-busy': isBusy(field) }">
+      <div v-else class="ft-row" :class="{ 'is-busy': isBusy(field), 'is-pending': isPending(field) }">
         <div class="ft-head">
           <v-icon size="15" :color="iconColor(field)">{{ icon(field) }}</v-icon>
           <span class="ft-name">{{ field.name }}</span>
           <span class="ft-spacer" />
-          <v-progress-circular v-if="isBusy(field)" size="12" width="2" indeterminate color="primary" />
-          <span v-else class="ft-value">{{ valueLabel(field) }}</span>
+          <v-progress-circular v-if="isBusy(field) || isRunning(field)" size="12" width="2" indeterminate color="primary" />
+          <span v-else class="ft-value" :class="{ 'ft-value-pending': isPending(field) }">{{ valueLabel(field) }}</span>
+          <!-- 只剩一个可选项：它即默认状态，标注出来避免误以为可切换 -->
+          <span v-if="isSingleOption(field)" class="ft-tag">默认</span>
         </div>
 
         <!-- INFO：只读说明 -->
@@ -46,7 +50,7 @@
             type="button"
             class="ft-btn"
             :class="{ 'is-primary': action.primary }"
-            :disabled="isBusy(field)"
+            :disabled="isBusy(field) || isRunning(field)"
             @click="apply(field, action.value)"
           >
             {{ action.label }}
@@ -60,8 +64,12 @@
             :key="op.value"
             type="button"
             class="ft-option"
-            :class="{ 'is-active': op.value === (field.value ?? 0) }"
-            :disabled="isBusy(field)"
+            :class="{
+              'is-active': op.value === effValue(field) || isSingleOption(field),
+              'is-confirming': isPending(field) && op.value === effValue(field),
+              'is-locked': isSingleOption(field),
+            }"
+            :disabled="isBusy(field) || isSingleOption(field)"
             @click="apply(field, op.value)"
           >
             {{ op.title }}
@@ -89,7 +97,7 @@
           <button
             type="button"
             class="ft-btn is-primary"
-            :disabled="isBusy(field) || draft(field) === (field.value ?? 0)"
+            :disabled="isBusy(field) || draft(field) === effValue(field)"
             @click="apply(field, draft(field))"
           >
             写入
@@ -104,13 +112,30 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { isBlockedRateValue } from '@/stores/linkStats'
 import type { ElrsFieldInfo } from '@/stores/linkStats'
 
 const props = defineProps<{
   fields: ElrsFieldInfo[]
   parentId?: number
   updatingId?: number | null
+  /** 写后待确认的期望值：field_id → value。回读追上后由 store 自动清除 */
+  pendingValues?: Record<number, number>
+  /** 正在执行中的命令字段(type 13)：field_id → 发起时刻 */
+  runningCommands?: Record<number, number>
 }>()
+
+/** 当前应展示的值：有未确认写入时以乐观值为准，否则用设备回读值 */
+function effValue(field: ElrsFieldInfo): number {
+  const pending = props.pendingValues?.[field.id]
+  return typeof pending === 'number' ? pending : (field.value ?? 0)
+}
+
+/** 该字段有尚未被回读确认的写入 */
+function isPending(field: ElrsFieldInfo): boolean {
+  const pending = props.pendingValues?.[field.id]
+  return typeof pending === 'number' && pending !== (field.value ?? 0)
+}
 
 const emit = defineEmits<{ set: [payload: { field: ElrsFieldInfo; value: number }] }>()
 
@@ -138,7 +163,7 @@ const drafts = reactive<Record<number, number>>({})
 
 function draft(field: ElrsFieldInfo): number {
   const d = drafts[field.id]
-  return typeof d === 'number' ? d : (field.value ?? 0)
+  return typeof d === 'number' ? d : effValue(field)
 }
 
 function clamp(field: ElrsFieldInfo, v: number): number {
@@ -168,6 +193,11 @@ function isBusy(field: ElrsFieldInfo): boolean {
   return props.updatingId === field.id
 }
 
+/** 该命令字段正在执行中（firmware 侧仍在回报非零 status） */
+function isRunning(field: ElrsFieldInfo): boolean {
+  return props.runningCommands?.[field.id] != null
+}
+
 function apply(field: ElrsFieldInfo, value: number) {
   emit('set', { field, value })
 }
@@ -194,21 +224,57 @@ function iconColor(field: ElrsFieldInfo): string {
 /** 右上角当前值：SELECT 显示选项名，数值带单位，命令显示模块回报的文本 */
 function valueLabel(field: ElrsFieldInfo): string {
   if (field.type === 12) return ''
-  if (field.type === 13) return field.text || ''
+  // 命令字段：执行期间优先展示模块回报的状态文本，没有文本也给个"执行中"兜底
+  if (field.type === 13) {
+    if (isRunning(field)) return field.text || '执行中…'
+    return field.text || ''
+  }
   if (field.type === 9) {
     const opts = items(field)
-    if (opts.length > 0) return opts.find(op => op.value === (field.value ?? 0))?.title ?? '--'
+    // 只剩一个可选项时它就是默认状态，直接显示它（当前值可能不在剩余选项里，否则会显示 '--'）
+    if (opts.length === 1) return opts[0]?.title ?? '--'
+    const hit = opts.find(op => op.value === effValue(field))
+    if (hit) return hit.title
+    // 当前正处在被屏蔽档位（如 500Hz）：选项里已没有它，回退到模块原始文本，别显示成 '--'
+    if (opts.length > 0) return field.text || '--'
   }
-  const v = field.value
+  const pending = props.pendingValues?.[field.id]
+  const v = typeof pending === 'number' ? pending : field.value
   if (v === undefined || v === null) return '--'
   return field.unit ? `${v} ${field.unit}` : `${v}`
 }
 
+/**
+ * 选项缓存：模板里每项都要判 isSingleOption，逐次构造会退化成平方级。
+ * 依赖 props.fields / props.pendingValues，二者变化时自动重算。
+ */
+const itemsCache = computed(() => {
+  const map = new Map<number, Array<{ title: string; value: number }>>()
+  for (const f of props.fields) map.set(f.id, buildItems(f))
+  return map
+})
+
+function items(field: ElrsFieldInfo): Array<{ title: string; value: number }> {
+  return itemsCache.value.get(field.id) ?? buildItems(field)
+}
+
+/** 过滤后只剩一个可选项：它就是该字段的默认状态，恒定高亮且不可修改 */
+function isSingleOption(field: ElrsFieldInfo): boolean {
+  return field.type === 9 && items(field).length === 1
+}
+
 /** SELECT 选项：优先用固件下发的 options，否则按 min~max 枚举（>32 档视为不可枚举） */
-function items(field: ElrsFieldInfo) {
+function buildItems(field: ElrsFieldInfo): Array<{ title: string; value: number }> {
+  // 先按原始下标/原始数值算出 value 再过滤，避免删档后索引错位写成别的速率。
+  // 被封禁档位一律隐藏，不做「当前值豁免」：切回只需点其它档位，
+  // 而豁免会让设备正处在高速率时仍保留一个可重复点选的入口。
+  const keepVisible = (value: number) => !isBlockedRateValue(field, value)
+
   if (field.options && field.options.length > 0) {
     const base = Number.isFinite(field.min as number) ? Number(field.min) : 0
-    return field.options.map((label, idx) => ({ title: label, value: base + idx }))
+    return field.options
+      .map((label, idx) => ({ title: label, value: base + idx }))
+      .filter(op => keepVisible(op.value))
   }
 
   const min = Number.isFinite(field.min as number) ? Number(field.min) : 0
@@ -217,7 +283,9 @@ function items(field: ElrsFieldInfo) {
 
   const list: Array<{ title: string; value: number }> = []
   for (let value = min; value <= max; value++) {
-    list.push({ title: field.unit ? `${value} ${field.unit}` : `${value}`, value })
+    if (keepVisible(value)) {
+      list.push({ title: field.unit ? `${value} ${field.unit}` : `${value}`, value })
+    }
   }
   return list
 }
@@ -274,6 +342,23 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
 
 .ft-row.is-busy {
   border-color: rgba(var(--v-theme-primary), 0.5);
+}
+
+/* 已写入但设备回读尚未跟上：整行轻微弱化 + 主色虚线边框，表示"待确认" */
+.ft-row.is-pending {
+  border-style: dashed;
+  border-color: rgba(var(--v-theme-primary), 0.45);
+}
+
+.ft-value-pending {
+  opacity: 0.75;
+  font-style: italic;
+}
+
+/* 待确认的高亮选项：保留选中态但降低饱和，区别于已确认 */
+.ft-option.is-confirming {
+  background: rgba(var(--v-theme-primary), 0.45);
+  box-shadow: none;
 }
 
 .ft-head {
@@ -357,11 +442,29 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
   color: #fff;
 }
 
+.ft-tag {
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 0.62rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+}
+
 .ft-option:disabled,
 .ft-btn:disabled,
 .ft-step:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* 唯一可选项：虽然是 disabled 态，但仍要保持选中高亮（默认状态，只是不可修改）。
+   必须放在 :disabled 之后，否则同为 (0,2,0) 特异性时会被后定义的透明度压暗。 */
+.ft-option.is-locked {
+  opacity: 1;
+  cursor: default;
+  box-shadow: none;
 }
 
 /* ── 数值步进器 ── */

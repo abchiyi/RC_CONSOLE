@@ -118,6 +118,8 @@
             :key="link.fieldsVersion"
             :fields="link.fields"
             :updating-id="elrsUpdatingFieldId"
+            :pending-values="link.pendingValues"
+            :running-commands="link.runningCommands"
             @set="applyElrsFieldValue"
           />
         </v-card-text>
@@ -178,7 +180,8 @@ async function applyElrsFieldValue(payload: { field: ElrsFieldInfo; value: numbe
   elrsUpdatingFieldId.value = field.id
   try {
     const ok = await link.setParam(field.id, value)
-    showElrsMsg(ok ? `已写入 ${field.name}` : `写入失败: ${field.name}`)
+    if (!ok) showElrsMsg(`写入失败: ${field.name}`)
+    else showElrsMsg(field.type === 13 ? `已发送 ${field.name}` : `已写入 ${field.name}`)
   } catch {
     showElrsMsg(`写入失败: ${field.name}`)
   }
@@ -189,6 +192,24 @@ function showElrsMsg(msg: string) {
   elrsMsg.value = msg
   snackbarVisible.value = true
 }
+
+// 写入帧已发出、但设备回读长期未追上：乐观值已回滚，提示用户该设置可能未生效
+// 同一字段连续失败时也需触发，故侦听单调递增的 seq 而非 fieldId
+watch(() => link.writeRejected?.seq, () => {
+  const fieldId = link.writeRejected?.fieldId
+  if (fieldId == null) return
+  const name = link.fields.find(f => f.id === fieldId)?.name ?? `字段 #${fieldId}`
+  showElrsMsg(`${name}：设备回读未确认，请重试`)
+})
+
+// 写入被入口规则拒绝（如 500Hz / D500 / F500 这类切过去后模块不再上报的档位）：
+// 这不是"未确认"，重试也不会成功，故文案与上面区分开
+watch(() => link.writeBlocked?.seq, () => {
+  const fieldId = link.writeBlocked?.fieldId
+  if (fieldId == null) return
+  const name = link.fields.find(f => f.id === fieldId)?.name ?? `字段 #${fieldId}`
+  showElrsMsg(`${name}：该档位当前不可用（模块切换后不再上报此参数），已阻止下发`)
+})
 
 /** 手动重扫：无条件清空固件缓存并强制重新发现参数 */
 async function refreshElrsFields() {
@@ -214,10 +235,11 @@ async function onGlobalReload() {
   }
 }
 
-/** 进入页面/连接建立后：停通道流 → 开链路流 → 拉参数 */
+/** 进入页面/连接建立后：登记链路流 → 拉参数
+ *  不再先停通道流：固件 stream_start 自带 stop，且 stream.ts 仲裁器已按优先级去抖，
+ *  先发 stream_stop 反而可能迟到并关掉本页刚启动的链路流 */
 async function enterPage(): Promise<void> {
   if (!serial.connected) return
-  await chStore.stopPolling()      // 停通道流，释放单流会话
   await link.startLinkStream(100)  // 链路统计走流式（10Hz，与原轮询频率一致）
   await autoLoadFields()           // 无条件拉取：缓存为空时固件异步发现，fetchFields 内部轮询等待
 }

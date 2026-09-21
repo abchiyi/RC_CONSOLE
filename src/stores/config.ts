@@ -269,7 +269,13 @@ export const useConfigStore = defineStore('config', () => {
   async function setActiveModel(slot: number): Promise<boolean> {
     const p = rr.wait('set_active', 2000)
     await serialService.sendCommand('set_active', { slot })
-    try { const ok = await p; return ok !== false } catch { error.value = '激活模型超时'; return false }
+    try {
+      const ok = await p
+      // 固件 set_active 响应不含 slot, 无法从响应定位; 成功后本地乐观更新,
+      // 否则「设为默认」按钮的禁用态不会刷新
+      if (ok !== false && config.value) config.value.active_model = slot
+      return ok !== false
+    } catch { error.value = '激活模型超时'; return false }
   }
 
   async function setRuntimeModel(slot: number): Promise<boolean> {

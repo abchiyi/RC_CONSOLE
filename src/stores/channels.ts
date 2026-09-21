@@ -7,6 +7,9 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { serialService } from '@/services/SerialService'
 import { rawToUs, RAW_CENTER } from '@/utils/crsf'
+import {
+  OWNER, appliedStream, requestStream, releaseStream, releaseAllStreams,
+} from './stream'
 
 export interface ChannelSnapshot {
   channels: number[]
@@ -16,10 +19,10 @@ export interface ChannelSnapshot {
 export const useChannelStore = defineStore('channels', () => {
   const channels = ref<number[]>(Array(16).fill(RAW_CENTER))
   const sources = ref<string[]>(Array(16).fill('NONE'))
-  const polling = ref(false)
+  // 由仲裁器的「已生效流」派生，而非本地标志 —— 避免与固件真实状态脱节
+  const polling = computed(() => appliedStream.value?.owner === OWNER.CHANNELS)
   const lastUpdate = ref(0)
   // 通道数据已并入 STREAM content_type=0：固件按 interval_ms 定时推送，无需轮询定时器
-  let started = false
 
   function update(data: ChannelSnapshot): void {
     if (data.channels) channels.value = [...data.channels]
@@ -52,27 +55,21 @@ export const useChannelStore = defineStore('channels', () => {
 
   // 默认 50ms (20fps): 更流畅；MTU=23 平台限制下用小帧减少拆包。
   // flags.bit0=1 附加每通道 source 名称；bit1=1 开启 11-bit 压缩（帧 61B→51B，拆包 4→3）。
+  //
+  // 实际下发由 stream.ts 仲裁器去抖合并：固件是单流会话且 stream_start 内部自带 stop，
+  // 因此这里只登记请求，不再发礼让式 stream_stop（否则该命令可能迟到并关掉下一个页面的流）。
   async function startPolling(intervalMs = 50): Promise<void> {
-    if (started) return
     if (!serialService.isConnected) return
-    started = true
-    polling.value = true
-    await serialService.sendCommand('stream_start', { content_type: 0, interval_ms: intervalMs, flags: 0x03 })
+    requestStream({ owner: OWNER.CHANNELS, content_type: 0, interval_ms: intervalMs, flags: 0x03 })
   }
 
   async function stopPolling(): Promise<void> {
-    if (!started) return
-    started = false
-    polling.value = false
-    if (serialService.isConnected) {
-      await serialService.sendCommand('stream_stop')
-    }
+    releaseStream(OWNER.CHANNELS)
   }
 
-  /** 断开场景：纯重置标志，不发命令，避免重连后 startPolling 静默 return */
+  /** 断开场景：清空所有流请求，不发命令，避免重连后 startPolling 静默 return */
   function resetPolling(): void {
-    started = false
-    polling.value = false
+    releaseAllStreams()
   }
 
   return {

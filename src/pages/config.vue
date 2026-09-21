@@ -627,21 +627,13 @@ function chanLive(idx: number): { startPct: number; fillPct: number } | null {
 function chanLivePx(idx: number): { left: number; width: number } | null {
   const live = chanLive(idx)
   if (!live) return null
-  void resizeTick.value // 窗口尺寸变化时强制重算
-  const box = sliderBoxRefs.get(idx)
-  if (!box) return null
-  const boxRect = box.getBoundingClientRect()
-  const thumbs = box.querySelectorAll<HTMLElement>('.v-slider-thumb')
-  if (thumbs.length < 2) return null
-  const track = box.querySelector<HTMLElement>('.v-slider-track')
-  if (!track) return null
-  const r0 = thumbs[0]!.getBoundingClientRect()
-  const trackRight = track.getBoundingClientRect().right
-  const c0 = r0.left + r0.width / 2 // 左拨杆中心 = output_min 位置
-  const thumbR = r0.width / 2 // 拨杆半径: 右端向外扩展, 使末端圆角覆盖右拨杆圆弧
+  void geoVersion.value // 依赖几何缓存版本号: 布局重测后触发重算
+  const m = boxMetrics.get(idx)
+  if (!m) return null
+  const c0 = m.thumbCenterRel // 左拨杆中心 = output_min 位置
   return {
-    left: c0 - boxRect.left - thumbR, // 左端向左扩展一个半径, 覆盖左拨杆圆弧
-    width: Math.max(0, (trackRight - c0) * (live.fillPct / 100) + thumbR * 2),
+    left: c0 - m.thumbR, // 左端向左扩展一个半径, 覆盖左拨杆圆弧
+    width: Math.max(0, (m.trackRightRel - c0) * (live.fillPct / 100) + m.thumbR * 2),
   }
 }
 
@@ -652,15 +644,53 @@ function chanLivePxList(idx: number): { left: number; width: number }[] {
 }
 
 // 滑块容器引用 + 窗口尺寸变化 → 用于测量通道条
-const resizeTick = ref(0)
 const sliderBoxRefs = new Map<number, HTMLElement>()
 function setSliderBoxRef(idx: number, el: unknown): void {
   if (el) sliderBoxRefs.set(idx, el as HTMLElement)
   else sliderBoxRefs.delete(idx)
 }
+// ── 滑块轨道几何缓存 ──
+// 这些量只依赖 DOM 布局(拨杆位置/轨道位置), 与通道实时值无关。
+// 原先在渲染期逐帧调用 getBoundingClientRect() 会强制同步布局 (20fps × 16 通道),
+// 改为缓存 + 布局变化时集中重测一次。
+interface BoxMetrics {
+  thumbCenterRel: number  // 左拨杆中心 相对 slider-box 左边缘 (px)
+  trackLeftRel: number    // 轨道左端   相对 slider-box 左边缘 (px)
+  trackRightRel: number   // 轨道右端   相对 slider-box 左边缘 (px)
+  trackWidthRel: number   // 轨道宽度 (px)
+  thumbR: number          // 拨杆半径 (px)
+}
+const boxMetrics = new Map<number, BoxMetrics>()
+const geoVersion = ref(0)
+
+function measureSliderGeometry(): void {
+  const next = new Map<number, BoxMetrics>()
+  sliderBoxRefs.forEach((box, idx) => {
+    const thumbs = box.querySelectorAll<HTMLElement>('.v-slider-thumb')
+    const track = box.querySelector<HTMLElement>('.v-slider-track')
+    if (thumbs.length < 2 || !track) return  // 尚未渲染完成
+    const boxRect = box.getBoundingClientRect()
+    const r0 = thumbs[0]!.getBoundingClientRect()
+    const tr = track.getBoundingClientRect()
+    if (!r0.width || !tr.width) return
+    next.set(idx, {
+      thumbCenterRel: r0.left + r0.width / 2 - boxRect.left,
+      trackLeftRel: tr.left - boxRect.left,
+      trackRightRel: tr.right - boxRect.left,
+      trackWidthRel: tr.width,
+      thumbR: r0.width / 2,
+    })
+  })
+  boxMetrics.clear()
+  next.forEach((v, k) => boxMetrics.set(k, v))
+  geoVersion.value++
+}
+
 function onWindowResize(): void {
-  resizeTick.value++
-  nextTick(measureTickOverlap)
+  nextTick(() => {
+    measureTickOverlap()
+    measureSliderGeometry()
+  })
 }
 
 // 动态刻度与静态刻度字符重叠检测: 实测矩形相交, 重叠时隐藏静态刻度
@@ -692,15 +722,12 @@ function measureTickOverlap(): void {
 
 // 中心值竖线: 位置换算与拖拽手势
 function centerMarkLeftPx(idx: number): number {
-  void resizeTick.value
-  const box = sliderBoxRefs.get(idx)
-  const track = box?.querySelector<HTMLElement>('.v-slider-track')
+  void geoVersion.value // 依赖几何缓存版本号
+  const m = boxMetrics.get(idx)
   const ch = editChannels[idx]
-  if (!box || !track || !ch) return 0
-  const boxRect = box.getBoundingClientRect()
-  const r = track.getBoundingClientRect()
+  if (!m || !ch) return 0
   const v = Math.min(Math.max(ch.output_center ?? 1500, 1000), 2000)
-  return r.left - boxRect.left + ((v - 1000) / 1000) * r.width
+  return m.trackLeftRel + ((v - 1000) / 1000) * m.trackWidthRel
 }
 // 中心值步长: 与输出范围滑块 :step="50" 对齐, 拖动时吸附到 50 的整数倍
 const CENTER_STEP = 50
@@ -935,9 +962,15 @@ onMounted(() => {
   if (serial.connected && !chStore.polling) chStore.startPolling()
   if (CHANNEL_LINK_ONLY) return  // 调试: 仅保留通道监视, 暂停自动加载
   enterPage()
-  // 初次渲染完成后测量刻度重叠 (字体就绪后再测一次)
-  nextTick(measureTickOverlap)
-  document.fonts?.ready.then(() => measureTickOverlap())
+  // 初次渲染完成后测量刻度重叠与滑块几何 (字体就绪后再测一次)
+  nextTick(() => {
+    measureTickOverlap()
+    measureSliderGeometry()
+  })
+  document.fonts?.ready.then(() => {
+    measureTickOverlap()
+    measureSliderGeometry()
+  })
 })
 
 // 页面打开后再连接设备时，自动加载配置
@@ -963,6 +996,14 @@ watch(editChannels, () => {
 watch(() => editChannels.map((c) => c.output_center).join(','), () => {
   nextTick(measureTickOverlap)
 })
+
+// 影响滑块布局的因子 (输入源分支切换 / 端点 → 拨杆位置 / 展开态 → DOM 挂载) → 重测几何
+watch(
+  () => editChannels.map((c) =>
+    `${c?.source}|${c?.output_min}|${c?.output_max}|${c?.output_center}`).join(';')
+    + `#${expandedIdx.value}`,
+  () => nextTick(measureSliderGeometry),
+)
 
 onUnmounted(() => {
   window.removeEventListener('resize', onWindowResize)

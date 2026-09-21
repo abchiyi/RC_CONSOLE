@@ -6,6 +6,7 @@
 import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
 import { serialService } from '@/services/SerialService'
+import { OWNER, requestStream, releaseStream } from './stream'
 
 export interface AdcCal {
   raw?: number
@@ -151,10 +152,11 @@ export const useCalibrationStore = defineStore('calibration', () => {
     }, 30000)  // IMU 校准需要采集 1200 个稳定样本 (约 6s)，但设备抖动会使 stableCount 降级，需要更多时间
   }
 
-  /** 实时 raw+IMU 数据：由 STREAM content_type=1 推送（原 cal_get_raw 30ms 轮询已并入流式） */
+  /** 实时 raw+IMU 数据：由 STREAM content_type=1 推送（原 cal_get_raw 30ms 轮询已并入流式）
+   *  实际下发由 stream.ts 仲裁器去抖合并，不再自行 stream_start，避免与其他页面的流互相覆盖 */
   function startCalDataPolling(intervalMs = 10): void {
     if (!serialService.isConnected) return
-    serialService.sendCommand('stream_start', { content_type: 1, interval_ms: intervalMs, flags: 0 })
+    requestStream({ owner: OWNER.CALIBRATION, content_type: 1, interval_ms: intervalMs, flags: 0 })
   }
 
   function stopTimers(): void {
@@ -165,7 +167,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
 
   function stopCalDataPolling(): void {
     calDataTimer = null
-    serialService.sendCommand('stream_stop')
+    releaseStream(OWNER.CALIBRATION)
   }
 
   // ---- 响应处理 ----

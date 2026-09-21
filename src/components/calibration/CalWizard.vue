@@ -728,10 +728,10 @@ async function onGlobalReload() {
   }
 }
 
-onMounted(async () => {
+onMounted(() => {
   window.addEventListener('app:reload-from-device', onGlobalReload)
-  // 先停通道流，让校准流独占流会话（固件单流会话，后发覆盖先发，避免 ct=0/ct=1 互相覆盖）
-  await chStore.stopPolling()
+  // 不再先停通道流：固件 stream_start 自带 stop，stream.ts 仲裁器已按优先级去抖下发，
+  // 先发 stream_stop 反而可能迟到并关掉本页刚启动的校准流
   // 获取初始校准数据
   setTimeout(() => calStore.fetchCalData(), 300)
   // 持续推送实时 raw/IMU 值 (STREAM content_type=1)

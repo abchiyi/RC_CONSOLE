@@ -166,6 +166,18 @@ export class BleService {
    *   固件构建 RESPONSE 时原样回显该 seq，调用方可据此精确匹配响应。
    */
   async sendCommand (cmd: string, params?: Record<string, unknown>): Promise<number | undefined> {
+    // 串行化：BLE 写入带重试退避，到达顺序本就无保证；若多帧命令（set_model 大 TLV /
+    // OTA chunk）与其它命令并发，分片会交错成 "A1 B1 A2 A3"，固件帧重组会出错。
+    const run = this._txTail.then(() => this._sendCommand(cmd, params))
+    this._txTail = run.catch(() => undefined)
+    return run
+  }
+
+  /** 发送队列尾：所有 sendCommand 串行排队，保证一条命令的全部分片/切块连续写入 */
+  private _txTail: Promise<unknown> = Promise.resolve()
+
+  /** sendCommand 的实际实现（由 _txTail 串行调用，勿直接调用） */
+  private async _sendCommand (cmd: string, params?: Record<string, unknown>): Promise<number | undefined> {
     if (!this.isConnected || !this.rx) {
       return undefined
     }

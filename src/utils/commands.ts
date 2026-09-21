@@ -27,6 +27,7 @@ import {
   cmdIdToName,
 } from './protocol'
 import type { ModelChannel, ModelConfig } from '@/stores/config'
+import { RAW_MIN, RAW_CENTER, RAW_MAX } from './crsf'
 
 // ── 枚举名称表（对齐固件 protocol.h） ──
 
@@ -201,28 +202,47 @@ function buildFragmented(payload: Uint8Array): Uint8Array[] {
 
 // ── 模型 TLV 编码/解码 ──
 
+/**
+ * 通道默认配置。
+ *
+ * 注意单位: output_min/max/center、各挡位 value、condition 阈值、lock_value 全部是 **CRSF raw** (186/991/1796)，
+ * 与固件 ModelChannel 默认值 (lib/Config/config.h:63-105) 一致。
+ * UI 层 (pages/config.vue) 负责 raw ↔ μs 换算，此处绝不能写 μs 值（否则经 rawToUs 二次换算会溢出量程）。
+ */
 const DEFAULT_CHANNEL: ModelChannel = {
   source: 'NONE',
-  activate: { trigger: 'NONE', value: 1500 },
-  deactivate: { trigger: 'NONE', value: 1500 },
-  toggle: { trigger: 'NONE', value: 1500 },
+  activate: { trigger: 'NONE', value: RAW_MIN },
+  deactivate: { trigger: 'NONE', value: RAW_MIN },
+  toggle: { trigger: 'NONE', value: RAW_MIN },
   input_min: 0,
   input_center: 0,
   input_max: 0,
-  output_min: 1000,
-  output_center: 1500,
-  output_max: 2000,
-  deadzone: 30,
-  ec11_step: 1,
+  output_min: RAW_MIN,
+  output_center: RAW_CENTER,
+  output_max: RAW_MAX,
+  deadzone: 0,
+  ec11_step: 50,
   reverse: false,
   condition: {
-    enabled: false, source_channel: 3, low: 1000, high: 2000,
-    switch_source: false, value: 1500, alt_source: 'NONE',
+    enabled: false, source_channel: 0, low: RAW_MIN, high: RAW_MAX,
+    switch_source: false, value: RAW_CENTER, alt_source: 'NONE',
   },
   lock_enabled: false,
-  lock_value: 1500,
+  lock_value: RAW_CENTER,
   mix_enabled: false,
   mix_items: [],
+}
+
+/** 深拷贝默认通道: 避免多个回退通道共享 condition / mix_items / gear 引用而被互相串改 */
+function defaultChannel(): ModelChannel {
+  return {
+    ...DEFAULT_CHANNEL,
+    activate: { ...DEFAULT_CHANNEL.activate },
+    deactivate: { ...DEFAULT_CHANNEL.deactivate },
+    toggle: { ...DEFAULT_CHANNEL.toggle },
+    condition: { ...DEFAULT_CHANNEL.condition },
+    mix_items: [],
+  }
 }
 
 /** 模型对象 TLV：0x01 name, 0x02..0x11 通道 0..15, 0x12 curve_enabled */
@@ -324,7 +344,7 @@ export function decodeModelTlv(data: Uint8Array): ModelConfig {
     }
   }
   const channels: ModelChannel[] = []
-  for (let i = 0; i < 16; i++) channels[i] = model.channels[i] ?? { ...DEFAULT_CHANNEL }
+  for (let i = 0; i < 16; i++) channels[i] = model.channels[i] ?? defaultChannel()
   model.channels = channels
   return model
 }
@@ -372,7 +392,7 @@ function decodeChannelTlv(value: Uint8Array): ModelChannel {
       default: break
     }
   }
-  return { ...DEFAULT_CHANNEL, ...ch } as ModelChannel
+  return { ...defaultChannel(), ...ch } as ModelChannel
 }
 
 // ── 响应解码（还原为旧 JSON 字段名对象） ──
@@ -650,6 +670,12 @@ export function decodeEvent(payload: Uint8Array, streamFlags = 0): Record<string
 function decodeChannels(bytes: Uint8Array, streamFlags: number): Record<string, unknown> {
   const packed = !!(streamFlags & 0x02)
   const withSources = !!(streamFlags & 0x01)
+  // 长度校验: 短帧直接判废, 避免把缺失字节静默读成 0 (source 会假性显示成 NONE)
+  const valueLen = packed ? 22 : 32
+  const need = valueLen + (withSources ? 16 : 0)
+  if (bytes.length < need) {
+    throw new Error(`通道帧长度不足: 需要 ${need}B, 实际 ${bytes.length}B`)
+  }
   const channels: number[] = []
   if (packed) {
     channels.push(...unpack11bit(bytes.subarray(0, 22), 16))
@@ -659,9 +685,8 @@ function decodeChannels(bytes: Uint8Array, streamFlags: number): Record<string, 
   }
   let sources: string[] | undefined
   if (withSources) {
-    const base = packed ? 22 : 32
     sources = []
-    for (let i = 0; i < 16; i++) sources.push(sourceFromId(bytes[base + i] ?? 0))
+    for (let i = 0; i < 16; i++) sources.push(sourceFromId(bytes[valueLen + i] ?? 0))
   }
   return { channels, sources }
 }
