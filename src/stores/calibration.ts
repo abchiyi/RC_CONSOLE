@@ -137,10 +137,12 @@ export const useCalibrationStore = defineStore('calibration', () => {
 
   let statusPollTimer: ReturnType<typeof setInterval> | null = null
   let calTimeout: ReturnType<typeof setTimeout> | null = null
-  let calDataTimer: ReturnType<typeof setInterval> | null = null
 
+  /** 校准进度轮询: 250ms (固件 ADC 校准每 200ms 更新一次 progress, 轮询需更快才不丢帧);
+   *  先清理旧 timer, 避免向导重入时重复注册多个 interval 叠加发送 */
   function startStatusPolling(): void {
-    statusPollTimer = setInterval(() => { pollStatus() }, 500)
+    if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null }
+    statusPollTimer = setInterval(() => { pollStatus() }, 250)
   }
 
   function startCalTimeout(): void {
@@ -166,7 +168,6 @@ export const useCalibrationStore = defineStore('calibration', () => {
   }
 
   function stopCalDataPolling(): void {
-    calDataTimer = null
     releaseStream(OWNER.CALIBRATION)
   }
 
@@ -195,7 +196,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
       } else if (st === 'running' || st === 1) {
         lastMessage.value = (json.message as string) || '校准进行中…'
         lastType.value = runningType.value
-        // 校准中固件正在修改 min/center/max 与 gyroBias, 500ms 轮询会把
+        // 校准中固件正在修改 min/center/max 与 gyroBias, 轮询会把
         // "校准中间参数"覆盖进 UI 导致量程/百分比/图形/输出全部跳动;
         // 实时 raw+IMU 已由 STREAM content_type=1 (100ms) 独立推送
       }
@@ -223,9 +224,11 @@ export const useCalibrationStore = defineStore('calibration', () => {
   function applyCalData(data: Record<string, any>): void {
     const adc = data.adc
     if (adc) {
+      // 注意: CAL_GET 响应不含 adc.raw, 实时值只由 STREAM(content_type=1) 推送。
+      // 此处若无条件写入会把已有 raw 清成 undefined, 导致读数闪烁 / 滑块跳 0
       const raw = adc.raw || {}
       if (adc.trigger) {
-        trigger.raw = raw.trigger
+        if (raw.trigger !== undefined) trigger.raw = raw.trigger
         trigger.raw_min = adc.trigger.min
         trigger.raw_center = adc.trigger.center
         trigger.raw_max = adc.trigger.max
@@ -233,7 +236,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
           trigger.deadzone = adc.trigger.deadzone
       }
       if (adc.joy_x) {
-        joyX.raw = raw.joy_x
+        if (raw.joy_x !== undefined) joyX.raw = raw.joy_x
         joyX.raw_min = adc.joy_x.min
         joyX.raw_center = adc.joy_x.center
         joyX.raw_max = adc.joy_x.max
@@ -241,7 +244,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
           joyX.deadzone = adc.joy_x.deadzone
       }
       if (adc.joy_y) {
-        joyY.raw = raw.joy_y
+        if (raw.joy_y !== undefined) joyY.raw = raw.joy_y
         joyY.raw_min = adc.joy_y.min
         joyY.raw_center = adc.joy_y.center
         joyY.raw_max = adc.joy_y.max
@@ -294,6 +297,18 @@ export const useCalibrationStore = defineStore('calibration', () => {
     }
   }
 
+  /**
+   * 校准扫描期间按观测值单向扩展「显示量程」。
+   * 固件只在扫描结束时才把极值写回量程, 扫描过程中前端拿到的仍是旧 min/max,
+   * 于是量程条 thumb 一直撞在两端; 这里扩展的只是显示刻度, 不下发设备,
+   * 校准完成后 fetchCalData() 会用固件真实值覆盖。
+   */
+  function extendRangeDuringCal(ch: AdcCal, v: unknown): void {
+    if (typeof v !== 'number') return
+    if (ch.raw_min !== undefined && v < ch.raw_min) ch.raw_min = v
+    if (ch.raw_max !== undefined && v > ch.raw_max) ch.raw_max = v
+  }
+
   /** 轻量实时数据解析：仅 raw + IMU 角度 */
   function applyCalRaw(data: Record<string, any>): void {
     const raw = data.raw
@@ -301,6 +316,12 @@ export const useCalibrationStore = defineStore('calibration', () => {
       if (raw.trigger !== undefined) trigger.raw = raw.trigger
       if (raw.joy_x !== undefined) joyX.raw = raw.joy_x
       if (raw.joy_y !== undefined) joyY.raw = raw.joy_y
+      // 仅模拟量校准期间扩展 (IMU 校准不涉及量程)
+      if (runningType.value && runningType.value !== 'imu') {
+        extendRangeDuringCal(trigger, raw.trigger)
+        extendRangeDuringCal(joyX, raw.joy_x)
+        extendRangeDuringCal(joyY, raw.joy_y)
+      }
     }
     if (data.imu) {
       if (data.imu.roll !== undefined) imu.roll = data.imu.roll
