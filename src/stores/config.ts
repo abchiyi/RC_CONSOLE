@@ -56,7 +56,7 @@ export interface ModelChannel {
   ec11_step: number
   reverse: boolean
   condition: ChannelCondition
-  lock_enabled: boolean         // 安全锁: 固定 CH4 > 1500μs 时解锁
+  lock_enabled: boolean         // 安全锁: 固件固定监视 0 起始 index 4 (= CH5 / AUX1) > 1500μs 时解锁
   lock_value: number            // 锁定时输出值 (μs)
   mix_enabled: boolean          // 混合输入开关
   mix_items: Array<{            // 混合项列表 (最多 4 项)

@@ -7,6 +7,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { serialService } from '@/services/SerialService'
 import { rawToUs, RAW_CENTER } from '@/utils/crsf'
+import { channelDisplayName, channelNumberLabel, channelPrimaryName } from '@/utils/channelName'
 import {
   OWNER, appliedStream, requestStream, releaseStream, releaseAllStreams,
 } from './stream'
@@ -38,17 +39,20 @@ export const useChannelStore = defineStore('channels', () => {
 
   function channelLabel(index: number): string {
     const src = sources.value[index] ?? 'NONE'
-    return src !== 'NONE' ? src : `CH${index}`
+    return src !== 'NONE' ? src : channelDisplayName(index)
   }
 
   const activeChannels = computed(() =>
     channels.value.map((v, i) => ({
-      index: i,
+      index: i,                        // 0 起始内部索引，协议/数组用
+      number: i + 1,                   // 1 起始通道号，UI 显示用
       value: v,              // CRSF raw，内部使用
       valueUs: rawToUs(v),   // μs 脉冲宽度，UI 显示
       source: sources.value[i] ?? 'NONE',
       percent: channelPercent(i),
       label: channelLabel(i),
+      numberLabel: channelNumberLabel(i),   // 'CH5'
+      primary: channelPrimaryName(i),       // 'AUX1'
       used: sources.value[i] !== 'NONE',
     })),
   )

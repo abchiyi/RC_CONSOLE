@@ -46,7 +46,8 @@
                       <div class="chan-head-left">
                         <!-- 组1: 通道编号 -->
                         <div class="chan-id-row">
-                          <span class="text-caption font-weight-bold chan-id">CH{{ idx }}</span>
+                          <span class="text-caption font-weight-bold chan-id">{{ channelPrimaryName(idx) }}</span>
+                          <span class="text-caption chan-id-sub">{{ channelNumberLabel(idx) }}</span>
                         </div>
                         <!-- 组2: 输入源选择 -->
                         <div class="chan-source-row">
@@ -285,11 +286,12 @@
                           </v-expand-transition>
                         </v-sheet>
 
-                        <!-- 安全锁: 固定 CH4 > 1500μs 控制 -->
-                        <v-sheet rounded="lg" class="pa-3 mb-3" :class="{ 'cond-active': ch.lock_enabled }">
+                        <!-- 安全锁: 固件固定监视 CH5 / AUX1 > 1500μs 控制; AUX1 自身作为解锁源, 不提供该开关 -->
+                        <v-sheet v-if="idx !== LOCK_CHANNEL_INDEX" rounded="lg" class="pa-3 mb-3"
+                          :class="{ 'cond-active': ch.lock_enabled }">
                           <div class="param-group">
                             <span class="text-caption font-weight-bold">&#128274;
-                              安全锁 (CH4 &gt;
+                              安全锁 ({{ channelDisplayName(LOCK_CHANNEL_INDEX) }} &gt;
                               1500μs 时解锁)</span>
                             <v-switch v-model="ch.lock_enabled" />
                           </div>
@@ -354,6 +356,9 @@ import { useConfigStore, type ModelChannel } from '@/stores/config'
 import { useChannelStore } from '@/stores/channels'
 import { rawToUs, usToRaw } from '@/utils/crsf'
 import { CHANNEL_LINK_ONLY } from '@/utils/debugFlags'
+import {
+  channelDisplayName, channelNumberLabel, channelPrimaryName, LOCK_CHANNEL_INDEX,
+} from '@/utils/channelName'
 
 const serial = useSerialStore()
 const configStore = useConfigStore()
@@ -460,7 +465,7 @@ function onSourceChange(idx: number, newSource: string): void {
     for (let i = 0; i < editChannels.length; i++) {
       if (i !== idx && editChannels[i]!.source === 'KNOB_EC11') {
         editChannels[i]!.source = 'NONE'
-        snackbarMsg.value = `EC11 已从 CH${i} 移动到 CH${idx}`
+        snackbarMsg.value = `EC11 已从 ${channelDisplayName(i)} 移动到 ${channelDisplayName(idx)}`
         snackbarVisible.value = true
       }
     }
@@ -570,9 +575,9 @@ const altSourceOptions = computed(() =>
   sourceOptions.value.filter(o => ALT_SOURCE_ALLOWED.has(o.value)),
 )
 
-// 条件: 监视通道下拉 (CH0~CH15)
+// 条件: 监视通道下拉 (显示 CH1~CH16 + 主名称, value 仍为 0 起始内部索引)
 const sourceChannelOptions = computed(() =>
-  Array.from({ length: 16 }, (_, i) => ({ title: `CH${i}`, value: i })),
+  Array.from({ length: 16 }, (_, i) => ({ title: channelDisplayName(i), value: i })),
 )
 
 // 条件: 动作下拉（固定输出值 / 切换输入源）
@@ -853,7 +858,7 @@ async function saveCurrentModel(): Promise<boolean> {
   const curveEnabled = !!model?.curve_enabled
   // 将 μs 转回 CRSF raw 再发送到固件
   // 条件字段需扁平化并映射到固件缩写的 JSON key
-  const rawChannels = editChannels.map(ch => {
+  const rawChannels = editChannels.map((ch, idx) => {
     const { condition, activate, deactivate, toggle, ...rest } = ch
     // 嵌套 condition 也要转 raw (encodeChannelTlv 直接用嵌套对象编码 0x0e)
     const condRaw = {
@@ -878,7 +883,8 @@ async function saveCurrentModel(): Promise<boolean> {
       cond_switch: condition.switch_source,
       cond_val: condRaw.value,
       cond_alt: condition.alt_source,
-      lock_enabled: ch.lock_enabled,
+      // AUX1 是解锁控制源: 强制关闭自身安全锁, 避免自锁抖动 (历史配置也会被纠正)
+      lock_enabled: idx === LOCK_CHANNEL_INDEX ? false : ch.lock_enabled,
       lock_value: usToRaw(ch.lock_value),
       mix_enabled: ch.mix_enabled,
       mix_items: ch.mix_items?.map(mi => ({ src: mi.src, w: mi.w, reverse: mi.reverse })) ?? [],
@@ -1126,6 +1132,13 @@ onUnmounted(() => {
 .chan-id {
   min-width: 32px;
   text-align: center;
+}
+
+/* 副名称: 1 起始通道号, 弱化显示跟在主名称之后 */
+.chan-id-sub {
+  opacity: .55;
+  font-size: 10px;
+  letter-spacing: .3px;
 }
 
 /* 组2: 输入源选择 */

@@ -35,12 +35,13 @@
                 size="28"
               >
                 <span class="text-caption font-weight-bold text-white">
-                  {{ ch.index }}
+                  {{ ch.primary }}
                 </span>
               </v-avatar>
             </template>
             <v-card-title class="text-body-2">
               {{ ch.label }}
+              <span class="text-caption text-medium-emphasis">{{ ch.numberLabel }}</span>
             </v-card-title>
             <template #append>
               <span class="text-caption text-medium-emphasis">
