@@ -163,21 +163,6 @@
                             <span class="text-caption font-weight-bold">反向</span>
                             <v-switch v-model="ch.reverse" />
                           </div>
-                          <!-- 辅助输入 (EC11 旋钮): 仅模拟类输入 (扳机 / 摇杆 / IMU) -->
-                          <template v-if="isAnalogLikeSource(ch.source)">
-                            <v-divider class="my-2" />
-                            <div class="param-group">
-                              <span class="text-caption font-weight-bold">辅助输入</span>
-                              <v-select v-model="ch.aux_source" :items="auxSourceOptions" density="compact"
-                                hide-details variant="outlined" style="max-width:150px"
-                                @update:model-value="(val: string) => onAuxChange(idx, val)" />
-                            </div>
-                            <div class="text-caption text-medium-emphasis mt-1">
-                              EC11 按钮按下：锁定当前输出值并交由旋钮增减微调。扳机/摇杆回中后有输入动作自动退出；IMU
-                              需再次点击 EC11 按钮退出（该按钮退出方式对摇杆/IMU 同样有效）。设为辅助后，EC11
-                              按钮与旋钮均不可再作为其他通道的输入源。
-                            </div>
-                          </template>
                           <template v-if="isImuSource(ch.source)">
                             <v-divider class="my-2" />
                             <!-- 宽屏: 范围滑块 -->
@@ -200,18 +185,6 @@
                               </div>
                             </div>
 
-                          </template>
-                          <!-- EC11 旋钮步长 (主源为旋钮, 或本通道持有 EC11 辅助输入时均需配置) -->
-                          <template v-if="isKnobEc11Source(ch.source) || ch.aux_source === 'KNOB_EC11'">
-                            <v-divider class="my-2" />
-                            <div class="param-group">
-                              <span class="text-caption font-weight-bold">EC11 步长 (µs/格)</span>
-                              <span class="param-input-wrap">
-                                <v-number-input v-model="ch.ec11_step" :min="1" :max="500" :step="50"
-                                  controlVariant="stacked" density="compact" hide-details :hideInput="false"
-                                  :inset="false" variant="outlined" style="min-width:100px" />
-                              </span>
-                            </div>
                           </template>
                           <!-- MIX 混合配置 -->
                           <template v-if="ch.source === 'MIX'">
@@ -246,6 +219,35 @@
                             </div>
                           </template>
                           <v-divider class="my-2" />
+                        </v-sheet>
+
+                        <!-- 辅助输入 (EC11 旋钮): 独立卡片 (从连续量参数组拆出) -->
+                        <v-sheet v-if="isAnalogLikeSource(ch.source) || isKnobEc11Source(ch.source)" rounded="lg"
+                          class="pa-3 mb-3" :class="{ 'aux-active': ch.aux_source === 'KNOB_EC11' }">
+                          <div class="param-group">
+                            <span class="text-caption font-weight-bold">&#127921; 辅助输入 (EC11 旋钮)</span>
+                            <v-select v-if="isAnalogLikeSource(ch.source)" v-model="ch.aux_source"
+                              :items="auxSourceOptions" density="compact" hide-details variant="outlined"
+                              style="max-width:150px" @update:model-value="(val: string) => onAuxChange(idx, val)" />
+                            <span v-else class="text-caption text-medium-emphasis">EC11 旋钮为本通道主输入源</span>
+                          </div>
+                          <!-- EC11 步长 (主源为旋钮, 或本通道持有 EC11 辅助输入时均需配置) -->
+                          <template v-if="isKnobEc11Source(ch.source) || ch.aux_source === 'KNOB_EC11'">
+                            <v-divider class="my-2" />
+                            <div class="param-group">
+                              <span class="text-caption font-weight-bold">EC11 步长 (µs/格)</span>
+                              <span class="param-input-wrap">
+                                <v-number-input v-model="ch.ec11_step" :min="1" :max="500" :step="50"
+                                  controlVariant="stacked" density="compact" hide-details :hideInput="false"
+                                  :inset="false" variant="outlined" style="min-width:100px" />
+                              </span>
+                            </div>
+                          </template>
+                          <div v-if="isAnalogLikeSource(ch.source)" class="text-caption text-medium-emphasis mt-1">
+                            EC11 按钮按下：锁定当前输出值并交由旋钮增减微调。扳机/摇杆回中后有输入动作自动退出；IMU
+                            需再次点击 EC11 按钮退出（该按钮退出方式对摇杆/IMU 同样有效）。设为辅助后，EC11
+                            按钮与旋钮均不可再作为其他通道的输入源。
+                          </div>
                         </v-sheet>
 
                         <!-- 条件覆盖 (最高优先级, 仅模拟输入: 摇杆 & IMU & 扳机) -->
@@ -1525,6 +1527,11 @@ onUnmounted(() => {
 
 .cond-active {
   border-color: rgb(var(--v-theme-warning)) !important;
+}
+
+/* 辅助输入生效: 主色描边高亮 */
+.aux-active {
+  border-color: rgb(var(--v-theme-primary)) !important;
 }
 
 /* ── Betaflight 风格 ── */
