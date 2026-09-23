@@ -101,6 +101,7 @@ function channelColor(source: string): string {
     ANALOG_JOYSTICK_Y: 'blue-darken-2',
     IMU_ROLL: 'purple-darken-2',
     IMU_PITCH: 'purple-darken-2',
+    IMU_YAW: 'purple-darken-2',
     BUTTON_LOCK: 'red-darken-2',
     BUTTON_MH: 'red-darken-2',
     BUTTON_EC11_BTN: 'red-darken-2',

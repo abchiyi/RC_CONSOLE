@@ -21,6 +21,18 @@ export function usToRaw(us: number): number {
   return Math.round(RAW_MIN + (us - US_MIN) * (RAW_MAX - RAW_MIN) / (US_MAX - US_MIN))
 }
 
+/**
+ * 增量换算: 步进/阈值这类"变化量"不能用 rawToUs / usToRaw (那是绝对映射, 带偏移),
+ * 需按量程比例换算: 1610 raw ↔ 1000μs → 系数 1.61
+ */
+export function usToRawDelta(us: number): number {
+  return Math.round(us * (RAW_MAX - RAW_MIN) / (US_MAX - US_MIN))
+}
+
+export function rawToUsDelta(raw: number): number {
+  return Math.round(raw * (US_MAX - US_MIN) / (RAW_MAX - RAW_MIN))
+}
+
 /** μs → -100% ~ +100% (居中映射) */
 export function usToPercent(us: number): number {
   if (us >= US_CENTER) {

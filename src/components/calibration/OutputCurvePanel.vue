@@ -146,6 +146,7 @@ const curveTypeOptions = [
   { title: '摇杆 Y', value: 'joy_y' },
   { title: 'IMU 横滚', value: 'imu_roll' },
   { title: 'IMU 俯仰', value: 'imu_pitch' },
+  { title: 'IMU 航向', value: 'imu_yaw' },
 ]
 
 const activeCurve = computed<OutputCurve>(() => {
@@ -158,6 +159,8 @@ const activeCurve = computed<OutputCurve>(() => {
       return cal.imuRollCurve
     case 'imu_pitch':
       return cal.imuPitchCurve
+    case 'imu_yaw':
+      return cal.imuYawCurve
     default:
       return cal.triggerCurve
   }
@@ -216,6 +219,7 @@ const CURVE_COLORS: Record<CurveType, string> = {
   joy_y: '#FF9800',
   imu_roll: '#9C27B0',
   imu_pitch: '#00BCD4',
+  imu_yaw: '#E91E63',
 }
 
 const curves = computed(() => [
@@ -224,6 +228,7 @@ const curves = computed(() => [
   { id: 'joy_y', label: '摇杆 Y', color: CURVE_COLORS.joy_y, points: curvePoints(cal.joyYCurve) },
   { id: 'imu_roll', label: 'IMU 横滚', color: CURVE_COLORS.imu_roll, points: curvePoints(cal.imuRollCurve) },
   { id: 'imu_pitch', label: 'IMU 俯仰', color: CURVE_COLORS.imu_pitch, points: curvePoints(cal.imuPitchCurve) },
+  { id: 'imu_yaw', label: 'IMU 航向', color: CURVE_COLORS.imu_yaw, points: curvePoints(cal.imuYawCurve) },
 ])
 
 /** 当前选中曲线的颜色 (动画面板输出条使用) */
@@ -236,6 +241,7 @@ const CURVE_TYPES: { id: CurveType; label: string }[] = [
   { id: 'joy_y', label: '摇杆 Y' },
   { id: 'imu_roll', label: 'IMU 横滚' },
   { id: 'imu_pitch', label: 'IMU 俯仰' },
+  { id: 'imu_yaw', label: 'IMU 航向' },
 ]
 
 const PRESETS: { id: string; label: string; curve: OutputCurve }[] = [
@@ -260,14 +266,15 @@ function applyCurveToStore(type: CurveType, c: OutputCurve): void {
     : type === 'joy_x' ? cal.joyXCurve
     : type === 'joy_y' ? cal.joyYCurve
     : type === 'imu_roll' ? cal.imuRollCurve
-    : cal.imuPitchCurve
+    : type === 'imu_pitch' ? cal.imuPitchCurve
+    : cal.imuYawCurve
   target.x1 = c.x1
   target.y1 = c.y1
   target.x2 = c.x2
   target.y2 = c.y2
 }
 
-/** 预设一键应用到全部 5 条曲线 */
+/** 预设一键应用到全部 6 条曲线 */
 async function applyPreset(c: OutputCurve): Promise<void> {
   for (const t of CURVE_TYPES) applyCurveToStore(t.id, c)
   for (const t of CURVE_TYPES) await cal.setCurve(t.id, { ...c })
@@ -282,7 +289,7 @@ async function copyToAll(): Promise<void> {
     applyCurveToStore(t.id, c)
     await cal.setCurve(t.id, c)
   }
-  showAction('已复制到其余 4 条曲线')
+  showAction('已复制到其余 5 条曲线')
 }
 
 // ---- 刻度定义 (仅正向 [0,100] 象限; viewBox 四周留白给刻度标签与控制点) ----

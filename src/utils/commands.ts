@@ -34,15 +34,29 @@ import { RAW_MIN, RAW_CENTER, RAW_MAX } from './crsf'
 const INPUT_SOURCE_NAMES = [
   'NONE', 'BUTTON_LOCK', 'BUTTON_MH', 'BUTTON_EC11_BTN', 'BUTTON_SHOT',
   'ANALOG_TRIGGER', 'ANALOG_JOYSTICK_X', 'ANALOG_JOYSTICK_Y',
-  'IMU_ROLL', 'IMU_PITCH', 'KNOB_EC11', 'MIX',
+  'IMU_ROLL', 'IMU_PITCH', 'KNOB_EC11', 'MIX', 'IMU_YAW',
 ]
 
 const TRIGGER_NAMES = ['SINGLE_CLICK', 'DOUBLE_CLICK', 'LONG_PRESS', 'LONG_PRESS_UP', 'PRESS', 'RELEASE']
 
+/** 通道触发动作 (与固件 ChannelAction 一致) */
+const CHANNEL_ACTION_NAMES = ['NONE', 'BEEP']
+
+/** 触发动作名 → 枚举 id */
+export function actionToId(a: string): number {
+  const i = CHANNEL_ACTION_NAMES.indexOf(a)
+  return i > 0 ? i : 0
+}
+
+/** 触发动作枚举 id → 名 */
+export function actionFromId(id: number): string {
+  return CHANNEL_ACTION_NAMES[id] ?? 'NONE'
+}
+
 const CAL_TYPE_NAMES = ['none', 'trigger', 'joy_x', 'joy_y', 'imu', 'joy_xy']
 
 /** 输出响应曲线类型 (cubic-bezier): 与固件 CMD_CAL_SET_CURVE type 一致 */
-const CURVE_TYPE_NAMES = ['none', 'trigger', 'joy_x', 'joy_y', 'imu_roll', 'imu_pitch']
+const CURVE_TYPE_NAMES = ['none', 'trigger', 'joy_x', 'joy_y', 'imu_roll', 'imu_pitch', 'imu_yaw']
 
 function sourceToId(s: string): number {
   const idx = INPUT_SOURCE_NAMES.indexOf(s)
@@ -202,6 +216,16 @@ function buildFragmented(payload: Uint8Array): Uint8Array[] {
 
 // ── 模型 TLV 编码/解码 ──
 
+/** 每个通道支持的按钮挡位数 (与固件 MODEL_GEAR_COUNT 一致) */
+export const GEAR_COUNT = 5
+
+/**
+ * gear[n] 对应的通道级 TLV tag。
+ * tag 序列不连续: 0x05..0x10 已被量程/reverse/condition/mix/lock 占用,
+ * 扩到 5 挡只能追加 0x11 / 0x12 (旧固件按未知 tag 跳过, 仅保留前 3 挡)。
+ */
+const GEAR_TAGS = [0x02, 0x03, 0x04, 0x11, 0x12] as const
+
 /**
  * 通道默认配置。
  *
@@ -211,9 +235,7 @@ function buildFragmented(payload: Uint8Array): Uint8Array[] {
  */
 const DEFAULT_CHANNEL: ModelChannel = {
   source: 'NONE',
-  activate: { trigger: 'NONE', value: RAW_MIN },
-  deactivate: { trigger: 'NONE', value: RAW_MIN },
-  toggle: { trigger: 'NONE', value: RAW_MIN },
+  gears: Array.from({ length: GEAR_COUNT }, () => ({ trigger: 'NONE', value: RAW_MIN })),
   input_min: 0,
   input_center: 0,
   input_max: 0,
@@ -229,19 +251,23 @@ const DEFAULT_CHANNEL: ModelChannel = {
   },
   lock_enabled: false,
   lock_value: RAW_CENTER,
+  lock_reset_input: false,
   mix_enabled: false,
   mix_items: [],
+  triggers: [],
+  aux_source: 'NONE',
 }
 
-/** 深拷贝默认通道: 避免多个回退通道共享 condition / mix_items / gear 引用而被互相串改 */
+/** 深拷贝默认通道: 避免多个回退通道共享 condition / mix_items / gears 引用而被互相串改 */
 function defaultChannel(): ModelChannel {
   return {
     ...DEFAULT_CHANNEL,
-    activate: { ...DEFAULT_CHANNEL.activate },
-    deactivate: { ...DEFAULT_CHANNEL.deactivate },
-    toggle: { ...DEFAULT_CHANNEL.toggle },
+    gears: DEFAULT_CHANNEL.gears.map(g => ({ ...g })),
     condition: { ...DEFAULT_CHANNEL.condition },
     mix_items: [],
+    triggers: [],
+    lock_reset_input: false,
+    aux_source: 'NONE',
   }
 }
 
@@ -283,14 +309,11 @@ export function encodeModelDiffTlv(
 export function encodeChannelTlv(ch: ModelChannel): Uint8Array {
   const w = new Writer()
   w.tlv(0x01, new Writer().u8(sourceToId(ch.source ?? 'NONE')).toBytes())
-  if (ch.activate) {
-    w.tlv(0x02, new Writer().u8(triggerToId(ch.activate.trigger)).u16(ch.activate.value).toBytes())
-  }
-  if (ch.deactivate) {
-    w.tlv(0x03, new Writer().u8(triggerToId(ch.deactivate.trigger)).u16(ch.deactivate.value).toBytes())
-  }
-  if (ch.toggle) {
-    w.tlv(0x04, new Writer().u8(triggerToId(ch.toggle.trigger)).u16(ch.toggle.value).toBytes())
+  const gears = (ch.gears ?? []).slice(0, GEAR_COUNT)
+  for (let g = 0; g < GEAR_COUNT; g++) {
+    const ge = gears[g]
+    if (!ge) continue
+    w.tlv(GEAR_TAGS[g]!, new Writer().u8(triggerToId(ge.trigger)).u16(ge.value).toBytes())
   }
   if (ch.input_min !== undefined) w.tlv(0x05, new Writer().i32(ch.input_min).toBytes())
   if (ch.input_center !== undefined) w.tlv(0x06, new Writer().i32(ch.input_center).toBytes())
@@ -316,6 +339,21 @@ export function encodeChannelTlv(ch: ModelChannel): Uint8Array {
   }
   if (ch.lock_enabled !== undefined || ch.lock_value !== undefined) {
     w.tlv(0x10, new Writer().u8(ch.lock_enabled ? 1 : 0).u16(ch.lock_value ?? 0).toBytes())
+  }
+  if (ch.lock_reset_input !== undefined) {
+    w.tlv(0x14, new Writer().u8(ch.lock_reset_input ? 1 : 0).toBytes())
+  }
+  if (ch.aux_source && ch.aux_source !== 'NONE') {
+    w.tlv(0x15, new Writer().u8(sourceToId(ch.aux_source)).toBytes())
+  }
+  if (ch.triggers?.length) {
+    const items = ch.triggers.slice(0, 5)
+    const t = new Writer().u8(items.length)
+    for (const g of items) {
+      t.u16(g.low ?? 0).u16(g.high ?? 0)
+        .u8(actionToId(g.action ?? 'NONE')).u8(g.param ?? 0).u8(g.enabled === false ? 0 : 1)
+    }
+    w.tlv(0x13, t.toBytes())
   }
   return w.toBytes()
 }
@@ -355,9 +393,19 @@ function decodeChannelTlv(value: Uint8Array): ModelChannel {
     const r = new Reader(val)
     switch (tag) {
       case 0x01: ch.source = sourceFromId(r.u8()); break
-      case 0x02: ch.activate = { trigger: triggerFromId(r.u8()), value: r.u16() }; break
-      case 0x03: ch.deactivate = { trigger: triggerFromId(r.u8()), value: r.u16() }; break
-      case 0x04: ch.toggle = { trigger: triggerFromId(r.u8()), value: r.u16() }; break
+      case 0x02:
+      case 0x03:
+      case 0x04:
+      case 0x11:
+      case 0x12: {
+        const gi = GEAR_TAGS.indexOf(tag as typeof GEAR_TAGS[number])
+        if (gi < 0) break
+        if (!ch.gears) {
+          ch.gears = Array.from({ length: GEAR_COUNT }, () => ({ trigger: 'NONE', value: RAW_MIN }))
+        }
+        ch.gears[gi] = { trigger: triggerFromId(r.u8()), value: r.u16() }
+        break
+      }
       case 0x05: ch.input_min = r.i32(); break
       case 0x06: ch.input_center = r.i32(); break
       case 0x07: ch.input_max = r.i32(); break
@@ -389,6 +437,19 @@ function decodeChannelTlv(value: Uint8Array): ModelChannel {
         break
       }
       case 0x10: ch.lock_enabled = !!r.u8(); ch.lock_value = r.u16(); break
+      case 0x14: ch.lock_reset_input = !!r.u8(); break
+      case 0x15: ch.aux_source = sourceFromId(r.u8()); break
+      case 0x13: {
+        const cnt = Math.min(r.u8(), 5)
+        ch.triggers = []
+        for (let i = 0; i < cnt; i++) {
+          ch.triggers.push({
+            low: r.u16(), high: r.u16(),
+            action: actionFromId(r.u8()), param: r.u8(), enabled: !!r.u8(),
+          })
+        }
+        break
+      }
       default: break
     }
   }
@@ -547,6 +608,7 @@ function decodeCalGet(r: Reader, name: string): Record<string, unknown> {
     joy_y_curve: readCurveData(r),
     imu_roll_curve: readCurveData(r),
     imu_pitch_curve: readCurveData(r),
+    imu_yaw_curve: readCurveData(r),
   }
   return {
     cmd: name,

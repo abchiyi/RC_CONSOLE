@@ -37,7 +37,7 @@ export interface OutputCurve {
   y2: number
 }
 
-export type CurveType = 'trigger' | 'joy_x' | 'joy_y' | 'imu_roll' | 'imu_pitch'
+export type CurveType = 'trigger' | 'joy_x' | 'joy_y' | 'imu_roll' | 'imu_pitch' | 'imu_yaw'
 
 export const useCalibrationStore = defineStore('calibration', () => {
   const trigger = reactive<AdcCal>({ deadzone: 30 })
@@ -50,6 +50,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
   const joyYCurve = reactive<OutputCurve>({ x1: 50, y1: 50, x2: 50, y2: 50 })
   const imuRollCurve = reactive<OutputCurve>({ x1: 50, y1: 50, x2: 50, y2: 50 })
   const imuPitchCurve = reactive<OutputCurve>({ x1: 50, y1: 50, x2: 50, y2: 50 })
+  const imuYawCurve = reactive<OutputCurve>({ x1: 50, y1: 50, x2: 50, y2: 50 })
 
   const lpfAlpha = ref(500)
   const runningType = ref<CalType | null>(null)
@@ -282,6 +283,12 @@ export const useCalibrationStore = defineStore('calibration', () => {
         imuPitchCurve.x2 = adc.imu_pitch_curve.x2 ?? 50
         imuPitchCurve.y2 = adc.imu_pitch_curve.y2 ?? 50
       }
+      if (adc.imu_yaw_curve) {
+        imuYawCurve.x1 = adc.imu_yaw_curve.x1 ?? 50
+        imuYawCurve.y1 = adc.imu_yaw_curve.y1 ?? 50
+        imuYawCurve.x2 = adc.imu_yaw_curve.x2 ?? 50
+        imuYawCurve.y2 = adc.imu_yaw_curve.y2 ?? 50
+      }
       _deadzonesLoaded = true
     }
     if (data.imu) {
@@ -342,6 +349,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
     joyYCurve,
     imuRollCurve,
     imuPitchCurve,
+    imuYawCurve,
     lpfAlpha,
     runningType,
     calProgress,

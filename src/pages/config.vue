@@ -44,10 +44,11 @@
                     <!-- 布局: 左右两栏 (左=通道信息分组, 右=输出范围); 分组: CH号 | 输入源; 点击头部行任意处展开/收起 -->
                     <div class="chan-header-wide">
                       <div class="chan-head-left">
-                        <!-- 组1: 通道编号 -->
+                        <!-- 组1: 通道编号 + 当前实时值 -->
                         <div class="chan-id-row">
                           <span class="text-caption font-weight-bold chan-id">{{ channelPrimaryName(idx) }}</span>
                           <span class="text-caption chan-id-sub">{{ channelNumberLabel(idx) }}</span>
+                          <span class="text-caption chan-live-value">{{ chanValueUs(idx) }} μs</span>
                         </div>
                         <!-- 组2: 输入源选择 -->
                         <div class="chan-source-row">
@@ -115,10 +116,10 @@
                       <v-divider />
                       <div class="pa-3 chan-expand-body">
 
-                        <!-- 按钮通道: 触发配置 (动态添加, 最多 3 挡位) -->
+                        <!-- 按钮通道: 触发配置 (动态添加, 最多 GEAR_COUNT 挡位) -->
                         <v-sheet v-if="isButtonSource(ch.source)" rounded="lg" class="pa-3 mb-3">
                           <div class="text-caption text-medium-emphasis mb-2">
-                            多挡触发：1 挡时选择触发方式，触发后在输出最小/最大值间切换；2 挡及以上每条指定触发方式与输出值，同一种触发方式绑定多个挡位时循环切换，最多 3 挡。
+                            多挡触发：挡位 1 为默认值；只有 1 挡时选择触发方式，触发后在输出最小↔最大值间切换（默认输出为通道最小值）；2 挡及以上每条指定触发方式与输出值，同一种触发方式绑定多个挡位时循环切换，最多 {{ GEAR_COUNT }} 挡。
                           </div>
                           <template v-for="(entry, i) in btnEntries(ch)" :key="i">
                             <v-divider v-if="i > 0" class="my-2" />
@@ -142,7 +143,7 @@
                               </span>
                             </div>
                           </template>
-                          <div v-if="btnEntryCount(ch) < 3" class="mt-2">
+                          <div v-if="btnEntryCount(ch) < GEAR_COUNT" class="mt-2">
                             <v-btn class="btn-secondary" size="small" rounded="lg" prepend-icon="mdi-plus"
                               @click="addBtnEntry(ch)">添加按钮</v-btn>
                           </div>
@@ -162,6 +163,21 @@
                             <span class="text-caption font-weight-bold">反向</span>
                             <v-switch v-model="ch.reverse" />
                           </div>
+                          <!-- 辅助输入 (EC11 旋钮): 仅模拟类输入 (扳机 / 摇杆 / IMU) -->
+                          <template v-if="isAnalogLikeSource(ch.source)">
+                            <v-divider class="my-2" />
+                            <div class="param-group">
+                              <span class="text-caption font-weight-bold">辅助输入</span>
+                              <v-select v-model="ch.aux_source" :items="auxSourceOptions" density="compact"
+                                hide-details variant="outlined" style="max-width:150px"
+                                @update:model-value="(val: string) => onAuxChange(idx, val)" />
+                            </div>
+                            <div class="text-caption text-medium-emphasis mt-1">
+                              EC11 按钮按下：锁定当前输出值并交由旋钮增减微调。扳机/摇杆回中后有输入动作自动退出；IMU
+                              需再次点击 EC11 按钮退出（该按钮退出方式对摇杆/IMU 同样有效）。设为辅助后，EC11
+                              按钮与旋钮均不可再作为其他通道的输入源。
+                            </div>
+                          </template>
                           <template v-if="isImuSource(ch.source)">
                             <v-divider class="my-2" />
                             <!-- 宽屏: 范围滑块 -->
@@ -185,8 +201,8 @@
                             </div>
 
                           </template>
-                          <!-- EC11 旋钮步长 -->
-                          <template v-if="isKnobEc11Source(ch.source)">
+                          <!-- EC11 旋钮步长 (主源为旋钮, 或本通道持有 EC11 辅助输入时均需配置) -->
+                          <template v-if="isKnobEc11Source(ch.source) || ch.aux_source === 'KNOB_EC11'">
                             <v-divider class="my-2" />
                             <div class="param-group">
                               <span class="text-caption font-weight-bold">EC11 步长 (µs/格)</span>
@@ -309,6 +325,66 @@
                             </div>
                           </v-expand-transition>
                         </v-sheet>
+
+                        <!-- 锁定后重置输入值 (独立于安全锁; 仅按钮 / EC11 通道, AUX1 自身不渲染) -->
+                        <v-sheet v-if="idx !== LOCK_CHANNEL_INDEX && (isButtonSource(ch.source) || isKnobEc11Source(ch.source))"
+                          rounded="lg" class="pa-3 mb-3">
+                          <div class="param-group">
+                            <span class="text-caption font-weight-bold">&#8617; 锁定后重置输入值</span>
+                            <v-switch v-model="ch.lock_reset_input" density="compact" hide-details />
+                          </div>
+                          <div class="text-caption text-medium-emphasis mt-1">
+                            AUX1 锁定时，将按钮挡位、旋钮设置到默认值。
+                          </div>
+                        </v-sheet>
+
+                        <!-- 通道触发规则: 本通道输出值进入区间 → 执行一次动作 (蜂鸣器 / LED) -->
+                        <v-sheet rounded="lg" class="pa-3 mb-3">
+                          <div class="param-group">
+                            <span class="text-caption font-weight-bold">&#9889; 触发规则</span>
+                            <v-btn class="btn-secondary" size="x-small" rounded="lg" prepend-icon="mdi-plus"
+                              :disabled="(ch.triggers?.length ?? 0) >= TRIGGER_COUNT" @click="addTrigger(ch)">
+                              添加规则
+                            </v-btn>
+                          </div>
+                          <div class="text-caption text-medium-emphasis mt-1 mb-2">
+                            本通道输出值进入设定区间时触发一次动作（离开区间后可再次触发），最多
+                            {{ TRIGGER_COUNT }} 条。
+                          </div>
+                          <template v-for="(tg, ti) in (ch.triggers ?? [])" :key="ti">
+                            <v-divider v-if="ti > 0" class="my-2" />
+                            <div class="mix-item-card pa-2" style="border-radius:8px">
+                              <div class="d-flex align-center ga-2 mb-2">
+                                <span class="text-caption font-weight-bold">规则 {{ ti + 1 }}</span>
+                                <v-spacer />
+                                <v-btn icon="mdi-close" size="x-small" variant="text" color="error"
+                                  @click="removeTrigger(ch, ti)" />
+                              </div>
+                              <div class="d-flex align-center ga-2 mb-2 flex-wrap">
+                                <span class="text-caption" style="min-width:52px">功能</span>
+                                <v-select v-model="tg.action" :items="triggerActionOptions" density="compact"
+                                  hide-details variant="outlined" style="max-width:140px" />
+                                <template v-if="tg.action === 'BEEP'">
+                                  <span class="text-caption" style="min-width:52px">蜂鸣音</span>
+                                  <v-select v-model="tg.param" :items="beepSoundOptions" density="compact"
+                                    hide-details variant="outlined" style="max-width:170px" />
+                                </template>
+                              </div>
+                              <div class="cond-range-wrap">
+                                <span class="text-caption font-weight-bold">触发范围 (μs): {{ tg.low }} ~
+                                  {{ tg.high }}</span>
+                                <v-range-slider :model-value="[tg.low, tg.high]"
+                                  @update:model-value="(v: number[]) => setTriggerRange(tg, v[0]!, v[1]!)"
+                                  :min="1000" :max="2000" :step="50" density="compact" hide-details thumb-label />
+                                <div class="range-ticks">
+                                  <span v-for="t in tickValues" :key="t" class="range-tick"
+                                    :class="{ 'tick-hl': tickHighlight.has(t) }"
+                                    :style="{ left: ((t - 1000) / 10) + '%' }">{{ t }}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </template>
+                        </v-sheet>
                       </div>
                     </div>
                   </v-expand-transition>
@@ -352,9 +428,10 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import SliderLabel from '@/components/SliderLabel.vue'
 import { useSerialStore } from '@/stores/serial'
-import { useConfigStore, type ModelChannel } from '@/stores/config'
+import { useConfigStore, type ModelChannel, type ButtonEntry, type ChannelTrigger } from '@/stores/config'
 import { useChannelStore } from '@/stores/channels'
 import { rawToUs, usToRaw } from '@/utils/crsf'
+import { GEAR_COUNT } from '@/utils/commands'
 import { CHANNEL_LINK_ONLY } from '@/utils/debugFlags'
 import {
   channelDisplayName, channelNumberLabel, channelPrimaryName, LOCK_CHANNEL_INDEX,
@@ -411,6 +488,7 @@ const SOURCE_LABELS: Record<string, string> = {
   ANALOG_JOYSTICK_Y: '摇杆 Y',
   IMU_ROLL: 'IMU Roll',
   IMU_PITCH: 'IMU Pitch',
+  IMU_YAW: 'IMU Yaw',
   KNOB_EC11: 'EC11 旋钮',
   MIX: '混合输入',
 }
@@ -430,14 +508,14 @@ const BUTTON_SOURCES = new Set(['BUTTON_LOCK', 'BUTTON_MH', 'BUTTON_EC11_BTN', '
 // 连续量输入源
 const CONTINUOUS_SOURCES = new Set([
   'ANALOG_TRIGGER', 'ANALOG_JOYSTICK_X', 'ANALOG_JOYSTICK_Y',
-  'IMU_ROLL', 'IMU_PITCH', 'KNOB_EC11', 'MIX',
+  'IMU_ROLL', 'IMU_PITCH', 'IMU_YAW', 'KNOB_EC11', 'MIX',
 ])
 
 function isButtonSource(s: string): boolean { return BUTTON_SOURCES.has(s) }
 function isContinuousSource(s: string): boolean { return CONTINUOUS_SOURCES.has(s) }
 
 // IMU 类输入源 (中心值固定为 0，无需配置)
-const IMU_SOURCES = new Set(['IMU_ROLL', 'IMU_PITCH'])
+const IMU_SOURCES = new Set(['IMU_ROLL', 'IMU_PITCH', 'IMU_YAW'])
 function isImuSource(s: string): boolean { return IMU_SOURCES.has(s) }
 
 // EC11 旋钮输入源 (仅能绑定一个通道)
@@ -447,7 +525,7 @@ function isKnobEc11Source(s: string): boolean { return KNOB_EC11_SOURCES.has(s) 
 // 支持条件覆盖的输入源: 模拟输入(摇杆 & IMU & 扳机)
 const CONDITION_SOURCES = new Set([
   'ANALOG_TRIGGER', 'ANALOG_JOYSTICK_X', 'ANALOG_JOYSTICK_Y',
-  'IMU_ROLL', 'IMU_PITCH',
+  'IMU_ROLL', 'IMU_PITCH', 'IMU_YAW',
 ])
 function isConditionSource(s: string): boolean { return CONDITION_SOURCES.has(s) }
 
@@ -461,11 +539,19 @@ function effectiveSource(ch: ModelChannel): string {
 
 // 来源变更时：EC11 互斥，自动从旧通道移除
 function onSourceChange(idx: number, newSource: string): void {
-  if (newSource === 'KNOB_EC11') {
+  // EC11 旋钮 / 按钮作为主输入源时: 与其他通道的 EC11 辅助占用互斥
+  if (newSource === 'KNOB_EC11' || newSource === 'BUTTON_EC11_BTN') {
     for (let i = 0; i < editChannels.length; i++) {
-      if (i !== idx && editChannels[i]!.source === 'KNOB_EC11') {
+      if (i === idx) continue
+      if (newSource === 'KNOB_EC11' && editChannels[i]!.source === 'KNOB_EC11') {
         editChannels[i]!.source = 'NONE'
         snackbarMsg.value = `EC11 已从 ${channelDisplayName(i)} 移动到 ${channelDisplayName(idx)}`
+        snackbarVisible.value = true
+      }
+      // 互斥: EC11 作为本通道输入源时, 其他通道的辅助占用一并取消
+      if (editChannels[i]!.aux_source === 'KNOB_EC11') {
+        editChannels[i]!.aux_source = 'NONE'
+        snackbarMsg.value = `EC11 已作为 ${channelDisplayName(idx)} 的输入源，${channelDisplayName(i)} 的辅助输入已取消`
         snackbarVisible.value = true
       }
     }
@@ -477,35 +563,119 @@ function onSourceChange(idx: number, newSource: string): void {
   }
 }
 
-// ── 按钮触发: 动态挡位条目 (activate/deactivate/toggle 对应挡位 1/2/3) ──
-const BTN_SLOT_KEYS = ['activate', 'deactivate', 'toggle'] as const
+// ── 辅助输入 (EC11 旋钮) ──
+const auxSourceOptions = [
+  { title: '无', value: 'NONE' },
+  { title: 'EC11 旋钮', value: 'KNOB_EC11' },
+]
 
-/** 当前已激活的触发挡位条目 (trigger != NONE) */
-function btnEntries(ch: ModelChannel) {
-  return BTN_SLOT_KEYS.map(k => ch[k]).filter(e => e && e.trigger !== 'NONE')
+// 可作为辅助输入宿主的模拟类输入源 (扳机 / 摇杆 / IMU)
+const ANALOG_LIKE_SOURCES = new Set([
+  'ANALOG_TRIGGER', 'ANALOG_JOYSTICK_X', 'ANALOG_JOYSTICK_Y',
+  'IMU_ROLL', 'IMU_PITCH', 'IMU_YAW',
+])
+function isAnalogLikeSource(s: string): boolean { return ANALOG_LIKE_SOURCES.has(s) }
+
+/** 辅助输入变更: EC11 只能被一个通道持有, 且作为辅助时不可被其他通道设为输入源 */
+function onAuxChange(idx: number, newAux: string): void {
+  if (newAux !== 'KNOB_EC11') return
+  for (let i = 0; i < editChannels.length; i++) {
+    if (i === idx) continue
+    // 只能被一个通道持有
+    if (editChannels[i]!.aux_source === 'KNOB_EC11') {
+      editChannels[i]!.aux_source = 'NONE'
+      snackbarMsg.value = `EC11 辅助已从 ${channelDisplayName(i)} 移动到 ${channelDisplayName(idx)}`
+      snackbarVisible.value = true
+    }
+    // 互斥: EC11 旋钮 / 按钮都不能再作为其他通道的主输入源
+    if (editChannels[i]!.source === 'KNOB_EC11' || editChannels[i]!.source === 'BUTTON_EC11_BTN') {
+      editChannels[i]!.source = 'NONE'
+      snackbarMsg.value = `EC11 已作为 ${channelDisplayName(idx)} 的辅助输入，${channelDisplayName(i)} 的输入源已取消`
+      snackbarVisible.value = true
+    }
+  }
+}
+
+// ── 按钮触发: 动态挡位条目 (gears 数组, 最多 GEAR_COUNT 个) ──
+
+/** 当前已激活的触发挡位条目 (trigger != NONE), 顺序紧凑在前 */
+function btnEntries(ch: ModelChannel): ButtonEntry[] {
+  return (ch.gears ?? []).filter(e => e && e.trigger !== 'NONE')
 }
 
 function btnEntryCount(ch: ModelChannel): number {
   return btnEntries(ch).length
 }
 
-/** 添加一个触发挡位 (最多 3 个) */
+/** 添加一个触发挡位 (最多 GEAR_COUNT 个) */
 function addBtnEntry(ch: ModelChannel): void {
+  if (!ch.gears) ch.gears = []
   const n = btnEntryCount(ch)
-  if (n >= 3) return
-  const entry = ch[BTN_SLOT_KEYS[n]!]
-  entry.trigger = 'SINGLE_CLICK'
-  entry.value = ch.output_center ?? 1500
+  if (n >= GEAR_COUNT) return
+  // 填到第一个未启用的槽位 (保证与「已启用条目」顺序一致)
+  const slot = ch.gears.findIndex(g => !g || g.trigger === 'NONE')
+  ch.gears[slot < 0 ? ch.gears.length : slot] = {
+    trigger: 'SINGLE_CLICK',
+    value: ch.output_center ?? 1500,
+  }
+}
+
+// ── 通道触发规则 (本通道输出值进入 [low, high] 时执行一次动作) ──
+const TRIGGER_COUNT = 5
+
+const triggerActionOptions = [
+  { title: '无', value: 'NONE' },
+  { title: '蜂鸣器', value: 'BEEP' },
+]
+
+// 蜂鸣音: 对应固件 buzzer_sound 的可选音
+const beepSoundOptions = [
+  { title: '提示音', value: 0 },
+  { title: '警告音 (双连音)', value: 1 },
+  { title: '错误音', value: 2 },
+  { title: '按键音', value: 3 },
+  { title: '通道音 0', value: 4 },
+  { title: '通道音 1', value: 5 },
+  { title: '通道音 2', value: 6 },
+]
+
+/** 添加一条触发规则 (最多 TRIGGER_COUNT 条) */
+function addTrigger(ch: ModelChannel): void {
+  if (!ch.triggers) ch.triggers = []
+  if (ch.triggers.length >= TRIGGER_COUNT) return
+  ch.triggers.push({ low: 1000, high: 1250, action: 'BEEP', param: 0, enabled: true })
+}
+
+/**
+ * 设置触发范围: 步长 50 对齐 + 钳制到 [1000, 2000]。
+ * 约束: 最大值与最小值必须间隔 >= 50 (优先上推 high, 越界则下压 low)。
+ */
+function setTriggerRange(tg: ChannelTrigger, low: number, high: number): void {
+  let lo = Math.round(low / 50) * 50
+  let hi = Math.round(high / 50) * 50
+  lo = Math.min(Math.max(lo, 1000), 2000)
+  hi = Math.min(Math.max(hi, 1000), 2000)
+  if (hi - lo < 50) {
+    if (hi + 50 <= 2000) hi = lo + 50
+    else lo = hi - 50
+  }
+  tg.low = lo
+  tg.high = hi
+}
+
+/** 删除第 idx 条触发规则 */
+function removeTrigger(ch: ModelChannel, idx: number): void {
+  ch.triggers?.splice(idx, 1)
 }
 
 /** 删除第 idx 个触发挡位, 后续挡位紧凑前移 */
 function removeBtnEntry(ch: ModelChannel, idx: number): void {
-  const entries = BTN_SLOT_KEYS.map(k => ch[k])
+  if (!ch.gears) ch.gears = []
+  const entries = btnEntries(ch)
   entries.splice(idx, 1)
-  entries.push({ trigger: 'NONE', value: 1500 })
-  ch.activate = entries[0]!
-  ch.deactivate = entries[1]!
-  ch.toggle = entries[2]!
+  for (let i = 0; i < GEAR_COUNT; i++) {
+    ch.gears![i] = entries[i] ?? { trigger: 'NONE', value: ch.output_center ?? 1500 }
+  }
 }
 
 /** 按钮通道输出范围变更 → clamp 越界的挡位值 */
@@ -515,12 +685,10 @@ function onBtnOutputRangeChange(idx: number, vals: number[]): void {
   const hi = vals[1] ?? 2000
   ch.output_min = lo
   ch.output_max = hi
-  const av = ch.activate.value ?? 1500
-  const dv = ch.deactivate.value ?? 1500
-  const tv = ch.toggle.value ?? 1500
-  ch.activate.value = av < lo ? lo : av > hi ? hi : av
-  ch.deactivate.value = dv < lo ? lo : dv > hi ? hi : dv
-  ch.toggle.value = tv < lo ? lo : tv > hi ? hi : tv
+  for (const g of ch.gears ?? []) {
+    const v = g.value ?? 1500
+    g.value = v < lo ? lo : v > hi ? hi : v
+  }
 }
 
 /** 根据输入源类型返回滑块合理范围 */
@@ -550,30 +718,52 @@ function inputTicks(min: number, max: number): number[] {
   return arr
 }
 
+// 下拉显示顺序 (与固件枚举 ID 无关, 仅影响展示):
+// 按钮类 → 模拟类 (扳机/摇杆) → IMU 三轴相邻 → EC11 旋钮 → 混合输入
+const SOURCE_DISPLAY_ORDER = [
+  'NONE',
+  'BUTTON_LOCK', 'BUTTON_MH', 'BUTTON_EC11_BTN', 'BUTTON_SHOT',
+  'ANALOG_TRIGGER', 'ANALOG_JOYSTICK_X', 'ANALOG_JOYSTICK_Y',
+  'IMU_ROLL', 'IMU_PITCH', 'IMU_YAW',
+  'KNOB_EC11', 'MIX',
+]
+
+/** 未列入顺序表的源排到最后 (稳定排序, 保持固件下发原序) */
+function sourceDisplayIndex(id: string): number {
+  const i = SOURCE_DISPLAY_ORDER.indexOf(id)
+  return i < 0 ? SOURCE_DISPLAY_ORDER.length : i
+}
+
 // MIX 可选的连续量输入源 (排除按钮、EC11 旋钮、MIX 自身)
 const mixSourceOptions = computed(() =>
-  configStore.deviceInfo?.input_sources
-    ?.filter(s => s.id !== 'NONE' && !BUTTON_SOURCES.has(s.id)
+  [...(configStore.deviceInfo?.input_sources ?? [])]
+    .filter(s => s.id !== 'NONE' && !BUTTON_SOURCES.has(s.id)
       && s.id !== 'KNOB_EC11' && s.id !== 'MIX')
-    .map(s => ({ title: SOURCE_LABELS[s.id] ?? s.id, value: s.id })) ?? [],
+    .sort((a, b) => sourceDisplayIndex(a.id) - sourceDisplayIndex(b.id))
+    .map(s => ({ title: SOURCE_LABELS[s.id] ?? s.id, value: s.id })),
 )
 
-// 输入源下拉选项
+// 输入源下拉选项 (按 SOURCE_DISPLAY_ORDER 排序: IMU Roll/Pitch/Yaw 相邻)
 const sourceOptions = computed(() =>
-  configStore.deviceInfo?.input_sources?.map(s => ({
-    title: SOURCE_LABELS[s.id] ?? s.id,
-    value: s.id,
-  })) ?? [],
+  [...(configStore.deviceInfo?.input_sources ?? [])]
+    .sort((a, b) => sourceDisplayIndex(a.id) - sourceDisplayIndex(b.id))
+    .map(s => ({ title: SOURCE_LABELS[s.id] ?? s.id, value: s.id })),
 )
 
 // 条件覆盖: 替代输入源选项 (仅模拟类: 摇杆 & 扳机 & IMU & EC11 旋钮)
 const ALT_SOURCE_ALLOWED = new Set([
   'ANALOG_TRIGGER', 'ANALOG_JOYSTICK_X', 'ANALOG_JOYSTICK_Y',
-  'IMU_ROLL', 'IMU_PITCH', 'KNOB_EC11',
+  'IMU_ROLL', 'IMU_PITCH', 'IMU_YAW', 'KNOB_EC11',
 ])
 const altSourceOptions = computed(() =>
   sourceOptions.value.filter(o => ALT_SOURCE_ALLOWED.has(o.value)),
 )
+
+/** 当前通道实时输出值 (μs), 无数据时显示 '--' */
+function chanValueUs(idx: number): string {
+  const c = chStore.activeChannels[idx]
+  return c ? String(c.valueUs) : '--'
+}
 
 // 条件: 监视通道下拉 (显示 CH1~CH16 + 主名称, value 仍为 0 起始内部索引)
 const sourceChannelOptions = computed(() =>
@@ -778,9 +968,10 @@ function syncEditFromStore(): void {
       const hasFlat = flat.cond_enabled !== undefined
       editChannels.push({
         source: ch.source,
-        activate: { trigger: ch.activate?.trigger ?? 'NONE', value: rawToUs(ch.activate?.value ?? 186) },
-        deactivate: { trigger: ch.deactivate?.trigger ?? 'NONE', value: rawToUs(ch.deactivate?.value ?? 186) },
-        toggle: { trigger: ch.toggle?.trigger ?? 'NONE', value: rawToUs(ch.toggle?.value ?? 186) },
+        gears: Array.from({ length: GEAR_COUNT }, (_, g) => ({
+          trigger: ch.gears?.[g]?.trigger ?? 'NONE',
+          value: rawToUs(ch.gears?.[g]?.value ?? 186),
+        })),
         input_min: ch.input_min,
         input_center: ch.input_center,
         input_max: ch.input_max,
@@ -788,7 +979,8 @@ function syncEditFromStore(): void {
         output_max: rawToUs(ch.output_max),
         output_center: rawToUs(ch.output_center),
         deadzone: ch.deadzone,
-        ec11_step: ch.ec11_step,
+        // 步进以 µs/格 直传: 固件按量程比例换算到 raw 再取整, 避免取整偏差累积
+        ec11_step: flat.ec11_step ?? 50,
         reverse: !!ch.reverse,
         condition: hasFlat ? {
           enabled: !!flat.cond_enabled,
@@ -804,11 +996,20 @@ function syncEditFromStore(): void {
         },
         lock_enabled: !!flat.lock_enabled,
         lock_value: rawToUs(flat.lock_value ?? 991),
+        lock_reset_input: flat.lock_reset_input === undefined ? false : !!flat.lock_reset_input,
+        aux_source: flat.aux_source ?? 'NONE',
         mix_enabled: !!flat.mix_enabled,
         mix_items: Array.isArray(flat.mix_items) ? flat.mix_items.map((mi: any) => ({
           src: mi.src ?? 'NONE',
           w: mi.w ?? 0,
           reverse: !!mi.reverse,
+        })) : [],
+        triggers: Array.isArray(flat.triggers) ? flat.triggers.slice(0, TRIGGER_COUNT).map((t: any) => ({
+          low: rawToUs(t.low ?? 186),
+          high: rawToUs(t.high ?? 1796),
+          action: t.action ?? 'NONE',
+          param: t.param ?? 0,
+          enabled: t.enabled === undefined ? true : !!t.enabled,
         })) : [],
       })
     }
@@ -859,7 +1060,7 @@ async function saveCurrentModel(): Promise<boolean> {
   // 将 μs 转回 CRSF raw 再发送到固件
   // 条件字段需扁平化并映射到固件缩写的 JSON key
   const rawChannels = editChannels.map((ch, idx) => {
-    const { condition, activate, deactivate, toggle, ...rest } = ch
+    const { condition, gears, ...rest } = ch
     // 嵌套 condition 也要转 raw (encodeChannelTlv 直接用嵌套对象编码 0x0e)
     const condRaw = {
       ...condition,
@@ -873,9 +1074,10 @@ async function saveCurrentModel(): Promise<boolean> {
       output_min: usToRaw(ch.output_min),
       output_max: usToRaw(ch.output_max),
       output_center: usToRaw(ch.output_center),
-      activate: { trigger: activate.trigger, value: usToRaw(activate.value) },
-      deactivate: { trigger: deactivate.trigger, value: usToRaw(deactivate.value) },
-      toggle: { trigger: toggle.trigger, value: usToRaw(toggle.value) },
+      gears: Array.from({ length: GEAR_COUNT }, (_, g) => ({
+        trigger: gears?.[g]?.trigger ?? 'NONE',
+        value: usToRaw(gears?.[g]?.value ?? 1500),
+      })),
       cond_enabled: condition.enabled,
       cond_src: condition.source_channel,
       cond_low: condRaw.low,
@@ -886,8 +1088,20 @@ async function saveCurrentModel(): Promise<boolean> {
       // AUX1 是解锁控制源: 强制关闭自身安全锁, 避免自锁抖动 (历史配置也会被纠正)
       lock_enabled: idx === LOCK_CHANNEL_INDEX ? false : ch.lock_enabled,
       lock_value: usToRaw(ch.lock_value),
+      lock_reset_input: idx === LOCK_CHANNEL_INDEX ? false : !!ch.lock_reset_input,
+      aux_source: ch.aux_source ?? 'NONE',
+      // 步进以 µs/格 直传 (固件内部按 1.61 raw/µs 换算后取整)
+      ec11_step: ch.ec11_step ?? 50,
       mix_enabled: ch.mix_enabled,
       mix_items: ch.mix_items?.map(mi => ({ src: mi.src, w: mi.w, reverse: mi.reverse })) ?? [],
+      // 触发规则区间 μs → raw (固件判定用 CRSF raw 域)
+      triggers: ch.triggers?.slice(0, TRIGGER_COUNT).map(t => ({
+        low: usToRaw(t.low),
+        high: usToRaw(t.high),
+        action: t.action ?? 'NONE',
+        param: t.param ?? 0,
+        enabled: t.enabled !== false,
+      })) ?? [],
     }
   })
   return await configStore.setModel(selectedSlot.value, {
@@ -1139,6 +1353,14 @@ onUnmounted(() => {
   opacity: .55;
   font-size: 10px;
   letter-spacing: .3px;
+}
+
+/* 当前通道实时输出值 (μs): 等宽数字, 主题色, 靠右 */
+.chan-live-value {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--v-theme-primary));
+  white-space: nowrap;
 }
 
 /* 组2: 输入源选择 */

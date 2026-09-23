@@ -32,20 +32,24 @@ export interface ChannelCondition {
   alt_source: string            // InputSource 字符串, switch_source=true 时生效
 }
 
+/** 按钮挡位条目: (触发方式, 挡位输出值 μs) */
+export interface ButtonEntry {
+  trigger: string
+  value: number
+}
+
+/** 通道触发规则: 本通道输出值进入 [low, high] (μs) 时执行一次动作 */
+export interface ChannelTrigger {
+  low: number              // 区间下限 (μs)
+  high: number             // 区间上限 (μs)
+  action: string           // 'NONE' | 'BEEP' | 'LED'
+  param: number            // 动作参数: BEEP=蜂鸣音, LED=LED 模式
+  enabled: boolean
+}
+
 export interface ModelChannel {
   source: string
-  activate: {
-    trigger: string
-    value: number
-  }
-  deactivate: {
-    trigger: string
-    value: number
-  }
-  toggle: {
-    trigger: string
-    value: number
-  }
+  gears: ButtonEntry[]              // 按钮挡位列表 (最多 GEAR_COUNT 个, trigger='NONE' 表示未启用)
   input_min: number
   input_center: number
   input_max: number
@@ -58,12 +62,15 @@ export interface ModelChannel {
   condition: ChannelCondition
   lock_enabled: boolean         // 安全锁: 固件固定监视 0 起始 index 4 (= CH5 / AUX1) > 1500μs 时解锁
   lock_value: number            // 锁定时输出值 (μs)
+  lock_reset_input: boolean     // 锁定上升沿时是否把按钮挡位 / EC11 计数重置到默认值
   mix_enabled: boolean          // 混合输入开关
   mix_items: Array<{            // 混合项列表 (最多 4 项)
     src: string                 // InputSource 字符串
     w: number                   // 权重 -100..100
     reverse: boolean            // 反向
   }>
+  triggers: ChannelTrigger[]    // 通道触发规则列表 (最多 4 条)
+  aux_source: string            // 辅助输入 (目前仅 'KNOB_EC11'), 与主输入源互斥, 全局唯一持有
 }
 
 export interface ModelConfig {
