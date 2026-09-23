@@ -194,6 +194,24 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
       w.u32(Number(params.offset ?? 0))
       if (params.data instanceof Uint8Array) w.bytes(params.data)
       break
+    // ── 配置备份 / 还原（§5.15）──
+    case CMD.CONFIG_EXPORT_BEGIN:
+      // flags: bit0 = pretty(缩进输出)
+      w.u8(Number(params.flags ?? 0))
+      break
+    case CMD.CONFIG_EXPORT_CHUNK:
+      w.u32(Number(params.offset ?? 0))
+      w.u16(Number(params.want ?? 2048))
+      break
+    case CMD.CONFIG_IMPORT_BEGIN:
+      w.u32(Number(params.total_len ?? 0))
+      w.u16(Number(params.crc16 ?? 0))
+      w.u8(Number(params.flags ?? 0))
+      break
+    case CMD.CONFIG_IMPORT_CHUNK:
+      w.u32(Number(params.offset ?? 0))
+      if (params.data instanceof Uint8Array) w.bytes(params.data)
+      break
     default:
       break
   }
@@ -510,6 +528,25 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
       case CMD.SET_TELEM2:
         // 回显生效后的掩码 (bit0=USB, bit1=BLE)
         return { cmd: name, ok: true, telem2_mask: r.u8() }
+      // ── 配置备份 / 还原（§5.15）──
+      case CMD.CONFIG_EXPORT_BEGIN:
+        return {
+          cmd: name, ok: true,
+          total_len: r.u32(),
+          chunk_hint: r.u16(),
+          item_count: r.u8(),
+        }
+      case CMD.CONFIG_EXPORT_CHUNK: {
+        // payload: u32 offset + 原始 JSON 字节
+        const offset = r.u32()
+        return { cmd: name, ok: true, offset, bytes: data.subarray(r.offset) }
+      }
+      case CMD.CONFIG_IMPORT_BEGIN:
+        return { cmd: name, ok: true, chunk_hint: r.u16() }
+      case CMD.CONFIG_IMPORT_CHUNK:
+        return { cmd: name, ok: true, accepted_total: r.u32() }
+      case CMD.CONFIG_IMPORT_APPLY:
+        return { cmd: name, ok: true, item_count: r.u8(), message: r.str() }
       default:
         return { cmd: name, ok: true }
     }

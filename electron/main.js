@@ -5,7 +5,7 @@
  * 保留完整的 JSON 行协议 + ESP_LOG 噪声过滤逻辑（同 Web 端）
  */
 
-const { app, BrowserWindow, ipcMain, session } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, session } = require("electron");
 const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
@@ -408,6 +408,46 @@ function setupIPC() {
   ipcMain.handle("firmware:flash", async (_e, payload) => {
     try {
       return await flashFirmware(payload);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ── 配置备份文件的保存 / 打开（§5.15: JSON）──
+  // 走系统对话框; 渲染进程无 fs 权限, 文件内容以字符串过桥
+  ipcMain.handle(
+    "file:saveText",
+    async (_e, { defaultName = "config.json", text = "", filters } = {}) => {
+      try {
+        const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
+        const res = await dialog.showSaveDialog(win, {
+          defaultPath: defaultName,
+          filters: filters ?? [{ name: "JSON 配置", extensions: ["json"] }],
+        });
+        if (res.canceled || !res.filePath) {
+          return { success: false, canceled: true };
+        }
+        await fs.promises.writeFile(res.filePath, text, "utf8");
+        return { success: true, path: res.filePath };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    },
+  );
+
+  ipcMain.handle("file:openText", async (_e, { filters } = {}) => {
+    try {
+      const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
+      const res = await dialog.showOpenDialog(win, {
+        properties: ["openFile"],
+        filters: filters ?? [{ name: "JSON 配置", extensions: ["json"] }],
+      });
+      if (res.canceled || !res.filePaths?.length) {
+        return { success: false, canceled: true };
+      }
+      const filePath = res.filePaths[0];
+      const text = await fs.promises.readFile(filePath, "utf8");
+      return { success: true, path: filePath, text };
     } catch (err) {
       return { success: false, error: err.message };
     }

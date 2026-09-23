@@ -26,6 +26,10 @@ interface ElectronSerialAPI {
   onDisconnected(callback: () => void): () => void;
   onError(callback: (data: { message: string }) => void): () => void;
   onFirmwareLog(callback: (line: string) => void): () => void;
+  /** 保存文本文件（系统保存对话框） */
+  saveTextFile(payload: { defaultName?: string; text: string; filters?: Array<{ name: string; extensions: string[] }> }): Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
+  /** 打开文本文件（系统打开对话框） */
+  openTextFile(payload?: { filters?: Array<{ name: string; extensions: string[] }> }): Promise<{ success: boolean; path?: string; text?: string; canceled?: boolean; error?: string }>;
 }
 
 // Web Serial API 类型声明

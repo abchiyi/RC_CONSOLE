@@ -69,4 +69,10 @@ contextBridge.exposeInMainWorld("electronSerialAPI", {
     ipcRenderer.on("firmware:log", handler);
     return () => ipcRenderer.removeListener("firmware:log", handler);
   },
+
+  /** 保存文本文件（系统保存对话框；配置备份导出用） */
+  saveTextFile: (payload) => ipcRenderer.invoke("file:saveText", payload),
+
+  /** 打开文本文件（系统打开对话框；配置备份导入用） */
+  openTextFile: (payload) => ipcRenderer.invoke("file:openText", payload),
 });

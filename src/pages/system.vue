@@ -240,6 +240,55 @@
         </v-card-text>
       </v-card>
 
+      <!-- 配置备份 / 还原卡片 -->
+      <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
+        <v-card-item class="pb-0">
+          <template #prepend>
+            <v-avatar color="primary" size="36" class="cal-avatar">
+              <v-icon color="white" size="20">mdi-backup-restore</v-icon>
+            </v-avatar>
+          </template>
+          <v-card-title>配置备份</v-card-title>
+          <v-card-subtitle>全部模型与校准数据导出为 JSON 文件，或从文件整体还原</v-card-subtitle>
+          <template #append>
+            <v-chip v-if="backupBusy" color="info" size="x-small" variant="tonal">
+              {{ backupLabel }} {{ backupProgress }}%
+            </v-chip>
+          </template>
+        </v-card-item>
+
+        <v-card-text class="pt-3">
+          <v-progress-linear v-if="backupBusy" :model-value="backupProgress" color="primary" height="3"
+            rounded class="mb-3" />
+
+          <div class="cal-hint hint-neutral">
+            <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
+            <span>
+              导出含 8 个模型槽位与全部校准数据（摇杆/扳机行程、响应曲线、IMU 零偏、姿态归零）。
+              导入为<strong>整体替换</strong>：文件里没有的槽位与校准项会回到默认值。
+            </span>
+          </div>
+
+          <v-alert v-if="backupError" color="error" variant="tonal" density="compact" class="mt-3 py-1">
+            {{ backupError }}
+          </v-alert>
+          <v-alert v-else-if="backupMsg" color="success" variant="tonal" density="compact" class="mt-3 py-1">
+            {{ backupMsg }}
+          </v-alert>
+
+          <div class="d-flex justify-end mt-3">
+            <v-btn class="btn-secondary me-2" size="small" prepend-icon="mdi-file-export"
+              :disabled="!serial.connected || backupBusy" @click="onExportConfig">
+              <span class="btn-text">导出配置</span>
+            </v-btn>
+            <v-btn class="btn-secondary" size="small" prepend-icon="mdi-file-import"
+              :disabled="!serial.connected || backupBusy" @click="onImportConfig">
+              <span class="btn-text">导入配置</span>
+            </v-btn>
+          </div>
+        </v-card-text>
+      </v-card>
+
       <!-- 恢复出厂设置卡片 -->
       <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
         <v-card-item class="pb-0">
@@ -350,6 +399,9 @@ import { useSerialStore } from '@/stores/serial'
 import { usePowerStore } from '@/stores/power'
 import { useConfigStore } from '@/stores/config'
 import { serialService } from '@/services/SerialService'
+import { exportSnapshot, importSnapshot } from '@/services/configBackup'
+import { jsonToSnapshot, snapshotToJson } from '@/utils/configSnapshot'
+import { openTextFile, saveTextFile } from '@/utils/fileDialog'
 import FirmwareUpgradeDialog from '@/components/FirmwareUpgradeDialog.vue'
 
 const serial = useSerialStore()
@@ -489,6 +541,78 @@ const stateError = ref('')
 // ========== 操作提示 (snackbar) ==========
 const snackbarVisible = ref(false)
 const snackbarMsg = ref('')
+
+// ========== 配置备份 / 还原 (协议 §5.15) ==========
+//   会话期间暂停状态轮询让出链路带宽；设备侧给的是二进制快照，JSON 编解码在上位机完成。
+const backupBusy = ref(false)
+const backupProgress = ref(0)
+const backupLabel = ref('')
+const backupMsg = ref('')
+const backupError = ref('')
+
+function backupProgressHandler (p: { done: number, total: number }): void {
+  backupProgress.value = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0
+}
+
+function resetBackupState (): void {
+  backupBusy.value = false
+  backupProgress.value = 0
+  backupLabel.value = ''
+  if (serial.connected) startPoll()
+}
+
+async function onExportConfig (): Promise<void> {
+  if (backupBusy.value) return
+  backupBusy.value = true
+  backupProgress.value = 0
+  backupLabel.value = '导出中'
+  backupMsg.value = ''
+  backupError.value = ''
+  stopPoll()
+
+  try {
+    const bytes = await exportSnapshot(backupProgressHandler)
+    const json = snapshotToJson(bytes)
+    const text = JSON.stringify(json, null, 2)
+    const name = `gamepad2rc-config-${new Date().toISOString().slice(0, 10)}.json`
+    const saved = await saveTextFile(name, text)
+    if (saved) {
+      backupMsg.value = `已导出 ${json.models.length} 个模型槽位（${text.length} 字节）`
+    }
+  } catch (e: unknown) {
+    backupError.value = `导出失败: ${e instanceof Error ? e.message : String(e)}`
+  } finally {
+    resetBackupState()
+  }
+}
+
+async function onImportConfig (): Promise<void> {
+  if (backupBusy.value) return
+  backupBusy.value = true
+  backupProgress.value = 0
+  backupLabel.value = '导入中'
+  backupMsg.value = ''
+  backupError.value = ''
+  stopPoll()
+
+  try {
+    const file = await openTextFile()
+    if (!file) {
+      backupMsg.value = '已取消导入'
+      return
+    }
+    // 先本地转成快照 (顺带校验结构与版本), 避免把坏文件分块推给设备浪费一次会话
+    const bytes = jsonToSnapshot(JSON.parse(file.text) as unknown)
+    await importSnapshot(bytes, backupProgressHandler)
+    backupMsg.value = '配置已导入并生效'
+    // 设备侧已落 NVS 并重载运行态: 回读电源设置与设备信息刷新本页
+    await reloadAll()
+  } catch (e: unknown) {
+    backupError.value = `导入失败: ${e instanceof Error ? e.message : String(e)}`
+  } finally {
+    resetBackupState()
+  }
+}
 
 // ========== 恢复出厂设置（抹除 NVS） ==========
 const factoryResetBusy = ref(false)
