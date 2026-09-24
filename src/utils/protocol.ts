@@ -151,6 +151,7 @@ export const CMD_NAME_TO_ID: Record<string, number> = {
   elrs_flash_abort: CMD.ELRS_FLASH_ABORT,
   set_telem2: CMD.SET_TELEM2,
   set_lock_zero: CMD.SET_LOCK_ZERO,
+  mavlink_link_stats: CMD.MAVLINK_LINK_STATS,
 }
 
 const CMD_ID_TO_NAME: Record<number, string> = Object.fromEntries(

@@ -532,6 +532,9 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
       case CMD.SET_TELEM2:
         // 回显生效后的掩码 (bit0=USB, bit1=BLE)
         return { cmd: name, ok: true, telem2_mask: r.u8() }
+      case CMD.MAVLINK_LINK_STATS:
+        // §5.12 桥视角链路快照：RF 字段(ul_*/dl_*) + 桥自身下行(手柄 → GCS)出口统计
+        return decodeMavlinkLinkStats(r, name)
       case CMD.SET_LOCK_ZERO:
         // 回显生效后的开关值
         return { cmd: name, ok: true, lock_zero_imu: r.u8() !== 0 }
@@ -703,6 +706,42 @@ function decodeLinkStats(r: Reader, name: string): Record<string, unknown> {
     out.tx_power = r.u8()
   }
   return out
+}
+
+/**
+ * §5.12 MAVLINK_LINK_STATS 响应（38 字节）。
+ * 读取顺序必须严格为线上字段顺序：valid / last_update_ms / link_age_ms / ul_* / 链路属性 / dl_* / 5×u32。
+ * 注意方向语义：ul_* = RF 链路上行(手柄 → 飞控)，dl_* = RF 链路下行(飞控 → 手柄)，
+ * 后 5 个 u32 才是桥自身下行(手柄 → GCS)出口统计。
+ */
+function decodeMavlinkLinkStats (r: Reader, name: string): Record<string, unknown> {
+  const valid = !!r.u8()
+  const lastUpdateMs = r.u32()
+  const linkAgeMs = r.u32()
+  return {
+    cmd: name,
+    ok: true,
+    valid,
+    last_update_ms: lastUpdateMs,
+    link_age_ms: valid ? linkAgeMs : null, // 固件在 valid=0 时回 0xFFFFFFFF
+    // RF 链路上行（手柄 → 飞控）
+    ul_rssi: r.i8(),
+    ul_lq: r.u8(),
+    ul_snr: r.i8(),
+    ul_tx_power: r.u8(),
+    active_antenna: r.u8(),
+    rf_mode: r.u8(),
+    // RF 链路下行（飞控 → 手柄）
+    dl_rssi: r.i8(),
+    dl_lq: r.u8(),
+    dl_snr: r.i8(),
+    // 桥自身下行出口（手柄 → GCS）
+    radio_status_count: r.u32(),
+    link_node_status_count: r.u32(),
+    downlink_msg_count: r.u32(),
+    downlink_bytes: r.u32(),
+    tx_rate_bps: r.u32(),
+  }
 }
 
 /** 清理 ELRS 字段文本：剔除非法解码残留（U+FFFD）与不可见控制字符，并去除首尾空白 */
