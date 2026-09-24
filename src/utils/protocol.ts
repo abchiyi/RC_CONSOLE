@@ -55,6 +55,7 @@ export const CMD = {
   LOAD: 0x01_07,
   STREAM_START: 0x01_08,
   STREAM_STOP: 0x01_09,
+  SET_LOCK_ZERO: 0x01_0A, // 「AUX1 解锁时三轴归零」开关: u8 enable(0/1)
   // 配置备份 / 还原（§5.15）：JSON 文件，会话式分块
   CONFIG_EXPORT_BEGIN: 0x01_10,
   CONFIG_EXPORT_CHUNK: 0x01_11,
@@ -149,6 +150,7 @@ export const CMD_NAME_TO_ID: Record<string, number> = {
   elrs_flash_finish: CMD.ELRS_FLASH_FINISH,
   elrs_flash_abort: CMD.ELRS_FLASH_ABORT,
   set_telem2: CMD.SET_TELEM2,
+  set_lock_zero: CMD.SET_LOCK_ZERO,
 }
 
 const CMD_ID_TO_NAME: Record<number, string> = Object.fromEntries(

@@ -21,6 +21,24 @@
     <v-row v-if="serial.connected" dense>
       <!-- 左侧: 主配置区域 -->
       <v-col cols="12">
+        <!-- 设备级: AUX1 解锁时三轴归零 -->
+        <v-sheet v-if="configStore.config" rounded="lg" class="pa-3 mb-3 model-curve-sheet">
+          <div class="param-group">
+            <span class="text-caption font-weight-bold">
+              <v-icon size="16" class="me-1">mdi-axis-arrow</v-icon>
+              AUX1 解锁时三轴归零 (设备级)
+            </span>
+            <v-switch v-model="lockZeroImu" density="compact" hide-details
+              :disabled="configStore.lockZeroSupported === false" :loading="configStore.lockZeroBusy" />
+          </div>
+          <div class="text-caption text-medium-emphasis mt-1">
+            AUX1 ({{ channelDisplayName(LOCK_CHANNEL_INDEX) }}) 由 &le;1500μs 变为
+            &gt;1500μs 时，自动以当前握持姿态执行一次三轴归零 (等同 SHOT 单击)。归零仅写入内存、不固化，
+            重启后回到上次保存的姿态基准；本开关本身固化保存。
+            <span v-if="configStore.lockZeroError" class="action-msg">{{ configStore.lockZeroError }}</span>
+          </div>
+        </v-sheet>
+
         <!-- 模型级: 输出响应曲线总开关 -->
         <v-sheet v-if="configStore.config" rounded="lg" class="pa-3 mb-3 model-curve-sheet">
           <div class="param-group">
@@ -456,6 +474,14 @@ const modelCurveEnabled = computed<boolean>({
   set: (v: boolean) => {
     const m = configStore.config?.models?.[selectedSlot.value]
     if (m) m.curve_enabled = v
+  },
+})
+
+// AUX1 解锁时三轴归零 (设备级): 读自 get_config tag 0x06, 写入 SET_LOCK_ZERO (设备侧落 NVS)
+const lockZeroImu = computed<boolean>({
+  get: () => configStore.lockZeroImu,
+  set: (v: boolean) => {
+    void configStore.setLockZeroImu(v)
   },
 })
 
@@ -1563,6 +1589,13 @@ onUnmounted(() => {
 .page-title {
   border-left: 4px solid rgb(var(--v-theme-primary));
   padding-left: 12px;
+}
+
+/* 操作结果提示 (写入失败/被拒绝): 主色高亮 */
+.action-msg {
+  margin-left: 8px;
+  color: rgb(var(--v-theme-primary));
+  font-weight: 600;
 }
 
 /* ⑤ 范围滑块扁平化 + 主色填充 (Betaflight 双滑块风格) */

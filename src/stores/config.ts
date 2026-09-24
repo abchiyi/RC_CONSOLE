@@ -104,6 +104,14 @@ export const useConfigStore = defineStore('config', () => {
   const telem2Busy = ref(false)
   const telem2Error = ref<string | null>(null)
 
+  // ---- AUX1 解锁时三轴归零开关 (SET_LOCK_ZERO 0x010A) ----
+  // 仅开关本身落 NVS; 其触发的归零只改内存姿态基准, 不固化
+  const lockZeroImu = ref(false)
+  /** null = 尚未从设备读到; false = 固件 get_config 无 0x06 项 (不支持) */
+  const lockZeroSupported = ref<boolean | null>(null)
+  const lockZeroBusy = ref(false)
+  const lockZeroError = ref<string | null>(null)
+
   // 已同步到固件 RAM 的模型 baseline (差分同步对比基准)
   const syncedModels = ref<Record<number, ModelConfig>>({})
 
@@ -357,6 +365,24 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
+  /** 设置「AUX1 解锁时三轴归零」开关 (设备收到即落 NVS, 掉电保持) */
+  async function setLockZeroImu(v: boolean): Promise<boolean> {
+    lockZeroBusy.value = true
+    lockZeroError.value = null
+    const p = rr.wait('set_lock_zero', 3000)
+    try {
+      await serialService.sendCommand('set_lock_zero', { enable: v ? 1 : 0 })
+      const ok = await p
+      if (ok === false && !lockZeroError.value) lockZeroError.value = '设置被设备拒绝'
+      return ok !== false
+    } catch {
+      lockZeroError.value = '设置超时'
+      return false
+    } finally {
+      lockZeroBusy.value = false
+    }
+  }
+
   function handleResponse(json: Record<string, unknown>): void {
     const cmd = json.cmd as string | undefined
 
@@ -372,10 +398,29 @@ export const useConfigStore = defineStore('config', () => {
       return
     }
 
+    // set_lock_zero 响应: 回显生效后的开关值
+    if (cmd === 'set_lock_zero') {
+      const ok = json.ok !== false
+      if (ok && typeof json.lock_zero_imu === 'boolean') lockZeroImu.value = json.lock_zero_imu
+      if (!ok) {
+        lockZeroError.value = (json.error as string) || '三轴归零开关设置失败'
+        error.value = lockZeroError.value
+      }
+      rr.tryResolve('set_lock_zero', ok)
+      return
+    }
+
     // get_config 中的遥测端口掩码 (tag 0x05): 无此项 = 固件不支持
     if (cmd === 'get_config') {
       if (typeof json.telem2_mask === 'number') applyTelem2Mask(json.telem2_mask)
       else telem2Supported.value = false
+      // AUX1 解锁时三轴归零 (tag 0x06): 无此项 = 固件不支持
+      if (typeof json.lock_zero_imu === 'boolean') {
+        lockZeroImu.value = json.lock_zero_imu
+        lockZeroSupported.value = true
+      } else {
+        lockZeroSupported.value = false
+      }
     }
 
     // 通用错误响应 (无 cmd 字段): 匹配当前等待中的请求并记录错误
@@ -513,6 +558,11 @@ export const useConfigStore = defineStore('config', () => {
     telem2Error,
     setTelem2,
     fetchTelem2,
+    lockZeroImu,
+    lockZeroSupported,
+    lockZeroBusy,
+    lockZeroError,
+    setLockZeroImu,
     handleResponse,
   }
 })

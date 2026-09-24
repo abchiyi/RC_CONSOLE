@@ -36,8 +36,8 @@ const SEC = {
 export const CONFIG_INT_FIELDS = [
   'radio_mode', 'active_model', 'idle_warn_s', 'idle_shut_s', 'lpf_alpha',
 ] as const
-/** 与固件 config.h 的 CONFIG_BOOL_FIELDS 顺序一致 */
-export const CONFIG_BOOL_FIELDS = ['telem2_usb_en', 'telem2_bt_en'] as const
+/** 与固件 config.h 的 CONFIG_BOOL_FIELDS 顺序一致（新字段只能追加到末尾） */
+export const CONFIG_BOOL_FIELDS = ['telem2_usb_en', 'telem2_bt_en', 'lock_zero_imu'] as const
 
 const ANALOG_KEYS = ['trigger', 'joy_x', 'joy_y'] as const
 const CURVE_KEYS = ['trigger', 'joy_x', 'joy_y', 'imu_roll', 'imu_pitch', 'imu_yaw'] as const

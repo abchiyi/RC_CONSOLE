@@ -177,6 +177,10 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
       // 遥测转发端口位掩码: bit0=USB, bit1=BLE (§5.13)
       w.u8(Number(params.mask ?? 0))
       break
+    case CMD.SET_LOCK_ZERO:
+      // 「AUX1 解锁时三轴归零」开关: 0=关, 1=开
+      w.u8(Number(params.enable ?? 0) ? 1 : 0)
+      break
     case CMD.OTA_BEGIN:
       w.u32(Number(params.size ?? 0))
       break
@@ -528,6 +532,9 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
       case CMD.SET_TELEM2:
         // 回显生效后的掩码 (bit0=USB, bit1=BLE)
         return { cmd: name, ok: true, telem2_mask: r.u8() }
+      case CMD.SET_LOCK_ZERO:
+        // 回显生效后的开关值
+        return { cmd: name, ok: true, lock_zero_imu: r.u8() !== 0 }
       // ── 配置备份 / 还原（§5.15）──
       case CMD.CONFIG_EXPORT_BEGIN:
         return {
@@ -601,6 +608,7 @@ function decodeGetConfig(r: Reader, name: string): Record<string, unknown> {
     else if (tag === 0x03) cfg.lpf_alpha = rr.i32()
     else if (tag === 0x04) cfg.runtime_model = rr.i32()
     else if (tag === 0x05) cfg.telem2_mask = rr.u8()
+    else if (tag === 0x06) cfg.lock_zero_imu = rr.u8() !== 0
     else if (tag >= 0x10 && tag <= 0x17) {
       const slot = tag - 0x10
       // 固件仅回模型名 str（完整通道数据经 GET_MODEL 按需拉取）
