@@ -72,7 +72,7 @@
                               <div class="range-ticks">
                                 <span v-for="t in tickValues" :key="t" class="range-tick"
                                   :class="{ 'tick-hl': tickHighlight.has(t) }"
-                                  :style="{ left: ((t - 1000) / 10) + '%' }">{{ t }}</span>
+                                  :style="{ left: tickLeftPx(idx, t, 1000, 2000) }">{{ t }}</span>
                               </div>
                             </div>
                           </template>
@@ -98,10 +98,10 @@
                                 <span v-for="t in tickValues" :key="t" class="range-tick"
                                   :class="{ 'tick-hl': tickHighlight.has(t), 'tick-overlap': isTickOverlap(idx, t) }"
                                   :data-t="t"
-                                  :style="{ left: ((t - 1000) / 10) + '%' }">{{ t }}</span>
+                                  :style="{ left: tickLeftPx(idx, t, 1000, 2000) }">{{ t }}</span>
                                 <!-- 中心值刻度: 始终绘制, 与静态刻度字符重叠时隐藏静态刻度 -->
                                 <span class="range-tick tick-center"
-                                  :style="{ left: ((centerValue(ch) - 1000) / 10) + '%' }">{{ centerValue(ch) }}</span>
+                                  :style="{ left: tickLeftPx(idx, centerValue(ch), 1000, 2000) }">{{ centerValue(ch) }}</span>
                               </div>
                             </div>
                           </template>
@@ -297,7 +297,7 @@
                                 <div class="range-ticks">
                                   <span v-for="t in tickValues" :key="t" class="range-tick"
                                     :class="{ 'tick-hl': tickHighlight.has(t) }"
-                                    :style="{ left: ((t - 1000) / 10) + '%' }">{{ t }}</span>
+                                    :style="{ left: tickLeftPx(null, t, 1000, 2000) }">{{ t }}</span>
                                 </div>
                               </div>
                             </div>
@@ -381,7 +381,7 @@
                                 <div class="range-ticks">
                                   <span v-for="t in tickValues" :key="t" class="range-tick"
                                     :class="{ 'tick-hl': tickHighlight.has(t) }"
-                                    :style="{ left: ((t - 1000) / 10) + '%' }">{{ t }}</span>
+                                    :style="{ left: tickLeftPx(null, t, 1000, 2000) }">{{ t }}</span>
                                 </div>
                               </div>
                             </div>
@@ -830,7 +830,9 @@ function chanLivePx(idx: number): { left: number; width: number } | null {
   const c0 = m.thumbCenterRel // 左拨杆中心 = output_min 位置
   return {
     left: c0 - m.thumbR, // 左端向左扩展一个半径, 覆盖左拨杆圆弧
-    width: Math.max(0, (m.trackRightRel - c0) * (live.fillPct / 100) + m.thumbR * 2),
+    // fillPct 是全量程 (1000~2000) 百分比, 必须乘整条轨道宽度,
+    // 不能乘 min→轨道右端 的残段长度 (否则拖动 min/max 时填充长度被错误缩放)
+    width: Math.max(0, m.trackWidthRel * (live.fillPct / 100) + m.thumbR * 2),
   }
 }
 
@@ -838,6 +840,20 @@ function chanLivePx(idx: number): { left: number; width: number } | null {
 function chanLivePxList(idx: number): { left: number; width: number }[] {
   const px = chanLivePx(idx)
   return px ? [px] : []
+}
+
+/**
+ * 刻度相对 .range-ticks 容器的横向位置:
+ * 优先用实测轨道几何 (trackLeftRel/trackWidthRel), 与拨杆中心同一坐标系, 保证「拨杆压在刻度上」;
+ * 未测量的滑块 (展开区无 slider-box ref) 回退百分比 —— 此时 .v-slider 外边距已归零,
+ * 轨道与 .range-wrap / .range-ticks 同宽同起点, 百分比即等价。
+ */
+function tickLeftPx(idx: number | null, value: number, min: number, max: number): string {
+  void geoVersion.value // 依赖几何缓存版本号: 布局重测后触发重算
+  const pct = (value - min) / (max - min)
+  const m = idx == null ? undefined : boxMetrics.get(idx)
+  if (m && m.trackWidthRel > 0) return `${m.trackLeftRel + m.trackWidthRel * pct}px`
+  return `${pct * 100}%`
 }
 
 // 滑块容器引用 + 窗口尺寸变化 → 用于测量通道条
@@ -1390,9 +1406,16 @@ onUnmounted(() => {
   padding: 0 24px 0 16px; /* 左 16px, 右 24px (右侧 ×1.5), 给左右手柄留安全距离 */
 }
 
-/* 消除 Vuetify 滑块默认左右缩进, 轨道在 16px 内边距内占满整行 */
-:deep(.chan-head-right .v-slider) {
+/* 消除 Vuetify 滑块默认 8px 左右缩进: 轨道与 .range-wrap / 刻度容器同宽同起点 */
+.range-wrap :deep(.v-slider) {
   margin-inline: 0 !important;
+}
+
+/* 拨杆实际尺寸 24px (.v-slider-thumb__surface), 同步 --v-slider-thumb-size:
+   该变量由 Vuetify 以内联样式写在 .v-slider-thumb 上(默认 20px), 需同元素 !important 覆盖,
+   否则 inset-inline-start 少减 2px → 拨杆中心恒右偏 (24-20)/2 px, 压不住刻度 */
+.range-wrap :deep(.v-slider-thumb) {
+  --v-slider-thumb-size: 24px !important;
 }
 
 /* 窄卡片: 左右布局退回单行换行 + 信息组横排 (基于卡片实际宽度) */
@@ -1620,15 +1643,16 @@ onUnmounted(() => {
 
 /* switch 配色已统一到 src/styles/switches.css (全局) */
 
-/* 静态刻度: 按数值百分比定位 + 竖线标记 */
+/* 静态刻度: 按数值位置定位 (实测轨道 px / 回退百分比) + 竖线标记 */
 .range-ticks {
   position: relative;
   height: 22px;
   line-height: 1;
   margin-top: 2px;
-  /* 与 .chan-head-right 的 padding 对齐 (左 16px / 右 24px), 使刻度区间与轨道区间一致 */
-  margin-left: 16px;
-  margin-right: 24px;
+  /* 不再二次内缩: .range-wrap 已在 .chan-head-right 的 padding 之内;
+     刻度 0%~100% 必须与滑块轨道 0%~100% 重合 (拨杆位置即刻度值位置) */
+  margin-left: 0;
+  margin-right: 0;
   font-size: 0.68rem;
   color: rgba(255, 255, 255, 0.4);
 }
