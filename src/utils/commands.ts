@@ -175,6 +175,11 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
       break
     case CMD.SET_TELEM2:
       // 遥测转发端口位掩码: bit0=USB, bit1=BLE (§5.13)
+      // ⚠ 自锁风险 (FE-02): 被置位的端口会转为**纯 MAVLink 遥测口**,
+      //   该口的二进制指令由固件通道层门卫**静默丢弃** —— 即"通过 USB 连接时把 bit0 置 1"
+      //   会立刻失去 USB 配置通道, 且该值**落 NVS 持久化**(重启不恢复)。
+      //   解除方式只有三种: 从另一个未被占用的口(BLE)改回、NVS 全分区擦除、出厂复位。
+      //   → UI 侧必须提示用户, 并禁止把"当前正在使用的那个口"置位。
       w.u8(Number(params.mask ?? 0))
       break
     case CMD.SET_LOCK_ZERO:
@@ -185,6 +190,9 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
       w.u32(Number(params.size ?? 0))
       break
     case CMD.OTA_CHUNK:
+      // F-28: u32 offset(本片首字节在镜像中的绝对偏移) + 数据(可空)
+      // 负载 ≤4B(仅 offset 或无负载) = 进度探针: 固件只回读"已接受累计", 不写 flash
+      w.u32(Number(params.offset ?? 0))
       if (params.data instanceof Uint8Array) w.bytes(params.data)
       break
     case CMD.ELRS_FLASH_BEGIN:
@@ -483,6 +491,11 @@ function decodeChannelTlv(value: Uint8Array): ModelChannel {
 export function decodeResponse(cmdId: number, status: number, data: Uint8Array): Record<string, unknown> | null {
   const name = cmdIdToName(cmdId)
   if (status !== STATUS_OK) {
+    // F-28: OTA_CHUNK 的失败响应仍带 u32「期望 offset」—— 主机据此从该处重传
+    if (cmdId === CMD.OTA_CHUNK && data.length >= 4) {
+      const rerr = new Reader(data)
+      return { cmd: name, ok: false, error: statusText(status), status, expected_offset: rerr.u32() }
+    }
     return { cmd: name, ok: false, error: statusText(status), status }
   }
   const r = new Reader(data)
@@ -531,6 +544,8 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
         return { cmd: name, content_type: r.u8(), interval_ms: r.u16(), flags: r.u8() }
       case CMD.SET_TELEM2:
         // 回显生效后的掩码 (bit0=USB, bit1=BLE)
+        // 注: 非 OK 状态已在 decodeResponse() 入口提前返回, 故此处读到的一定是成功回显。
+        //     固件对 mask==0x03 返回 S_BAD_PARAM (自锁保护), 前端会走错误分支而非解析出假掩码。
         return { cmd: name, ok: true, telem2_mask: r.u8() }
       case CMD.MAVLINK_LINK_STATS:
         // §5.12 桥视角链路快照：RF 字段(ul_*/dl_*) + 桥自身下行(手柄 → GCS)出口统计

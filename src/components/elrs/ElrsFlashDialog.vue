@@ -125,7 +125,7 @@
   import { computed, ref } from 'vue'
   import { BleService, serialService } from '@/services/SerialService'
   import { useSerialStore } from '@/stores/serial'
-  import { decoderStats, FLASH_BEGIN_ERASE_ALL } from '@/utils/protocol'
+  import { decoderStats, FLASH_BEGIN_ERASE_ALL, STATUS_BUSY } from '@/utils/protocol'
 
   const props = defineProps<{ modelValue: boolean }>()
   const emit = defineEmits<{
@@ -149,6 +149,16 @@
   const USB_CHUNK_SIZE = 992
   /** BEGIN 含目标侧擦除：整片擦除时 4MB 最长达 40s，超时给足 */
   const BEGIN_TIMEOUT_MS = 60_000
+  /**
+   * FE-09: 上一次会话中止后，固件在 **10s 内**仍把会话视为"忙碌"并以 `S_BUSY` 拒绝 BEGIN
+   * （`lib/FwFlash/fw_flash.cpp` 的 `flashTryClaim()` 陈旧会话判定：idle < 10s → reject）。
+   * 触发场景：上次中止时那条 ABORT 的**请求帧**丢了（USB 侧实测丢帧 1~7%），用户随即点重试。
+   * 此时退避 2s × 6 次刚好盖住 10s 窗口，避免"立刻重试必然又失败"的观感。
+   */
+  const BEGIN_BUSY_RETRIES = 6
+  const BEGIN_BUSY_BACKOFF_MS = 2000
+  /** ABORT 是会话收尾命令：固件靠它释放会话所有权 + 复位目标，必须确认到响应 */
+  const ABORT_TIMEOUT_MS = 5000
   /**
    * 单片超时。实测：成功单片 wait ≈ 100ms、send ≈ 3ms；失败单片必然耗满整个超时
    * （现场 max 恰好等于本值 3002ms）。所以本值直接就是失败代价，应贴着真实延迟取：
@@ -184,8 +194,10 @@
   /** 进度查询（0 字节空包）超时：固件侧是纯查询不落 flash，不该慢 */
   const PROBE_TIMEOUT_MS = 3000
   /** 链路重同步次数上限：超过说明链路持续丢帧，不再无意义重试。
-   *  诊断期临时抬高到 800：按超时率 ~21% 估，1447 片会产生约 300 次重同步，
-   *  而 400 在 3.8 KB/s 那轮已经逼近上限。等超时率降下来后应调回。 */
+   *  取 800 的实测依据（2026-09-26 全量烧录 DJI M2 TX C3 E28 1.37MB 镜像：
+   *  主机侧 1447 片、实测 227 次重同步 ≈ 15.7% 响应丢失）—— 400 的余量只有约 1.7 倍，
+   *  而 USB 链路丢帧（F-34 家族）尚未根治。本常量只作「别对彻底断掉的链路无限重试」的
+   *  兜底，不是丢帧率门限，故在丢帧率降到个位数百分比前保持 800。 */
   const MAX_RESYNCS = 800
 
   /** 写入起点固定 0x000000：只烧完整镜像(bootloader + 分区表 + app)，固件侧会拒绝其它值 */
@@ -375,12 +387,27 @@
       // 1) BEGIN：进 ROM 下载模式 + 握手 + [可选整片擦除] + 擦除目标区域（可能耗时数十秒）
       //    不再单独探测链路：固件侧 BEGIN 内部就会握手（探测命令 0x070B 已废弃）
       phaseLabel.value = eraseAll.value ? '整片擦除中，请勿断电…' : '初始化烧录…'
-      const begin = await sendAndWait('elrs_flash_begin', {
-        offset,
-        image_size: data.byteLength,
-        flags: eraseAll.value ? FLASH_BEGIN_ERASE_ALL : 0,
-      }, BEGIN_TIMEOUT_MS)
-      if (begin.ok !== true) throw new Error(String(begin.error || '烧录初始化失败'))
+      // FE-09: `S_BUSY` 表示固件侧"上一会话尚未释放"（10s 空闲窗口内），不是真故障 ——
+      // 退避重试即可，别让用户看到"中止后立刻重试必然失败"（见 BEGIN_BUSY_* 注释）。
+      let begin: Record<string, unknown> | null = null
+      for (let attempt = 0; attempt < BEGIN_BUSY_RETRIES; attempt++) {
+        const resp = await sendAndWait('elrs_flash_begin', {
+          offset,
+          image_size: data.byteLength,
+          flags: eraseAll.value ? FLASH_BEGIN_ERASE_ALL : 0,
+        }, BEGIN_TIMEOUT_MS)
+        if (resp.ok === true) {
+          begin = resp
+          break
+        }
+        if (Number(resp.status) !== STATUS_BUSY) {
+          throw new Error(String(resp.error || '烧录初始化失败'))
+        }
+        const leftS = ((BEGIN_BUSY_RETRIES - attempt - 1) * BEGIN_BUSY_BACKOFF_MS) / 1000
+        phaseLabel.value = `设备仍在结束上一次烧录会话，${BEGIN_BUSY_BACKOFF_MS / 1000}s 后重试…（最多再等 ${leftS}s）`
+        await new Promise(r => setTimeout(r, BEGIN_BUSY_BACKOFF_MS))
+      }
+      if (!begin) throw new Error('烧录初始化失败：设备会话未释放，请等十几秒后再试')
       sessionOpen = true
 
       // 分片大小按链路介质选: chunk_hint(240) 是固件为 BLE 定的 —— 避免 BLE 层再分片。
@@ -617,11 +644,20 @@
       emit('done', summary)
     } catch (error_) {
       error.value = `烧录失败: ${error_ instanceof Error ? error_.message : String(error_)}`
-      // 失败必须补一条 ABORT：否则被暂停的流不会恢复、ELRS 可能停在下载模式
+      // 失败必须补一条 ABORT：否则被暂停的流不会恢复、ELRS 可能停在下载模式。
+      // FE-09: 必须**等响应**并在未确认时重试一次 —— 原来只 sendCommand() 不等回包，
+      // 那条帧一丢固件侧所有权就不释放，随后 10s 内的重试会被 BEGIN 拒为 S_BUSY。
       if (sessionOpen) {
-        try {
-          await serialService.sendCommand('elrs_flash_abort')
-        } catch { /* ignore */ }
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const ack = await sendAndWait('elrs_flash_abort', undefined, ABORT_TIMEOUT_MS)
+            if (ack.ok === true) break
+            throw new Error(String(ack.error || 'abort 未确认'))
+          } catch (abortErr) {
+            if (attempt === 1) console.error('[Flash] abort 未确认，设备可能停在下载模式:', abortErr)
+            else await new Promise(r => setTimeout(r, 200))
+          }
+        }
       }
       phaseLabel.value = ''
     } finally {

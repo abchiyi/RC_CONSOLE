@@ -125,6 +125,8 @@ export class SerialService {
   }
 
   async disconnect (): Promise<void> {
+    // FE-04: 清掉解码器半帧与未收齐分片，避免跨连接残留
+    this.handler.reset()
     if (!this.port) {
       return
     }

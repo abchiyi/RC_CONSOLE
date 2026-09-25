@@ -74,6 +74,8 @@ export class ElectronSerialService {
 
   /** 断开串口 */
   async disconnect (): Promise<void> {
+    // FE-04: 清掉解码器半帧与未收齐分片，避免跨连接残留
+    this.handler.reset()
     this.cleanupListeners()
     if (this._connected) {
       try {

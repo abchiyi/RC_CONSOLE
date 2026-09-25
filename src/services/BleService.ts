@@ -147,6 +147,8 @@ export class BleService {
 
   /** 断开 BLE 连接 */
   async disconnect (): Promise<void> {
+    // FE-04: 清掉解码器半帧与未收齐分片，避免跨连接残留
+    this.handler.reset()
     this._connected = false
     try {
       await this.tx?.stopNotifications()

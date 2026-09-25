@@ -51,6 +51,16 @@ export class BinaryHandler {
     this.decoder.feed(bytes)
   }
 
+  /**
+   * 重置解码器 / 分片重组器 / 流标志（断开或重连时调用，FE-04）：
+   * 丢片产生的「半包」不会再随连接残留，_streamFlags 也不会跨会话沿用旧值。
+   */
+  reset (): void {
+    this.decoder.reset()
+    this.assembler.reset()
+    this._streamFlags = 0
+  }
+
   private handleFrame (frame: DecodedFrame): void {
     try {
       if (frame.type === FRAME_FRAGMENT) {

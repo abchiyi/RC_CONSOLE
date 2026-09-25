@@ -24,9 +24,13 @@ export const FRAME_FRAGMENT = 3
 export const FRAME_ACK = 4
 
 /** FLAGS 位定义 */
-export const FLAG_FRAGMENTED = 0x01
-export const FLAG_NEED_ACK = 0x02
-export const FLAG_RESERVED = 0x04
+// 帧标志位 —— 与固件 lib/CommandCenter/protocol.h 的 `enum Flags` **逐位对齐**（FE-08）。
+// 固件当前只实现了 0x01；0x02 / 0x04 在其枚举中**并不存在**，故前端这两个常量属
+// **预留位**：可以定义以便将来对齐，但**不得单独使用**（固件会忽略 → 静默无应答）。
+// 若将来要启用，必须先在固件侧补 `F_NEED_ACK` / `F_RESERVED` 并实现对应行为，两端同步发版。
+export const FLAG_FRAGMENTED = 0x01 // 负载为分片包（唯一已实现）
+export const FLAG_NEED_ACK = 0x02 // [预留·固件未实现] 需应答
+export const FLAG_RESERVED = 0x04 // [预留·固件未实现]
 
 /** 状态码（与固件 protocol.h 的 Status 枚举一致） */
 export const STATUS_OK = 0
@@ -478,6 +482,13 @@ export class StreamDecoder {
     this.frameListeners.add(cb)
   }
 
+  /** 清空半帧残留（断开/重连时调用，FE-04）：不计数、不当日志，直接丢弃 */
+  reset (): void {
+    this.buf = []
+    this.waiting = false
+    this.lastFeedMs = 0
+  }
+
   onLog (cb: (line: string) => void): void {
     this.logListeners.add(cb)
   }
@@ -615,9 +626,24 @@ export interface AssembledPayload {
 }
 
 export class FragmentAssembler {
-  private map = new Map<number, { total: number, totalLen: number, origType: number, chunks: Uint8Array[] }>()
+  /** 未收齐的分片会话保留上限 (ms)：固件侧单帧最大 16KB，正常应在数百 ms 内收齐 */
+  private static readonly TTL_MS = 5000
+  private map = new Map<number, {
+    total: number
+    totalLen: number
+    origType: number
+    chunks: Uint8Array[]
+    lastSeen: number
+  }>()
+
+  /** 清空未收齐的分片（断开/重连时调用，避免跨连接残留，FE-04） */
+  reset (): void {
+    this.map.clear()
+  }
 
   push (frame: DecodedFrame): AssembledPayload | null {
+    const now = Date.now()
+    this.evictExpired(now)
     const p = frame.payload
     if (p.length < 7) {
       return null
@@ -634,9 +660,10 @@ export class FragmentAssembler {
     }
     let entry = this.map.get(fragId)
     if (!entry) {
-      entry = { total, totalLen, origType, chunks: new Array<Uint8Array>(total) }
+      entry = { total, totalLen, origType, chunks: new Array<Uint8Array>(total), lastSeen: now }
       this.map.set(fragId, entry)
     }
+    entry.lastSeen = now
     entry.chunks[index] = data
     if (entry.chunks.every(c => c !== undefined)) {
       this.map.delete(fragId)
@@ -650,5 +677,14 @@ export class FragmentAssembler {
       return { origType: entry.origType, payload: out }
     }
     return null
+  }
+
+  /** 丢弃超时未收齐的分片会话（丢片时不再常驻内存，FE-04） */
+  private evictExpired (now: number): void {
+    for (const [id, e] of this.map) {
+      if (now - e.lastSeen > FragmentAssembler.TTL_MS) {
+        this.map.delete(id)
+      }
+    }
   }
 }

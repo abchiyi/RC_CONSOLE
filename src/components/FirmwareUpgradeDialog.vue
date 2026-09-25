@@ -55,6 +55,7 @@
 import { ref, computed } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import { serialService } from '@/services/SerialService'
+import { STATUS_SEQ_ERR, STATUS_SIZE_ERR } from '@/utils/protocol'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
@@ -140,80 +141,96 @@ async function startFirmwareUpdate() {
 
   try {
     const data = new Uint8Array(await selectedFile.arrayBuffer())
+    // FE-10: 固件 BEGIN 最坏耗时远超默认超时 —— 会话重入路径（上一会话未 ABORT/FINISH
+    //        就再次 BEGIN：残镜像 esp_ota_end 校验 + 全分区重擦）实测 ~120s；正常收尾后
+    //        的脏分区 ~0.5s、已擦分区 ~0.4s。默认 10s 超时命中慢路径即误报「OTA 初始化失败」。
+    firmwareStatus.value = '正在擦除目标分区…（首次或重试可能需 1~2 分钟，请勿断开）'
     const beginResp = await sendCommandAndWait('ota_begin', {
       size: data.byteLength,
-    })
+    }, 180000)
 
     if (beginResp.ok !== true) {
+      firmwareStatus.value = ''
       firmwareError.value = String(beginResp.error || 'OTA 初始化失败')
       return
     }
 
     otaStarted = true
+    firmwareStatus.value = '正在上传固件…'
     const serverChunkSize = Number(beginResp.chunk_hint ?? chunkSize)
     const uploadChunkSize = Number.isFinite(serverChunkSize) && serverChunkSize > 0 ? serverChunkSize : chunkSize
     const totalChunks = Math.max(1, Math.ceil(data.byteLength / uploadChunkSize))
 
     // 流水线+窗口确认: 每 WINDOW_SIZE 个 chunk 等一次响应同步, 兼顾速度和可靠性
     const WINDOW_SIZE = 16
+    const MAX_RESEND = 20 // F-28: 丢帧导致的整段重传次数上限
     let lastError: string | null = null
-    let lastWritten = 0
+    // F-28: 设备"已接受累计" = 下一个期望 offset (链路确认点; 与落盘进度解耦, 不会回退)
+    let accepted = 0
     let shouldStop = false
     const errorHandler = (obj: Record<string, unknown>) => {
       if (obj.cmd === 'ota_chunk') {
         if (obj.ok === false) {
+          // F-28: offset 不匹配(请求丢帧/响应丢帧/重复帧)属**可自愈**情形 ——
+          // 固件在响应里带回"期望 offset", 由下面的窗口同步从该处重传; 其余错误照旧中止。
+          if (obj.status === STATUS_SEQ_ERR || obj.status === STATUS_SIZE_ERR) return
           lastError = String(obj.error || '分片写入失败')
           shouldStop = true
+        } else if (typeof obj.total_written === 'number') {
+          accepted = Math.max(accepted, obj.total_written)
         }
-        // 取 max 而非覆盖: chunk 响应是"已入队"的乐观值, 探针响应是"已写完"的真实值,
-        // 两者交错时较小的真实值会把进度拉回去, 导致窗口同步误判为饥饿
-        else if (typeof obj.total_written === 'number') lastWritten = Math.max(lastWritten, obj.total_written)
       }
     }
     serialService.onObject(errorHandler)
 
-    // 进度探针: 空负载的 ota_chunk。固件对 len==0 走早期分支, 只回读 g_ota_bytes_written
-    // (不写 flash)。这是唯一能主动催出 OTA 进度的手段 —— OTA_CHUNK 是被动响应,
-    // 窗口同步若只是"停发干等", 就再不会有响应抵达, lastWritten 冻结, 必然假超时。
+    // 进度探针: 只带 offset、不带数据的 ota_chunk。固件对负载 ≤4B 走早期分支, 只回读
+    // "已接受累计"(不写 flash)。这是唯一能主动催出 OTA 进度的手段 —— OTA_CHUNK 是被动响应,
+    // 窗口同步若只是"停发干等", 就再不会有响应抵达, accepted 冻结, 必然假超时。
     const probeChunk = new Uint8Array(0)
 
     let sentBytes = 0
-    for (let index = 0; index < totalChunks && !shouldStop; index++) {
+    let resendCount = 0
+    for (let index = 0; index < totalChunks && !shouldStop;) {
       const start = index * uploadChunkSize
       const end = Math.min(start + uploadChunkSize, data.byteLength)
       const chunk = data.subarray(start, end)
-      await serialService.sendCommand('ota_chunk', { data: chunk })
-      sentBytes += chunk.length
+      await serialService.sendCommand('ota_chunk', { offset: start, data: chunk })
+      sentBytes = end
+      index++
       firmwareProgress.value = Math.round((sentBytes / data.byteLength) * 100)
 
-      // 每窗口等一次同步: 确认固件已收到且队列未溢出
-      if ((index + 1) % WINDOW_SIZE === 0 || index === totalChunks - 1) {
+      // 每窗口等一次同步: 确认固件已接受(含链路重传)
+      if (index % WINDOW_SIZE === 0 || index === totalChunks) {
         const syncStart = Date.now()
-        // 等 lastWritten 追上已发字节, 最多 5s。
-        // 必须边等边发探针: 否则停发即断流, lastWritten 冻结 —— 后台 worker 其实早已
-        // 写完(它不依赖上位机发片), 却永远不会被上报, 于是每次窗口同步都假超时。
-        while (lastWritten < sentBytes && Date.now() - syncStart < 5000 && !shouldStop) {
-          await serialService.sendCommand('ota_chunk', { data: probeChunk })
+        while (accepted < sentBytes && Date.now() - syncStart < 5000 && !shouldStop) {
+          await serialService.sendCommand('ota_chunk', { offset: accepted, data: probeChunk })
           await new Promise(r => setTimeout(r, 20))
         }
         if (shouldStop) break
-        if (lastWritten < sentBytes) {
-          shouldStop = true
-          lastError = `固件响应滞后: 已发 ${sentBytes} / 固件确认 ${lastWritten}`
-          break
+        if (accepted < sentBytes) {
+          // F-28: 有片未被接受 —— 从设备确认的 offset 处重传(不再是致命错误)
+          if (++resendCount > MAX_RESEND) {
+            shouldStop = true
+            lastError = `重传次数超限: 已发 ${sentBytes} / 设备确认 ${accepted}`
+            break
+          }
+          console.warn(`[OTA] 链路重传 #${resendCount}: 已发 ${sentBytes} -> 回到 ${accepted}`)
+          index = Math.floor(accepted / uploadChunkSize)
+          sentBytes = index * uploadChunkSize
         }
       }
       // 每 64 个 chunk 让出事件循环
-      if (index % 64 === 63) await new Promise(r => setTimeout(r, 0))
+      if (index % 64 === 0) await new Promise(r => setTimeout(r, 0))
     }
 
     serialService.removeObjectListener(errorHandler)
     if (shouldStop) throw new Error(lastError || '传输中断')
-    if (lastWritten !== data.byteLength) {
-      throw new Error(`数据不完整: 已写 ${lastWritten} / 应写 ${data.byteLength}`)
+    if (accepted !== data.byteLength) {
+      throw new Error(`数据不完整: 已写 ${accepted} / 应写 ${data.byteLength}`)
     }
 
-    const finishResp = await sendCommandAndWait('ota_finish', {}, 60000)
+    // FE-10: FINISH 需等队列排空 + esp_ota_end() 校验整镜像 + 设置启动分区, 60s 偏紧
+    const finishResp = await sendCommandAndWait('ota_finish', {}, 180000)
     if (finishResp.ok !== true) {
       throw new Error(String(finishResp.error || 'OTA 结束失败'))
     }
@@ -237,6 +254,7 @@ async function startFirmwareUpdate() {
     }, 3000)
   } catch (e: unknown) {
     console.error('[OTA] failed:', e)
+    firmwareStatus.value = ''
     if (otaStarted) {
       try {
         await serialService.sendCommand('ota_abort')
