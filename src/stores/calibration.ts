@@ -6,6 +6,7 @@
 import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
 import { serialService } from '@/services/SerialService'
+import { RequestResponseHandler, waitIdempotentAck } from '@/utils/requestResponse'
 import { OWNER, requestStream, releaseStream } from './stream'
 
 export interface AdcCal {
@@ -58,6 +59,14 @@ export const useCalibrationStore = defineStore('calibration', () => {
   const lastMessage = ref('')
   const lastType = ref<CalType | null>(null)
 
+  /** 有"仅改设备内存、尚未保存"的改动 —— 与通道页同一套模式: 改 → 保存 → 落 NVS */
+  const calDirty = ref(false)
+
+  // 保存是全局的（CMD_SAVE 一次落下 通道 + 校准 + 曲线）→ 任一页保存成功都清掉本页标志
+  window.addEventListener('app:config-saved', () => { calDirty.value = false })
+
+  const rr = new RequestResponseHandler()
+
   // ---- 命令发送 ----
 
   async function startCal(type: CalType): Promise<void> {
@@ -90,19 +99,25 @@ export const useCalibrationStore = defineStore('calibration', () => {
     await serialService.sendCommand('cal_get')
   }
 
+  /** 设置死区: 只改设备内存(立即生效), 落盘由 saveCal() 统一负责 */
   async function setDeadzone(type: string, deadzone: number): Promise<void> {
     await serialService.sendCommand('cal_set_deadzone', { type, deadzone })
+    calDirty.value = true
   }
 
+  /** LPF α: 只改设备内存, 落盘由 saveCal() 负责 (原实现每次直接整份 Config.save()) */
   async function setLpf(alpha: number): Promise<void> {
     await serialService.sendCommand('cal_set_lpf_alpha', { alpha })
+    calDirty.value = true
   }
 
-  /** 写入输出响应曲线 (cubic-bezier 4 参数), 固件立即持久化到 NVS; 启用与否由模型级开关控制 */
+  /** 写入输出响应曲线 (cubic-bezier 4 参数): 只改设备内存并重建 LUT;
+   *  落盘由 saveCal() 统一负责; 启用与否由模型级开关控制 */
   async function setCurve(type: CurveType, c: OutputCurve): Promise<void> {
     await serialService.sendCommand('cal_set_curve', {
       type, x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2,
     })
+    calDirty.value = true
   }
 
   // 0位校准响应确认（cal_zero_imu → {cmd, ok}）
@@ -177,6 +192,38 @@ export const useCalibrationStore = defineStore('calibration', () => {
   /** 标记死区是否已从设备加载，避免 30ms 轮询覆盖用户拖拽的滑块值 */
   let _deadzonesLoaded = false
 
+  // ---- 保存 / 从设备重新加载 (与通道页同一套模式) ----
+
+  /** 保存到设备 NVS (CMD_SAVE): 固件一次落下 通道/全局配置 + 校准(死区等) + 6 条响应曲线。
+   *  `save` 幂等 → 确认帧丢失时重试 (USB 侧实测丢帧 10~40%, 拖动时更明显) */
+  async function saveCal(): Promise<boolean> {
+    const r = await waitIdempotentAck(rr, 'save', () => serialService.sendCommand('save'), 4000, 2)
+    if (r === 'ok') {
+      calDirty.value = false
+      window.dispatchEvent(new CustomEvent('app:config-saved')) // 同步清掉通道页的标志
+      return true
+    }
+    lastMessage.value = r === 'fail'
+      ? '保存失败（设备返回错误）'
+      : '保存未收到设备确认（链路丢包）；设备可能已保存，请用「从设备加载」核对'
+    return false
+  }
+
+  /** 「从设备加载」: 让设备丢弃内存改动 (0x0107 = reset_defaults + 从 NVS 重建) 再重新拉取校准数据。
+   *  `load` 幂等 → 确认帧丢失时重试; 仍未确认也继续 (随后的 cal_get 才是真值) */
+  async function reloadFromNvs(): Promise<boolean> {
+    const r = await waitIdempotentAck(rr, 'load', () => serialService.sendCommand('load'), 2500, 3)
+    if (r === 'fail') {
+      lastMessage.value = '设备未能从 NVS 重建配置'
+      return false
+    }
+    calDirty.value = false
+    _deadzonesLoaded = false // 放行随后的 cal_get 重新填死区滑块 (设备侧已回到 NVS 值)
+    await fetchCalData()
+    if (r === 'unacked') lastMessage.value = '已按设备 NVS 重新加载（未收到确认，链路丢包）'
+    return true
+  }
+
   function handleResponse(json: Record<string, unknown>): void {
     // 注：实时 raw+IMU 已并入流式推送（STREAM content_type=1 → applyCalRaw）
 
@@ -220,6 +267,9 @@ export const useCalibrationStore = defineStore('calibration', () => {
     if (json.cmd === 'cal_get' || json.adc || json.imu || json.lpf_alpha !== undefined) {
       applyCalData(json as Record<string, any>)
     }
+
+    // save / load 响应: 匹配等待中的请求 (与配置页同一套 rr 约定)
+    if (typeof json.cmd === 'string') rr.tryResolve(json.cmd, json.ok)
   }
 
   function applyCalData(data: Record<string, any>): void {
@@ -364,6 +414,9 @@ export const useCalibrationStore = defineStore('calibration', () => {
     setDeadzone,
     setLpf,
     setCurve,
+    calDirty,
+    saveCal,
+    reloadFromNvs,
     zeroIMU,
     startStatusPolling,
     startCalTimeout,

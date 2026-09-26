@@ -1,6 +1,7 @@
 <template>
   <div class="system-page">
-    <v-snackbar v-model="snackbarVisible" color="info" timeout="2000">
+    <!-- 统一提示: 配色由 useNotice 决定 (成功=绿 / 失败=红 / 提醒=橙), tonal 变体不刺眼 -->
+    <v-snackbar v-model="snackbarVisible" :color="snackbarColor" :timeout="noticeTimeout" variant="tonal">
       {{ snackbarMsg }}
     </v-snackbar>
 
@@ -18,25 +19,16 @@
     </v-alert>
 
     <div v-if="serial.connected" class="sys-root">
-      <!-- 实时状态卡片 -->
+      <!-- 关于系统卡片: 设备信息 + 主控固件升级入口 (置顶) -->
       <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
         <v-card-item class="pb-0">
           <template #prepend>
             <v-avatar color="primary" size="36" class="cal-avatar">
-              <v-icon color="white" size="20">mdi-monitor-dashboard</v-icon>
+              <v-icon color="white" size="20">mdi-information-outline</v-icon>
             </v-avatar>
           </template>
-          <v-card-title>系统状态</v-card-title>
-          <v-card-subtitle>设备型号、软硬件版本与实时电源状态</v-card-subtitle>
-          <template #append>
-            <v-chip v-if="stateError" color="error" size="x-small" variant="tonal">
-              {{ stateError }}
-            </v-chip>
-            <v-chip v-else-if="power.state" :color="pollActive ? 'success' : 'grey'" size="x-small" variant="tonal">
-              <v-icon start size="12">mdi-circle</v-icon>
-              监控中
-            </v-chip>
-          </template>
+          <v-card-title>关于系统</v-card-title>
+          <v-card-subtitle>设备型号、软硬件版本与固件升级</v-card-subtitle>
         </v-card-item>
 
         <v-card-text class="pt-2 pb-3">
@@ -59,10 +51,47 @@
                 </div>
               </div>
             </div>
+          </div>
 
-            <!-- 电源状态 -->
+          <div class="cal-hint hint-neutral">
+            <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
+            <span>固件升级经 USB 写入主控 OTA 分区：选定镜像后请勿断电或拔线，写完后设备自动重启进入新固件。</span>
+          </div>
+
+          <!-- 与 ELRS 页「模块固件升级」卡片一致: 整宽主色 tonal 按钮 (深色底上不如实色刺眼) -->
+          <v-btn block class="mt-3" color="primary" prepend-icon="mdi-upload-network" variant="tonal"
+            @click="upgradeDialog = true">
+            <span class="btn-text">固件升级</span>
+          </v-btn>
+        </v-card-text>
+      </v-card>
+
+      <!-- 电源卡片 (原「系统状态」卡的实时电源部分) -->
+      <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
+        <v-card-item class="pb-0">
+          <template #prepend>
+            <v-avatar color="primary" size="36" class="cal-avatar">
+              <v-icon color="white" size="20">mdi-battery-charging</v-icon>
+            </v-avatar>
+          </template>
+          <v-card-title>电源</v-card-title>
+          <v-card-subtitle>实时电池与供电状态</v-card-subtitle>
+          <template #append>
+            <v-chip v-if="stateError" color="error" size="x-small" variant="tonal">
+              {{ stateError }}
+            </v-chip>
+            <v-chip v-else-if="power.state" :color="pollActive ? 'success' : 'grey'" size="x-small" variant="tonal">
+              <v-icon start size="12">mdi-circle</v-icon>
+              监控中
+            </v-chip>
+          </template>
+        </v-card-item>
+
+        <v-card-text class="pt-2 pb-3">
+          <div class="stat-groups">
+            <!-- 实时读数 -->
             <div class="stat-group">
-              <div class="stat-group-title">电源状态</div>
+              <div class="stat-group-title">实时读数</div>
               <div class="stat-kv-grid">
                 <div class="stat-kv">
                   <span class="stat-label">电量</span>
@@ -379,15 +408,12 @@
 
     <FirmwareUpgradeDialog v-model="upgradeDialog" />
 
-    <!-- 底栏操作按钮: Teleport 到全局底栏右侧槽 (App.vue) -->
+    <!-- 底栏操作按钮: Teleport 到全局底栏右侧槽 (App.vue)
+         注: 主控固件升级入口已移入页面内「关于系统」卡片 -->
     <Teleport to="#global-footer-right">
-      <v-btn v-if="serial.connected && cfgDirty" class="btn-secondary me-2" prepend-icon="mdi-content-save" size="small"
+      <v-btn v-if="serial.connected && cfgDirty" class="btn-secondary" prepend-icon="mdi-content-save" size="small"
         :loading="power.loading" @click="saveSettings">
         <span class="btn-text">保存到设备</span>
-      </v-btn>
-      <v-btn v-if="serial.connected" class="btn-secondary" prepend-icon="mdi-upload-network" size="small"
-        @click="upgradeDialog = true">
-        <span class="btn-text">固件升级</span>
       </v-btn>
     </Teleport>
   </div>
@@ -398,6 +424,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useSerialStore } from '@/stores/serial'
 import { usePowerStore } from '@/stores/power'
 import { useConfigStore } from '@/stores/config'
+import { useNotice } from '@/composables/useNotice'
 import { serialService } from '@/services/SerialService'
 import { exportSnapshot, importSnapshot } from '@/services/configBackup'
 import { jsonToSnapshot, snapshotToJson } from '@/utils/configSnapshot'
@@ -408,7 +435,7 @@ const serial = useSerialStore()
 const power = usePowerStore()
 const configStore = useConfigStore()
 
-// ========== 固件升级对话框 ==========
+// ========== 主控固件升级对话框 (入口: 页面内「关于系统」卡片按钮) ==========
 const upgradeDialog = ref(false)
 
 // ========== 轮询 ==========
@@ -539,8 +566,10 @@ const cfgDirty = ref(false)
 const stateError = ref('')
 
 // ========== 操作提示 (snackbar) ==========
-const snackbarVisible = ref(false)
-const snackbarMsg = ref('')
+/** 统一提示: 配色由 type 决定 (成功=绿 / 失败=红 / 提醒=橙 / 其余=蓝) */
+const {
+  text: snackbarMsg, color: snackbarColor, visible: snackbarVisible, show: notify, timeoutMs: noticeTimeout,
+} = useNotice(2000)
 
 // ========== 配置备份 / 还原 (协议 §5.15) ==========
 //   会话期间暂停状态轮询让出链路带宽；设备侧给的是二进制快照，JSON 编解码在上位机完成。
@@ -708,8 +737,7 @@ async function applyTelem2(usb: boolean, bt: boolean): Promise<void> {
     telemError.value = configStore.telem2Error ?? '设置失败'
     return
   }
-  snackbarMsg.value = usb || bt ? '遥测转发已开启' : '遥测转发已关闭'
-  snackbarVisible.value = true
+  notify(usb || bt ? '遥测转发已开启' : '遥测转发已关闭', 'success')
 }
 
 async function confirmTelem2(): Promise<void> {
@@ -764,8 +792,7 @@ async function reloadAll() {
     cfgDirty.value = false
     startPoll()
   } catch {
-    snackbarMsg.value = '配置加载失败'
-    snackbarVisible.value = true
+    notify('配置加载失败', 'error')
   }
 }
 
@@ -785,11 +812,9 @@ async function saveSettings() {
       idle_shutdown_s: shutdownSec.value,
     })
     cfgDirty.value = false
-    snackbarMsg.value = '设置已保存到设备'
-    snackbarVisible.value = true
+    notify('设置已保存到设备', 'success')
   } catch {
-    snackbarMsg.value = '保存失败，请重试'
-    snackbarVisible.value = true
+    notify('保存失败，请重试', 'error')
   }
 }
 
@@ -1192,6 +1217,11 @@ onUnmounted(() => {
 }
 
 /* ── 提示条: 默认 warning 配色, 变体见 .hint-neutral / .hint-error ── */
+/* 与上方内容保持间距: 作为容器首个元素时由容器内边距负责, 否则自动补 12px */
+.cal-hint:not(:first-child) {
+  margin-top: 12px;
+}
+
 .cal-hint {
   display: flex;
   align-items: flex-start;

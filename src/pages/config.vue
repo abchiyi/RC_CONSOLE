@@ -1,6 +1,7 @@
 <template>
   <div class="config-page">
-    <v-snackbar v-model="snackbarVisible" color="info" timeout="2000">
+    <!-- 统一提示: 配色由 useNotice 决定 (成功=绿 / 失败=红 / 提醒=橙), tonal 变体不刺眼 -->
+    <v-snackbar v-model="snackbarVisible" :color="snackbarColor" :timeout="noticeTimeout" variant="tonal">
       {{ snackbarMsg }}
     </v-snackbar>
 
@@ -9,7 +10,9 @@
         <v-icon class="mr-2">mdi-cog</v-icon>
         通道配置
       </v-toolbar-title>
-
+      <v-spacer />
+      <!-- 与传感器页一致: 改动先只写设备内存, 显式保存才落 NVS; 未保存时给出提示 -->
+      <v-chip v-if="configStore.cfgDirty" color="warning" size="small" variant="tonal">未保存</v-chip>
     </v-toolbar>
 
     <!-- 未连接 -->
@@ -437,7 +440,7 @@
         <span class="btn-text">设为默认</span>
       </v-btn>
       <v-btn v-if="configStore.config" class="btn-primary" prepend-icon="mdi-content-save" size="small"
-        :loading="savingModel" @click="saveModel">
+        :loading="savingModel" :disabled="!configStore.cfgDirty" @click="saveModel">
         <span class="btn-text">保存到设备</span>
       </v-btn>
     </Teleport>
@@ -450,6 +453,7 @@ import SliderLabel from '@/components/SliderLabel.vue'
 import { useSerialStore } from '@/stores/serial'
 import { useConfigStore, type ModelChannel, type ButtonEntry, type ChannelTrigger } from '@/stores/config'
 import { useChannelStore } from '@/stores/channels'
+import { useNotice } from '@/composables/useNotice'
 import { rawToUs, usToRaw } from '@/utils/crsf'
 import { GEAR_COUNT } from '@/utils/commands'
 import { CHANNEL_LINK_ONLY } from '@/utils/debugFlags'
@@ -473,7 +477,10 @@ const modelCurveEnabled = computed<boolean>({
   get: () => configStore.config?.models?.[selectedSlot.value]?.curve_enabled ?? true,
   set: (v: boolean) => {
     const m = configStore.config?.models?.[selectedSlot.value]
-    if (m) m.curve_enabled = v
+    if (!m) return
+    m.curve_enabled = v
+    // 直接改写 store 内配置(不经过 setModel) → 手动标记未保存, 否则按钮会一直是"已保存"态
+    configStore.markConfigDirty()
   },
 })
 
@@ -496,8 +503,10 @@ const modelOptions = computed(() =>
     value: i,
   })),
 )
-const snackbarMsg = ref('')
-const snackbarVisible = ref(false)
+/** 统一提示: 配色由 type 决定 (成功=绿 / 失败=红 / 提醒=橙 / 其余=蓝) */
+const {
+  text: snackbarMsg, color: snackbarColor, visible: snackbarVisible, show: notify, timeoutMs: noticeTimeout,
+} = useNotice(2000)
 const savingModel = ref(false)
 
 function toggleExpand(idx: number): void {
@@ -573,14 +582,12 @@ function onSourceChange(idx: number, newSource: string): void {
       if (i === idx) continue
       if (newSource === 'KNOB_EC11' && editChannels[i]!.source === 'KNOB_EC11') {
         editChannels[i]!.source = 'NONE'
-        snackbarMsg.value = `EC11 已从 ${channelDisplayName(i)} 移动到 ${channelDisplayName(idx)}`
-        snackbarVisible.value = true
+        notify(`EC11 已从 ${channelDisplayName(i)} 移动到 ${channelDisplayName(idx)}`, 'success')
       }
       // 互斥: EC11 作为本通道输入源时, 其他通道的辅助占用一并取消
       if (editChannels[i]!.aux_source === 'KNOB_EC11') {
         editChannels[i]!.aux_source = 'NONE'
-        snackbarMsg.value = `EC11 已作为 ${channelDisplayName(idx)} 的输入源，${channelDisplayName(i)} 的辅助输入已取消`
-        snackbarVisible.value = true
+        notify(`EC11 已作为 ${channelDisplayName(idx)} 的输入源，${channelDisplayName(i)} 的辅助输入已取消`, 'success')
       }
     }
   }
@@ -612,14 +619,12 @@ function onAuxChange(idx: number, newAux: string): void {
     // 只能被一个通道持有
     if (editChannels[i]!.aux_source === 'KNOB_EC11') {
       editChannels[i]!.aux_source = 'NONE'
-      snackbarMsg.value = `EC11 辅助已从 ${channelDisplayName(i)} 移动到 ${channelDisplayName(idx)}`
-      snackbarVisible.value = true
+      notify(`EC11 辅助已从 ${channelDisplayName(i)} 移动到 ${channelDisplayName(idx)}`, 'success')
     }
     // 互斥: EC11 旋钮 / 按钮都不能再作为其他通道的主输入源
     if (editChannels[i]!.source === 'KNOB_EC11' || editChannels[i]!.source === 'BUTTON_EC11_BTN') {
       editChannels[i]!.source = 'NONE'
-      snackbarMsg.value = `EC11 已作为 ${channelDisplayName(idx)} 的辅助输入，${channelDisplayName(i)} 的输入源已取消`
-      snackbarVisible.value = true
+      notify(`EC11 已作为 ${channelDisplayName(idx)} 的辅助输入，${channelDisplayName(i)} 的输入源已取消`, 'success')
     }
   }
 }
@@ -1076,22 +1081,43 @@ async function loadFromDevice(): Promise<void> {
     syncEditFromStore()
     // 加载完成后校验: 配置或激活模型缺失 → 提示用户, 不再静默空白
     if (!configStore.config || !configStore.activeModel) {
-      snackbarMsg.value = '配置加载不完整，请点击「从设备加载」重试'
-      snackbarVisible.value = true
+      notify('配置加载不完整，请点击「从设备加载」重试', 'warning')
     }
   } catch (e) {
-    snackbarMsg.value = `配置加载失败: ${(e as Error).message || '未知错误'}`
-    snackbarVisible.value = true
+    notify(`配置加载失败: ${(e as Error).message || '未知错误'}`, 'error')
   } finally {
     // 自动开启通道轮询
     if (!chStore.polling) chStore.startPolling()
   }
 }
 
-/** 全局底栏「从设备加载」: 复用本页加载逻辑, 完成后回报 App 关闭全局按钮 loading */
+/**
+ * 「从设备加载」= 放弃设备内存中的改动, 按 NVS 重新加载。
+ *
+ * 为什么必须先发 0x0107: 本页的编辑是**实时同步到设备 RAM** 的, 而 GET_CONFIG /
+ * GET_MODEL 读的就是那份 RAM —— 只做 fetch 会把"改坏了"的内存状态原样读回来,
+ * 用户只能靠重启丢弃 (这就是本次要修的点)。
+ */
+async function reloadFromNvs(): Promise<void> {
+  // 先停掉 30ms 通道轮询: 轮询流量会明显抬高确认帧丢失率 (USB 侧实测丢帧 10~40%)
+  chStore.stopPolling()
+  const r = await configStore.loadConfig()
+  if (r === 'fail') {
+    if (!chStore.polling) chStore.startPolling()
+    notify('设备未能从 NVS 重建配置，请重试', 'error')
+    return
+  }
+  await loadFromDevice() // 内部重新拉起轮询并 fetch
+  notify(r === 'ok'
+    ? '已放弃未保存的改动，并按设备 NVS 重新加载'
+    : '已按设备 NVS 重新加载（未收到设备确认，链路丢包）',
+  r === 'ok' ? 'success' : 'warning')
+}
+
+/** 全局底栏「从设备加载」: 丢弃设备内存改动 + 重新加载, 完成后回报 App 关闭按钮 loading */
 async function onGlobalReload() {
   try {
-    await loadFromDevice()
+    await reloadFromNvs()
   } finally {
     window.dispatchEvent(new CustomEvent('app:reload-done'))
   }
@@ -1174,11 +1200,10 @@ async function saveModel(): Promise<void> {
     // 等待 150ms 确保 ESP32 完成前面 JSON 数据的存储和处理
     await new Promise(r => setTimeout(r, 150))
     const saveOk = await configStore.saveConfig()
-    snackbarMsg.value = (setOk !== false && saveOk) ? '配置已固化保存到设备' : '保存失败，请重试'
-    snackbarVisible.value = true
+    const saved = setOk !== false && saveOk
+    notify(saved ? '配置已固化保存到设备' : '保存失败，请重试', saved ? 'success' : 'error')
   } catch {
-    snackbarMsg.value = '保存过程中发生错误'
-    snackbarVisible.value = true
+    notify('保存过程中发生错误', 'error')
   } finally {
     savingModel.value = false
   }
@@ -1203,8 +1228,7 @@ async function onSlotSelect(slot: number): Promise<void> {
 // 激活当前模型为设备主配置
 async function activateModel(): Promise<void> {
   const ok = await configStore.setActiveModel(selectedSlot.value)
-  snackbarMsg.value = ok ? '模型已激活' : '激活失败'
-  snackbarVisible.value = true
+  notify(ok ? '模型已激活' : '激活失败', ok ? 'success' : 'error')
 }
 
 /** 进入页面/连接建立后：恢复配置显示或从设备加载（含通道流启停） */

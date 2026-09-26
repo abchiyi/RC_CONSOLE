@@ -4,7 +4,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { serialService } from '@/services/SerialService'
-import { RequestResponseHandler } from '@/utils/requestResponse'
+import { RequestResponseHandler, waitIdempotentAck } from '@/utils/requestResponse'
+import type { AckResult } from '@/utils/requestResponse'
 import { encodeChannelTlv } from '@/utils/commands'
 
 export interface InputSourceInfo {
@@ -115,6 +116,26 @@ export const useConfigStore = defineStore('config', () => {
   // 已同步到固件 RAM 的模型 baseline (差分同步对比基准)
   const syncedModels = ref<Record<number, ModelConfig>>({})
 
+  /**
+   * 有"仅改设备内存、尚未保存"的改动 —— 与传感器页 `calDirty` 同一套语义：
+   * 通道/模型/运行槽位的编辑先只写设备 **RAM**（立即生效），必须显式「保存到设备」才落 NVS。
+   *
+   * 置位：`setModel()`（0x0102 仅改内存）、`setRuntimeModel()`（0x0105 仅改内存），
+   *       以及页面直接改写 store 内配置时调用的 `markConfigDirty()`（如模型级曲线总开关）。
+   * 清除：`saveConfig()`（0x0106）成功、`loadConfig()`（0x0107 丢弃内存改动）、`resetConfig()`。
+   * 注：`SET_ACTIVE`（设为默认，0x0104）固件侧收到即 `Config.save()` 落 NVS → 不计入。
+   */
+  const cfgDirty = ref(false)
+
+  /** 供页面在「直接改写 store 内配置」后标记未保存（如模型级曲线总开关） */
+  function markConfigDirty(): void {
+    cfgDirty.value = true
+  }
+
+  // 保存是**全局**的（CMD_SAVE 一次落下 通道 + 校准 + 曲线），所以在任一页保存成功都要
+  // 同步清掉另一页的"未保存"标志；用 window 事件广播，避免两个 store 互相 import。
+  window.addEventListener('app:config-saved', () => { cfgDirty.value = false })
+
   // ---- 差分同步辅助 ----
 
   function cloneModel(m: ModelConfig): ModelConfig {
@@ -176,15 +197,35 @@ export const useConfigStore = defineStore('config', () => {
     config.value?.models?.[config.value.active_model] ?? null,
   )
 
+  /**
+   * 拉取类命令的容错封装：丢响应时重试一次。
+   * USB 侧实测响应丢失 10~40%（前端 30ms 通道轮询会加剧），单次等待会让「从设备加载」
+   * 这类多步操作偶发半途而废（表现为"只见命令、没有响应数据"）。
+   */
+  async function requestWithRetry(
+    tag: string,
+    send: () => Promise<unknown>,
+    timeoutMs = 5000,
+    attempts = 2,
+  ): Promise<boolean> {
+    for (let i = 0; i < attempts; i++) {
+      const p = rr.wait(tag, timeoutMs)
+      await send()
+      try {
+        await p
+        return true
+      } catch {
+        // 响应丢失：重试（读取类命令幂等）
+      }
+    }
+    return false
+  }
+
   async function fetchDeviceInfo(): Promise<void> {
     loading.value = true
     error.value = null
-    const promise = rr.wait('get_info')
-    await serialService.sendCommand('get_info')
-    try {
-      await promise
-    } catch (e) {
-      error.value = (e as Error).message
+    if (!await requestWithRetry('get_info', () => serialService.sendCommand('get_info'), 3000)) {
+      error.value = '读取设备信息超时'
     }
     loading.value = false
   }
@@ -193,12 +234,8 @@ export const useConfigStore = defineStore('config', () => {
     loading.value = true
     error.value = null
     // get_config 响应含全部模型名; 8s 超时兜底旧固件 12KB 大响应在 BLE 分片下的慢传输
-    const promise = rr.wait('get_config', 8000)
-    await serialService.sendCommand('get_config')
-    try {
-      await promise
-    } catch (e) {
-      error.value = (e as Error).message
+    if (!await requestWithRetry('get_config', () => serialService.sendCommand('get_config'), 8000)) {
+      error.value = '读取配置超时'
     }
     loading.value = false
   }
@@ -208,12 +245,8 @@ export const useConfigStore = defineStore('config', () => {
     error.value = null
     // 固件二进制协议无 get_active；active_model 由 get_config 响应提供
     // get_config 响应含全部模型名; 8s 超时兜底旧固件 12KB 大响应在 BLE 分片下的慢传输
-    const promise = rr.wait('get_config', 8000)
-    await serialService.sendCommand('get_config')
-    try {
-      await promise
-    } catch (e) {
-      error.value = (e as Error).message
+    if (!await requestWithRetry('get_config', () => serialService.sendCommand('get_config'), 8000)) {
+      error.value = '读取配置超时'
     }
     loading.value = false
   }
@@ -269,12 +302,8 @@ export const useConfigStore = defineStore('config', () => {
     loading.value = true
     const tag = `get_model_${slot}`
     // 5000ms: BLE 下 get_model 响应 ~1.5KB 需多帧通知, 2s 过短导致 baseline 拉取失败 → 差分退化为全量
-    const p = rr.wait(tag, 5000)
     _pendingModelSlot = slot
-    await serialService.sendCommand('get_model', { slot })
-    try {
-      await p
-    } catch {
+    if (!await requestWithRetry(tag, () => serialService.sendCommand('get_model', { slot }), 5000)) {
       console.warn(`[Config] model ${slot} 超时`)
     }
     _pendingModelSlot = null
@@ -296,7 +325,12 @@ export const useConfigStore = defineStore('config', () => {
   async function setRuntimeModel(slot: number): Promise<boolean> {
     const p = rr.wait('set_runtime_model', 2000)
     await serialService.sendCommand('set_runtime_model', { slot })
-    try { const ok = await p; return ok !== false } catch { error.value = '切换运行模型超时'; return false }
+    try {
+      const ok = await p
+      // 运行槽位同样只写 RAM（固件 CMD_SET_RUNTIME_MODEL 不落 NVS）→ 计入未保存
+      if (ok !== false) cfgDirty.value = true
+      return ok !== false
+    } catch { error.value = '切换运行模型超时'; return false }
   }
 
   async function setModel(slot: number, data: ModelConfig): Promise<boolean> {
@@ -309,7 +343,10 @@ export const useConfigStore = defineStore('config', () => {
     try {
       const ok = await p
       // 成功后更新 baseline, 作为下一次差分的基准
-      if (ok) syncedModels.value[slot] = cloneModel(data)
+      if (ok) {
+        syncedModels.value[slot] = cloneModel(data)
+        cfgDirty.value = true // 0x0102 只写设备 RAM → 需显式「保存到设备」才落 NVS
+      }
       return ok !== false
     } catch {
       error.value = '模型写入超时'
@@ -317,18 +354,42 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
+  /** 保存配置到设备 NVS。`save` 幂等 → 确认帧丢失时重试（USB 侧实测丢帧 10~40%） */
   async function saveConfig(): Promise<boolean> {
-    const p = rr.wait('save', 3000)
-    await serialService.sendCommand('save')
-    try { const ok = await p; return ok !== false } catch { error.value = '保存配置超时'; return false }
+    const r = await waitIdempotentAck(rr, 'save', () => serialService.sendCommand('save'), 3000, 2)
+    // 仅在设备确认后清除未保存标志（'unacked' 时不知道是否落盘 → 保持脏, 提示用户核对）
+    if (r === 'ok') {
+      cfgDirty.value = false
+      window.dispatchEvent(new CustomEvent('app:config-saved')) // 同步清掉传感器页的标志
+      return true
+    }
+    error.value = r === 'fail'
+      ? '保存失败（设备返回错误）'
+      : '保存未收到设备确认（链路丢包）；设备可能已保存，请用「从设备加载」核对'
+    return false
   }
 
-  async function loadConfig(): Promise<void> {
-    await serialService.sendCommand('load')
+  /**
+   * 让设备**丢弃内存中的配置改动**: 固件侧 0x0107 = `Config.load()`
+   * （内部先 reset_defaults 再逐槽从 NVS 重建），因此调用后 GET_CONFIG / GET_MODEL
+   * 读到的才是 NVS 里的持久化内容。
+   *
+   * 设备在命令任务里**同步**完成重建，收到确认即代表已完成；但确认帧本身可能丢失
+   * （USB 侧实测 10~40%），`load` 幂等 → 重试；仍无确认时返回 `'unacked'` 由调用方
+   * 继续（随后的 GET_* 读取结果才是真值），避免"丢一个确认帧就整页卡住"。
+   *
+   * 副作用：设备侧模型全部换过一遍 → 本地差分同步 baseline 全部作废，一并清空。
+   */
+  async function loadConfig(): Promise<AckResult> {
+    const r = await waitIdempotentAck(rr, 'load', () => serialService.sendCommand('load'), 2500, 3)
+    syncedModels.value = {}
+    if (r !== 'fail') cfgDirty.value = false // 设备已按 NVS 重建 → 内存改动被丢弃
+    return r
   }
 
   async function resetConfig(): Promise<void> {
     await serialService.sendCommand('reset')
+    cfgDirty.value = false // 设备重启 → 内存改动不复存在
   }
 
   // ---- 遥测转发端口开关 ----
@@ -536,6 +597,8 @@ export const useConfigStore = defineStore('config', () => {
     config,
     loading,
     error,
+    /** 有仅改设备内存、尚未落 NVS 的改动（通道页据此显示「未保存」并控制保存按钮可用性） */
+    cfgDirty,
     activeModelIndex,
     modelCount,
     activeModel,
@@ -548,6 +611,7 @@ export const useConfigStore = defineStore('config', () => {
     setActiveModel,
     setRuntimeModel,
     setModel,
+    markConfigDirty,
     saveConfig,
     loadConfig,
     resetConfig,

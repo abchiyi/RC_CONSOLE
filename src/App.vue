@@ -31,12 +31,8 @@
     <!-- 全局底栏: 左状态右操作双槽, 容器常驻 DOM (Teleport 目标), 未连接时隐藏 -->
     <v-app-bar v-show="serial.connected" location="bottom" color="surface" density="comfortable" elevation="0"
       class="px-3 global-footer">
-      <div id="global-footer-left" class="global-footer-slot">
-        <!-- 固件升级: 外部 ELRS 模块整片镜像烧录, 常驻底栏左槽, 任意页面可用 -->
-        <v-btn class="footer-btn-secondary" prepend-icon="mdi-chip" size="small" @click="moduleFwDialog = true">
-          <span class="btn-text">固件升级</span>
-        </v-btn>
-      </div>
+      <!-- 左槽: 仅承载各页 Teleport 进来的按钮 (如传感器页的「校准」); 常驻按钮已迁至对应页面 -->
+      <div id="global-footer-left" class="global-footer-slot"></div>
 
       <v-spacer />
 
@@ -62,8 +58,13 @@ import { useSerialStore } from '@/stores/serial'
 
 const drawer = ref(true)
 const serial = useSerialStore()
-/** 模块固件烧录对话框开关 (底栏左槽常驻入口) */
+/** 模块固件烧录对话框开关 (入口: ELRS 页「模块固件升级」卡片; 对话框挂全局 → 烧录中切页不中断) */
 const moduleFwDialog = ref(false)
+
+/** ELRS 页「模块固件升级」卡片 → 打开全局烧录对话框 (广播事件, 与「从设备加载」同一套约定) */
+function onFlashElrs() {
+  moduleFwDialog.value = true
+}
 
 // ---- 全局「从设备加载」: 点击广播事件, 当前页面监听并执行自己的加载逻辑, 完成后回报 ----
 const reloading = ref(false)
@@ -83,10 +84,12 @@ function onReloadDone() {
 
 onMounted(() => {
   window.addEventListener('app:reload-done', onReloadDone)
+  window.addEventListener('app:flash-elrs', onFlashElrs)
 })
 
 onUnmounted(() => {
   window.removeEventListener('app:reload-done', onReloadDone)
+  window.removeEventListener('app:flash-elrs', onFlashElrs)
 })
 </script>
 

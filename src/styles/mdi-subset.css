@@ -27,6 +27,7 @@
 .mdi-axis-arrow:before { content: "\F0D49"; }
 .mdi-axis-x-arrow:before { content: "\F0D4C"; }
 .mdi-backup-restore:before { content: "\F006F"; }
+.mdi-battery-charging:before { content: "\F0084"; }
 .mdi-bell-outline:before { content: "\F009C"; }
 .mdi-bluetooth:before { content: "\F00AF"; }
 .mdi-check:before { content: "\F012C"; }

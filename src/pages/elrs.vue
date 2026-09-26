@@ -1,6 +1,7 @@
 <template>
   <div class="elrs-page">
-    <v-snackbar v-model="snackbarVisible" color="info" timeout="2000">
+    <!-- 统一提示: 配色由 useNotice 决定 (成功=绿 / 失败=红 / 提醒=橙), tonal 变体不刺眼 -->
+    <v-snackbar v-model="snackbarVisible" :color="snackbarColor" :timeout="noticeTimeout" variant="tonal">
       {{ elrsMsg }}
     </v-snackbar>
 
@@ -125,6 +126,31 @@
         </v-card-text>
       </v-card>
 
+      <!-- 模块固件升级卡片: 外部 ELRS 模块整片镜像烧录
+           按钮唤起 App.vue 的全局对话框 → 烧录过程中切页不中断 -->
+      <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
+        <v-card-item class="pb-0">
+          <template #prepend>
+            <v-avatar color="primary" size="36" class="cal-avatar">
+              <v-icon color="white" size="20">mdi-chip</v-icon>
+            </v-avatar>
+          </template>
+          <v-card-title>模块固件升级</v-card-title>
+          <v-card-subtitle>通过手柄把整片镜像写入 ELRS 外部模块</v-card-subtitle>
+        </v-card-item>
+
+        <v-card-text class="pt-2 pb-3">
+          <div class="cal-hint hint-neutral">
+            <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
+            <span>烧录会擦除模块目标区域。选定镜像后请勿断电；进度与校验结果在弹窗内显示，烧录过程中切换页面不会中断。</span>
+          </div>
+          <v-btn block class="mt-3" color="primary" prepend-icon="mdi-upload" variant="tonal"
+            @click="openModuleFlash">
+            选择固件并烧录…
+          </v-btn>
+        </v-card-text>
+      </v-card>
+
     </div>
   </div>
 </template>
@@ -135,15 +161,23 @@ import { useSerialStore } from '@/stores/serial'
 import { useLinkStatsStore, type ElrsFieldInfo } from '@/stores/linkStats'
 import { useChannelStore } from '@/stores/channels'
 import ElrsFieldTree from '@/components/elrs/ElrsFieldTree.vue'
+import { useNotice } from '@/composables/useNotice'
 
 const serial = useSerialStore()
 const link = useLinkStatsStore()
 const chStore = useChannelStore()
 
 // ---- 链路概览 / 模块参数 ----
-const elrsMsg = ref('')
-const snackbarVisible = ref(false)
+/** 统一提示: 配色由 type 决定 (成功=绿 / 失败=红 / 提醒=橙 / 其余=蓝) */
+const {
+  text: elrsMsg, color: snackbarColor, visible: snackbarVisible, show: notify, timeoutMs: noticeTimeout,
+} = useNotice(2000)
 const elrsUpdatingFieldId = ref<number | null>(null)
+
+/** 打开模块固件烧录对话框 (对话框挂在 App.vue → 烧录过程中切换页面不中断) */
+function openModuleFlash(): void {
+  window.dispatchEvent(new CustomEvent('app:flash-elrs'))
+}
 
 /** RSSI 带符号显示: 正值补 '+', 负值保留 '-', 0 不补符号 */
 function rssiText(v: number): string {
@@ -180,17 +214,17 @@ async function applyElrsFieldValue(payload: { field: ElrsFieldInfo; value: numbe
   elrsUpdatingFieldId.value = field.id
   try {
     const ok = await link.setParam(field.id, value)
-    if (!ok) showElrsMsg(`写入失败: ${field.name}`)
+    if (!ok) showElrsMsg(`写入失败: ${field.name}`, 'error')
     else showElrsMsg(field.type === 13 ? `已发送 ${field.name}` : `已写入 ${field.name}`)
   } catch {
-    showElrsMsg(`写入失败: ${field.name}`)
+    showElrsMsg(`写入失败: ${field.name}`, 'error')
   }
   elrsUpdatingFieldId.value = null
 }
 
-function showElrsMsg(msg: string) {
-  elrsMsg.value = msg
-  snackbarVisible.value = true
+/** ELRS 页提示: 默认按"成功"提示, 失败/提醒显式传 type */
+function showElrsMsg(msg: string, type: 'success' | 'error' | 'warning' = 'success'): void {
+  notify(msg, type)
 }
 
 // 写入帧已发出、但设备回读长期未追上：乐观值已回滚，提示用户该设置可能未生效
@@ -199,7 +233,7 @@ watch(() => link.writeRejected?.seq, () => {
   const fieldId = link.writeRejected?.fieldId
   if (fieldId == null) return
   const name = link.fields.find(f => f.id === fieldId)?.name ?? `字段 #${fieldId}`
-  showElrsMsg(`${name}：设备回读未确认，请重试`)
+  showElrsMsg(`${name}：设备回读未确认，请重试`, 'warning')
 })
 
 // 写入被入口规则拒绝（如 500Hz / D500 / F500 这类切过去后模块不再上报的档位）：
@@ -208,7 +242,7 @@ watch(() => link.writeBlocked?.seq, () => {
   const fieldId = link.writeBlocked?.fieldId
   if (fieldId == null) return
   const name = link.fields.find(f => f.id === fieldId)?.name ?? `字段 #${fieldId}`
-  showElrsMsg(`${name}：该档位当前不可用（模块切换后不再上报此参数），已阻止下发`)
+  showElrsMsg(`${name}：该档位当前不可用（模块切换后不再上报此参数），已阻止下发`, 'warning')
 })
 
 /** 手动重扫：无条件清空固件缓存并强制重新发现参数 */
@@ -217,7 +251,7 @@ async function refreshElrsFields() {
   if (link.fields.length > 0) {
     showElrsMsg(`参数缓存已重建，加载 ${link.fields.length} 项参数`)
   } else {
-    showElrsMsg('重新扫描超时，可稍后重试')
+    showElrsMsg('重新扫描超时，可稍后重试', 'warning')
   }
 }
 
@@ -360,6 +394,11 @@ onUnmounted(async () => {
 }
 
 /* ── 提示条 (与 system 页一致) ── */
+/* 与上方内容保持间距: 作为容器首个元素时由容器内边距负责, 否则自动补 12px */
+.cal-hint:not(:first-child) {
+  margin-top: 12px;
+}
+
 .cal-hint {
   display: flex;
   align-items: flex-start;

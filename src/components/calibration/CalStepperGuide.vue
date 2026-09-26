@@ -950,6 +950,18 @@ function fmtDeg(v?: number): string {
 }
 
 /* ============ 提示条 ============ */
+/* 与上方内容保持间距: 作为容器首个元素时由容器内边距负责, 否则自动补 12px */
+.cal-hint:not(:first-child) {
+  margin-top: 12px;
+}
+
+/* 提示条下方 / 相邻数据面板之间补间距: 本组件的数据面板是块级堆叠 (页面用 .stat-groups 的 flex gap,
+   这里没有), 否则提示条会紧贴面板、两块面板也会互相贴住 */
+.cal-hint + .stat-group,
+.stat-group + .stat-group {
+  margin-top: 12px;
+}
+
 .cal-hint {
   display: flex;
   align-items: flex-start;

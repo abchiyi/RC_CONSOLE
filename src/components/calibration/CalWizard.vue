@@ -719,10 +719,11 @@ function fmtRate(v?: number): string {
 }
 
 // --- 生命周期 ---
-/** 全局底栏「从设备加载」: 重新拉取校准数据, 完成后回报 App 关闭全局按钮 loading */
+/** 全局底栏「从设备加载」: 让设备丢弃内存改动 (0x0107 → 从 NVS 重建) 后重新拉取校准数据,
+ *  与通道配置页同一套语义; 完成后回报 App 关闭全局按钮 loading */
 async function onGlobalReload() {
   try {
-    await calStore.fetchCalData()
+    await calStore.reloadFromNvs()
   } finally {
     window.dispatchEvent(new CustomEvent('app:reload-done'))
   }
@@ -771,6 +772,13 @@ onUnmounted(async () => {
   font-family: 'Cascadia Mono', 'Consolas', monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+}
+
+/* 提示块下方的内容保持间距: 本组件提示块只带 margin-top,
+   否则紧随其后的行 (如摇杆卡「死区 (X/Y)」标签行) 会紧贴提示块。
+   注: Vue 的 mt-* 工具类带 !important, 原本已显式留白的位置不受影响。 */
+.cal-hint + * {
+  margin-top: 12px;
 }
 
 /* 独立提示块: 高亮边框 + 有色背景 */

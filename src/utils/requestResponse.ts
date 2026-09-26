@@ -52,3 +52,39 @@ export class RequestResponseHandler {
     return first.done ? null : first.value
   }
 }
+
+/** 幂等命令确认结果: ok=设备确认 / fail=设备明确报错 / unacked=命令已发出但确认帧始终没来 */
+export type AckResult = 'ok' | 'unacked' | 'fail'
+
+/**
+ * 幂等命令的「确认帧」等待（含重试）。
+ *
+ * 为什么需要：USB 链路存在偶发丢帧（F-34 家族，实测响应丢失 10~40%，前端 30ms 通道轮询
+ * 会加剧），单次 `rr.wait()` 必然偶发超时。对**幂等**命令（如 `load` / `save`）重试是安全的，
+ * 重试仍无确认时返回 `unacked` —— 由调用方决定继续（设备侧动作大概率已执行，用后续读取作真值）
+ * 还是提示用户。
+ *
+ * @param send 发送动作（每次尝试调用一次）
+ * @param attempts 尝试次数（含首次）；`unacked` 时按此重发，默认 2
+ */
+export async function waitIdempotentAck(
+  rr: RequestResponseHandler,
+  cmd: string,
+  send: () => Promise<unknown>,
+  timeoutMs: number,
+  attempts = 2,
+): Promise<AckResult> {
+  let result: AckResult = 'unacked'
+  for (let i = 0; i < attempts; i++) {
+    const p = rr.wait(cmd, timeoutMs)
+    await send()
+    try {
+      const ack = (await p) as boolean | undefined
+      result = ack === false ? 'fail' : 'ok'
+      break
+    } catch {
+      result = 'unacked' // 确认帧丢失：幂等命令可重发
+    }
+  }
+  return result
+}
