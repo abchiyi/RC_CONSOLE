@@ -9,6 +9,7 @@ import '@/styles/mdi-subset.css'
 import '@/styles/selects.css'
 import 'vuetify/styles'
 import '@/styles/switches.css'
+import '@/styles/snackbars.css'
 
 // Composables
 import { createVuetify } from 'vuetify'

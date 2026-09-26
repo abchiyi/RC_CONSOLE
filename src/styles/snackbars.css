@@ -1,0 +1,26 @@
+/**
+ * snackbars.css — 全局提示气泡 (v-snackbar) 外观
+ *
+ * 统一做「半透明 + 高斯模糊」的磨砂玻璃效果:
+ *   - 底色统一为半透明深色, 让背后内容隐约透出;
+ *   - 语义色 (成功绿 / 失败红 / 提醒橙 / 提示蓝) 由各页 `:color` + `variant="tonal"`
+ *     经 **文字色** 保留 —— 这里只覆盖背景, 不动 color, 所以语义区分不受影响。
+ *
+ * 能力检测: 不支持 backdrop-filter 的浏览器 (老 Safari / 部分 WebView)
+ * 半透明底会让文字与背后内容糊在一起、可读性变差, 故 @supports 退回近实色底。
+ */
+
+.v-snackbar .v-snackbar__wrapper {
+  background: rgba(20, 20, 20, 0.62) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+
+/* 不支持高斯模糊 → 退回实色背景 (观感与未加模糊时一致, 保证文字可读) */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .v-snackbar .v-snackbar__wrapper {
+    background: rgba(24, 24, 24, 0.98) !important;
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+}
