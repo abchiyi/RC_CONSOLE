@@ -126,7 +126,7 @@
         </v-card-text>
       </v-card>
 
-      <!-- 模块固件升级卡片: 外部 ELRS 模块整片镜像烧录
+      <!-- 「固件升级」卡片: 外部 ELRS 高频头整片镜像烧录
            按钮唤起 App.vue 的全局对话框 → 烧录过程中切页不中断 -->
       <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
         <v-card-item class="pb-0">
@@ -135,8 +135,8 @@
               <v-icon color="white" size="20">mdi-chip</v-icon>
             </v-avatar>
           </template>
-          <v-card-title>模块固件升级</v-card-title>
-          <v-card-subtitle>通过手柄把整片镜像写入 ELRS 外部模块</v-card-subtitle>
+          <v-card-title>固件升级</v-card-title>
+          <v-card-subtitle>升级 ELRS 高频头固件</v-card-subtitle>
         </v-card-item>
 
         <v-card-text class="pt-2 pb-3">
