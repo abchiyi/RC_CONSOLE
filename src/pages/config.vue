@@ -1199,9 +1199,15 @@ async function saveModel(): Promise<void> {
     const setOk = await saveCurrentModel()
     // 等待 150ms 确保 ESP32 完成前面 JSON 数据的存储和处理
     await new Promise(r => setTimeout(r, 150))
-    const saveOk = await configStore.saveConfig()
-    const saved = setOk !== false && saveOk
-    notify(saved ? '配置已固化保存到设备' : '保存失败，请重试', saved ? 'success' : 'error')
+    const saveR = await configStore.saveConfig()
+    if (setOk !== false && saveR === 'ok') {
+      notify('配置已固化保存到设备', 'success')
+    } else if (saveR === 'unacked') {
+      // 确认帧丢失 ≠ 保存失败: 指令已发出且 save 幂等 → 设备大概率已落盘
+      notify('保存指令已发送，但未收到设备确认（链路丢包）；请用「从设备加载」核对', 'warning')
+    } else {
+      notify('保存失败，请重试', 'error')
+    }
   } catch {
     notify('保存过程中发生错误', 'error')
   } finally {

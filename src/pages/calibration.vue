@@ -65,8 +65,15 @@ const {
 async function saveAll(): Promise<void> {
   saving.value = true
   try {
-    const ok = await cal.saveCal()
-    notify(ok ? '已保存到设备（重启后保留）' : '保存失败：请确认连接后重试', ok ? 'success' : 'error')
+    const r = await cal.saveCal()
+    if (r === 'ok') {
+      notify('已保存到设备（重启后保留）', 'success')
+    } else if (r === 'unacked') {
+      // 指令已发出且 save 幂等 → 设备大概率已落盘, 只是确认帧丢了, 不能报"失败"
+      notify('保存指令已发送，但未收到设备确认（链路丢包）；请用「从设备加载」核对', 'warning')
+    } else {
+      notify('保存失败：请确认连接后重试', 'error')
+    }
   } finally {
     saving.value = false
   }

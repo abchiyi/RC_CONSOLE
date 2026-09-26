@@ -22,6 +22,7 @@ import { useConfigStore } from '@/stores/config'
 import { usePowerStore } from '@/stores/power'
 import { useCalibrationStore } from '@/stores/calibration'
 import { useLinkStatsStore } from '@/stores/linkStats'
+import { handleStreamResponse } from '@/stores/stream'
 
 // Serial (自动检测 Web/Electron 环境)
 import {
@@ -74,7 +75,24 @@ function routeObject(obj: Record<string, unknown>): void {
     return
   }
 
-  // get_info / get_config / get_model / set_model / set_active / save / load / reset → 配置 Store
+  // stream_start / stream_stop 回显 → 流仲裁器 (stores/stream.ts)
+  if (cmd === 'stream_start' || cmd === 'stream_stop') {
+    handleStreamResponse(obj)
+    return
+  }
+
+  // save / load 是「全局动作」(0x0106 一次落下 通道+校准+曲线; 0x0107 整体从 NVS 重建):
+  // 配置 Store 与校准 Store 各有自己的 rr, 可能同时在等这同一帧 → 两个都要派发。
+  // 历史上这里只派给配置 Store, 导致传感器页保存**每次**都报"未收到设备确认"、
+  // 「从设备加载」每次都白等满 3 个确认窗口 (各 Store 的 rr 是独立实例, 不共享等待)。
+  if (cmd === 'save' || cmd === 'load') {
+    useConfigStore().handleResponse(obj)
+    useCalibrationStore().handleResponse(obj)
+    return
+  }
+
+  // 其余: get_info / get_config / get_model / set_model / set_active / set_runtime_model /
+  //        reset / config_* → 配置 Store
   useConfigStore().handleResponse(obj)
 }
 

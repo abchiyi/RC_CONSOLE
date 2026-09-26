@@ -47,6 +47,18 @@ const ECHO_TIMEOUT_MS = 2000
 const requests = new Map<string, StreamRequest>()
 const rr = new RequestResponseHandler()
 
+/**
+ * `stream_start` / `stream_stop` 回显的派发入口（由 `main.ts` 按 cmd 调用）。
+ *
+ * 必须显式登记：本模块的 rr 与各 Store 的 rr 是**不同实例**，若这帧落到别处，
+ * 这里的 `rr.wait('stream_start')` 会永远等满 ECHO_TIMEOUT_MS(2s) 才走"信任本地值"的兜底
+ * —— 表现为切换页面/切换流时静默延迟 2s。
+ */
+export function handleStreamResponse(obj: Record<string, unknown>): void {
+  const cmd = obj.cmd as string | undefined
+  if (cmd) rr.tryResolve(cmd, obj)
+}
+
 /** 已确认在固件侧生效的流（由响应回显校正）。null = 固件当前无流 */
 const applied = ref<StreamRequest | null>(null)
 

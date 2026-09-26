@@ -195,24 +195,36 @@ export const useCalibrationStore = defineStore('calibration', () => {
   // ---- 保存 / 从设备重新加载 (与通道页同一套模式) ----
 
   /** 保存到设备 NVS (CMD_SAVE): 固件一次落下 通道/全局配置 + 校准(死区等) + 6 条响应曲线。
-   *  `save` 幂等 → 确认帧丢失时重试 (USB 侧实测丢帧 10~40%, 拖动时更明显) */
-  async function saveCal(): Promise<boolean> {
-    const r = await waitIdempotentAck(rr, 'save', () => serialService.sendCommand('save'), 4000, 2)
+   *
+   *  `save` 幂等 → 确认帧丢失时重试。窗口取 1000ms × 4: 实测设备回包 ~70ms (最慢 0.2s), 而本页有 100Hz
+   *  raw 流在跑, 确认帧丢失率可达 10~40% —— 旧参数 (4000ms × 2) 会让"只丢一个确认帧"白等 4s,
+   *  且把这种情形报成"保存失败"(现场反馈: 提示失败但实际已写入), 故改为短窗口多次重试。
+   *
+   *  返回三态: 'ok' = 设备已确认; 'unacked' = 指令已发出但确认帧始终没来 (设备大概率已落盘,
+   *  不能报成失败); 'fail' = 设备明确报错。 */
+  async function saveCal(): Promise<'ok' | 'unacked' | 'fail'> {
+    const r = await waitIdempotentAck(rr, 'save', () => serialService.sendCommand('save'), 1000, 4)
     if (r === 'ok') {
       calDirty.value = false
       window.dispatchEvent(new CustomEvent('app:config-saved')) // 同步清掉通道页的标志
-      return true
+      return 'ok'
     }
-    lastMessage.value = r === 'fail'
-      ? '保存失败（设备返回错误）'
-      : '保存未收到设备确认（链路丢包）；设备可能已保存，请用「从设备加载」核对'
-    return false
+    if (r === 'fail') {
+      lastMessage.value = '保存失败（设备返回错误）'
+      return 'fail'
+    }
+    // 保持 calDirty (无法确认是否落盘), 但措辞不能是"失败"
+    lastMessage.value = '保存指令已发送，但未收到设备确认（链路丢包）'
+    return 'unacked'
   }
 
   /** 「从设备加载」: 让设备丢弃内存改动 (0x0107 = reset_defaults + 从 NVS 重建) 再重新拉取校准数据。
-   *  `load` 幂等 → 确认帧丢失时重试; 仍未确认也继续 (随后的 cal_get 才是真值) */
+   *
+   *  `load` 幂等 → 确认帧丢失时重试; 仍未确认也继续 (随后的 cal_get 才是真值)。
+   *  窗口 1000ms: 设备侧 `Config.load()` 实测回包 ~0.09s (最慢 0.62s), 旧参数 2500ms 会让
+   *  每一次丢帧都白等 2.5s (现场反馈"点从设备加载要 3~4s 才同步")。 */
   async function reloadFromNvs(): Promise<boolean> {
-    const r = await waitIdempotentAck(rr, 'load', () => serialService.sendCommand('load'), 2500, 3)
+    const r = await waitIdempotentAck(rr, 'load', () => serialService.sendCommand('load'), 1000, 3)
     if (r === 'fail') {
       lastMessage.value = '设备未能从 NVS 重建配置'
       return false

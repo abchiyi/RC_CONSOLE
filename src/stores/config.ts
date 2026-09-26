@@ -354,19 +354,25 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
-  /** 保存配置到设备 NVS。`save` 幂等 → 确认帧丢失时重试（USB 侧实测丢帧 10~40%） */
-  async function saveConfig(): Promise<boolean> {
-    const r = await waitIdempotentAck(rr, 'save', () => serialService.sendCommand('save'), 3000, 2)
+  /** 保存配置到设备 NVS。`save` 幂等 → 确认帧丢失时重试。
+   *
+   *  窗口 1000ms × 4: 实测设备回包 ~80ms, 旧参数 (3000ms × 2) 会让"只丢一个确认帧"白等 3s,
+   *  并且把这种情形报成"保存失败"（设备其实已落盘）。
+   *  返回三态: 'ok' / 'unacked'（指令已发出但确认帧丢失，设备大概率已保存）/ 'fail'。 */
+  async function saveConfig(): Promise<AckResult> {
+    const r = await waitIdempotentAck(rr, 'save', () => serialService.sendCommand('save'), 1000, 4)
     // 仅在设备确认后清除未保存标志（'unacked' 时不知道是否落盘 → 保持脏, 提示用户核对）
     if (r === 'ok') {
       cfgDirty.value = false
       window.dispatchEvent(new CustomEvent('app:config-saved')) // 同步清掉传感器页的标志
-      return true
+      return 'ok'
     }
-    error.value = r === 'fail'
-      ? '保存失败（设备返回错误）'
-      : '保存未收到设备确认（链路丢包）；设备可能已保存，请用「从设备加载」核对'
-    return false
+    if (r === 'fail') {
+      error.value = '保存失败（设备返回错误）'
+      return 'fail'
+    }
+    error.value = '保存指令已发送，但未收到设备确认（链路丢包）；请用「从设备加载」核对'
+    return 'unacked'
   }
 
   /**
@@ -381,7 +387,8 @@ export const useConfigStore = defineStore('config', () => {
    * 副作用：设备侧模型全部换过一遍 → 本地差分同步 baseline 全部作废，一并清空。
    */
   async function loadConfig(): Promise<AckResult> {
-    const r = await waitIdempotentAck(rr, 'load', () => serialService.sendCommand('load'), 2500, 3)
+    // 窗口 1000ms: 设备侧 Config.load() 实测回包 ~0.1s, 旧参数 2500ms 会让每次丢帧白等 2.5s
+    const r = await waitIdempotentAck(rr, 'load', () => serialService.sendCommand('load'), 1000, 3)
     syncedModels.value = {}
     if (r !== 'fail') cfgDirty.value = false // 设备已按 NVS 重建 → 内存改动被丢弃
     return r
