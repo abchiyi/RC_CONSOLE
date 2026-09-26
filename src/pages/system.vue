@@ -55,7 +55,7 @@
 
           <div class="cal-hint hint-neutral">
             <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
-            <span>固件升级经 USB 写入主控 OTA 分区：选定镜像后请勿断电或拔线，写完后设备自动重启进入新固件。</span>
+            <span>升级中请勿断电或拔线，写完后设备自动重启进入新固件。</span>
           </div>
 
           <!-- 与 ELRS 页「模块固件升级」卡片一致: 整宽主色 tonal 按钮 (深色底上不如实色刺眼) -->
