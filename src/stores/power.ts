@@ -52,7 +52,17 @@ export const usePowerStore = defineStore('power', () => {
     error.value = null
     const p = rr.wait('set_power_cfg')
     await serialService.sendCommand('set_power_cfg', data as unknown as Record<string, unknown>)
-    try { await p } catch (e) { error.value = (e as Error).message }
+    try {
+      await p
+      // 保存成功后必须同步本地 cfg: 倒计时(remainS)/告警分档/idleDisabled 全都读
+      // cfg, 不更新的话 UI 会继续按旧阈值倒数 —— 观感即"修改关机倒计时不重置"
+      // (固件侧 power_idle_set_config 保存成功时已重置空闲计时, 设备行为本来就对)。
+      cfg.value = { ...data }
+      // 再拉一次设备真值校准: 固件会钳制/改写参数 (warn>=shut 拒绝、shut=0 强制
+      // warn=0), 本地镜像可能与实际生效值有出入; system.vue 的 watch 会随之把
+      // 表单草稿拉回设备真值。
+      await fetchCfg()
+    } catch (e) { error.value = (e as Error).message }
     loading.value = false
   }
 
