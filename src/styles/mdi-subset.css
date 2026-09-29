@@ -73,6 +73,8 @@
 .mdi-radiobox-marked:before { content: "\F043E"; }
 .mdi-refresh:before { content: "\F0450"; }
 .mdi-restart:before { content: "\F0709"; }
+.mdi-shield-check:before { content: "\F0565"; }
+.mdi-shield-check-outline:before { content: "\F0CC8"; }
 .mdi-shimmer:before { content: "\F1545"; }
 .mdi-swap-horizontal:before { content: "\F04E1"; }
 .mdi-timer-cog:before { content: "\F1925"; }

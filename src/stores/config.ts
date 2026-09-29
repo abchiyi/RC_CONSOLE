@@ -17,6 +17,7 @@ export interface DeviceInfo {
   device: string
   fw_version?: string      // 软件版本（固件）
   hw_version?: string      // 硬件版本
+  secure_mode?: number     // 安全模式：0=未加密 1=Development 2=Release
   model_count: number
   channel_count: number
   input_sources: InputSourceInfo[]

@@ -50,6 +50,7 @@ export const CMD = {
   PING: 0x00_02,
   RESET: 0x00_03,
   FACTORY_RESET_NVS: 0x00_04,
+  LOCK_SECURE: 0x00_05, // 锁定 flash 加密为 Release（不可逆，烧 eFuse）
   GET_CONFIG: 0x01_01,
   SET_MODEL: 0x01_02,
   GET_MODEL: 0x01_03,
@@ -115,6 +116,7 @@ export const CMD_NAME_TO_ID: Record<string, number> = {
   ping: CMD.PING,
   reset: CMD.RESET,
   factory_reset_nvs: CMD.FACTORY_RESET_NVS,
+  lock_secure: CMD.LOCK_SECURE,
   get_config: CMD.GET_CONFIG,
   set_model: CMD.SET_MODEL,
   get_model: CMD.GET_MODEL,

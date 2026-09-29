@@ -15,7 +15,7 @@
         <div class="pa-4">
           <v-divider class="mb-2" />
           <div class="text-caption text-medium-emphasis">
-            ESP_GamePad2RC · v0.1.0
+            {{ configStore.deviceInfo?.device ?? 'ESP_GamePad2RC' }} · {{ configStore.deviceInfo?.fw_version ?? '--' }}
           </div>
         </div>
       </template>
@@ -55,9 +55,11 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import AppBar from '@/components/AppBar.vue'
 import ElrsFlashDialog from '@/components/elrs/ElrsFlashDialog.vue'
 import { useSerialStore } from '@/stores/serial'
+import { useConfigStore } from '@/stores/config'
 
 const drawer = ref(true)
 const serial = useSerialStore()
+const configStore = useConfigStore()
 /** 模块固件烧录对话框开关 (入口: ELRS 页「模块固件升级」卡片; 对话框挂全局 → 烧录中切页不中断) */
 const moduleFwDialog = ref(false)
 

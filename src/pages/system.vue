@@ -49,6 +49,12 @@
                   <span class="stat-label">软件版本</span>
                   <span class="stat-value mono">{{ configStore.deviceInfo?.fw_version ?? '--' }}</span>
                 </div>
+                <div class="stat-kv stat-kv-wide">
+                  <span class="stat-label">安全保护</span>
+                  <span class="stat-value">
+                    <v-chip :color="secureModeColor" size="x-small" variant="tonal">{{ secureModeLabel }}</v-chip>
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -63,6 +69,16 @@
             @click="upgradeDialog = true">
             <span class="btn-text">固件升级</span>
           </v-btn>
+
+          <!-- 启用安全保护: 仅开发模式可点, 已启用/未启用置灰 -->
+          <v-btn block class="mt-3" color="primary" prepend-icon="mdi-shield-check" variant="tonal"
+            :disabled="secureMode !== 1" @click="lockSecureDialog = true">
+            <span class="btn-text">启用安全保护</span>
+          </v-btn>
+          <div v-if="secureMode === 2" class="cal-hint hint-neutral mt-2">
+            <v-icon size="16" class="mt-0.5">mdi-shield-check-outline</v-icon>
+            <span>设备已启用安全保护，固件将通过官方 OTA 更新。</span>
+          </div>
         </v-card-text>
       </v-card>
 
@@ -368,6 +384,27 @@
           <v-btn variant="text" :disabled="factoryResetBusy" @click="factoryResetDialog = false">取消</v-btn>
           <v-btn color="error" variant="tonal" :loading="factoryResetBusy" @click="startFactoryResetNvs">
             确认抹除
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- 启用安全保护确认: 不可撤销, 需明确说明 -->
+    <v-dialog v-model="lockSecureDialog" max-width="460" persistent>
+      <v-card>
+        <v-card-title class="text-body-1">启用安全保护</v-card-title>
+        <v-card-text>
+          启用后设备只接受官方签名固件，可防止被刷入恶意或未授权的程序，保护设备与配置数据安全。
+          此操作不可撤销，启用后固件更新将通过官方 OTA 通道进行。
+        </v-card-text>
+        <v-alert v-if="lockSecureError" color="error" variant="tonal" density="compact" class="mx-4 mb-2">
+          {{ lockSecureError }}
+        </v-alert>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="lockSecureBusy" @click="lockSecureDialog = false">取消</v-btn>
+          <v-btn color="error" variant="tonal" :loading="lockSecureBusy" @click="startLockSecure">
+            确认启用
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -703,6 +740,80 @@ async function startFactoryResetNvs() {
     factoryResetError.value = `恢复失败: ${e instanceof Error ? e.message : String(e)}`
   } finally {
     factoryResetBusy.value = false
+  }
+}
+
+// ========== 安全模式（锁定为 Release） ==========
+/** 安全模式：0=未加密 1=Development 2=Release */
+const secureMode = computed(() => configStore.deviceInfo?.secure_mode ?? 0)
+const secureModeLabel = computed(() => {
+  switch (secureMode.value) {
+    case 0: return '未启用'
+    case 1: return '开发模式'
+    case 2: return '已启用'
+    default: return '未知'
+  }
+})
+const secureModeColor = computed(() => {
+  switch (secureMode.value) {
+    case 0: return 'grey'
+    case 1: return 'warning'
+    case 2: return 'success'
+    default: return 'grey'
+  }
+})
+const lockSecureBusy = ref(false)
+const lockSecureDialog = ref(false)
+const lockSecureMsg = ref('')
+const lockSecureError = ref('')
+
+function waitLockSecureResponse(timeoutMs = 8000): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error('等待设备响应超时: lock_secure'))
+    }, timeoutMs)
+
+    const handler = (obj: Record<string, unknown>) => {
+      if (obj.cmd !== 'lock_secure') return
+      cleanup()
+      resolve(obj)
+    }
+
+    const cleanup = () => {
+      clearTimeout(timer)
+      serialService.removeObjectListener(handler)
+    }
+
+    serialService.onObject(handler)
+  })
+}
+
+async function startLockSecure() {
+  if (!serial.connected) {
+    lockSecureError.value = '请先连接设备'
+    return
+  }
+
+  lockSecureBusy.value = true
+  lockSecureMsg.value = ''
+  lockSecureError.value = ''
+
+  try {
+    const pending = waitLockSecureResponse()
+    await serialService.sendCommand('lock_secure')
+    const resp = await pending
+    if (resp.ok === true) {
+      lockSecureMsg.value = '安全保护已启用，设备正在重启'
+      lockSecureDialog.value = false
+      notify('安全保护已启用', 'success')
+    } else {
+      lockSecureError.value = `锁定失败: ${String(resp.error || '未知错误')}`
+    }
+  } catch (e: unknown) {
+    lockSecureError.value = `锁定失败: ${e instanceof Error ? e.message : String(e)}`
+  } finally {
+    lockSecureBusy.value = false
   }
 }
 

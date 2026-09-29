@@ -610,10 +610,12 @@ function decodeGetInfo(r: Reader, name: string): Record<string, unknown> {
   const btnCount = r.u8()
   const button_triggers: string[] = []
   for (let i = 0; i < btnCount; i++) button_triggers.push(r.str())
+  // 安全模式：0=未加密 1=Development 2=Release（旧固件无此字段，按 0 处理）
+  const secure_mode = r.remaining >= 1 ? r.u8() : 0
   return {
     cmd: name, device, fw_version, hw_version,
     model_count, channel_count, input_src_count,
-    input_sources, button_triggers,
+    input_sources, button_triggers, secure_mode,
   }
 }
 
