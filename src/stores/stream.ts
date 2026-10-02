@@ -32,12 +32,17 @@ export const OWNER = {
   CHANNELS: 'channels',
   CALIBRATION: 'calibration',
   LINK: 'link',
+  TELEMETRY: 'telemetry',
 } as const
 
-/** owner 优先级：数值大者优先（校准实时性最高 > 链路 > 通道） */
+/**
+ * owner 优先级：数值大者优先（校准实时性最高 > 链路 / 遥测 > 通道）
+ * 遥测与链路同级：固件是单流会话，两者互斥，谁后申请谁生效（见文件头注释）。
+ */
 const OWNER_PRIORITY: Record<string, number> = {
   [OWNER.CALIBRATION]: 2,
   [OWNER.LINK]: 1,
+  [OWNER.TELEMETRY]: 1,
   [OWNER.CHANNELS]: 0,
 }
 

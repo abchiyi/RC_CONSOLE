@@ -106,6 +106,16 @@ export const useConfigStore = defineStore('config', () => {
   const telem2Busy = ref(false)
   const telem2Error = ref<string | null>(null)
 
+  // ---- 转发出口的 RSSI 口径 (SET_TELEM_RSSI_MODE 0x0803) ----
+  //   true  = TBS/Crossfire: uint8 = -dBm（第三方手机地面站的口径，默认）
+  //   false = ELRS 原生: int8 dBm（EdgeTX 口径，一个字节都不改）
+  //   ★ 只影响转发口那份字节：推给本 App 的回环副本始终是原始帧，本页解析不受影响。
+  const telemRssiCf = ref(true)
+  /** null = 尚未从设备读到; false = 固件 get_config 无 0x07 项 (不支持) */
+  const telemRssiSupported = ref<boolean | null>(null)
+  const telemRssiBusy = ref(false)
+  const telemRssiError = ref<string | null>(null)
+
   // ---- AUX1 解锁时三轴归零开关 (SET_LOCK_ZERO 0x010A) ----
   // 仅开关本身落 NVS; 其触发的归零只改内存姿态基准, 不固化
   const lockZeroImu = ref(false)
@@ -434,6 +444,24 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
+  /** 设置转发出口的 RSSI 口径 (设备收到即落 NVS, 掉电保持) */
+  async function setTelemRssiMode(cf: boolean): Promise<boolean> {
+    telemRssiBusy.value = true
+    telemRssiError.value = null
+    const p = rr.wait('set_telem_rssi_mode', 3000)
+    try {
+      await serialService.sendCommand('set_telem_rssi_mode', { mode: cf ? 1 : 0 })
+      const ok = await p
+      if (ok === false && !telemRssiError.value) telemRssiError.value = '设置被设备拒绝'
+      return ok !== false
+    } catch {
+      telemRssiError.value = '设置超时'
+      return false
+    } finally {
+      telemRssiBusy.value = false
+    }
+  }
+
   /** 设置「AUX1 解锁时三轴归零」开关 (设备收到即落 NVS, 掉电保持) */
   async function setLockZeroImu(v: boolean): Promise<boolean> {
     lockZeroBusy.value = true
@@ -467,6 +495,21 @@ export const useConfigStore = defineStore('config', () => {
       return
     }
 
+    // set_telem_rssi_mode 响应: 回显生效后的口径
+    if (cmd === 'set_telem_rssi_mode') {
+      const ok = json.ok !== false
+      if (ok && typeof json.rssi_mode === 'number') {
+        telemRssiCf.value = json.rssi_mode !== 0
+        telemRssiSupported.value = true
+      }
+      if (!ok) {
+        telemRssiError.value = (json.error as string) || 'RSSI 口径设置失败'
+        error.value = telemRssiError.value
+      }
+      rr.tryResolve('set_telem_rssi_mode', ok)
+      return
+    }
+
     // set_lock_zero 响应: 回显生效后的开关值
     if (cmd === 'set_lock_zero') {
       const ok = json.ok !== false
@@ -483,6 +526,13 @@ export const useConfigStore = defineStore('config', () => {
     if (cmd === 'get_config') {
       if (typeof json.telem2_mask === 'number') applyTelem2Mask(json.telem2_mask)
       else telem2Supported.value = false
+      // 转发口 RSSI 口径 (tag 0x07): 无此项 = 固件不支持
+      if (typeof json.telem_rssi_cf === 'boolean') {
+        telemRssiCf.value = json.telem_rssi_cf
+        telemRssiSupported.value = true
+      } else {
+        telemRssiSupported.value = false
+      }
       // AUX1 解锁时三轴归零 (tag 0x06): 无此项 = 固件不支持
       if (typeof json.lock_zero_imu === 'boolean') {
         lockZeroImu.value = json.lock_zero_imu
@@ -630,6 +680,11 @@ export const useConfigStore = defineStore('config', () => {
     telem2Error,
     setTelem2,
     fetchTelem2,
+    telemRssiCf,
+    telemRssiSupported,
+    telemRssiBusy,
+    telemRssiError,
+    setTelemRssiMode,
     lockZeroImu,
     lockZeroSupported,
     lockZeroBusy,

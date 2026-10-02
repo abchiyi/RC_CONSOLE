@@ -18,6 +18,7 @@ import {
   STREAM_RAW_IMU,
   STREAM_POWER,
   STREAM_LINK,
+  STREAM_CRSF_TELEM,
   EVENT_STREAM_DATA,
   Writer,
   Reader,
@@ -174,13 +175,19 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
       w.u8(Number(params.flags ?? 0))
       break
     case CMD.SET_TELEM2:
-      // 遥测转发端口位掩码: bit0=USB, bit1=BLE (§5.13)
-      // ⚠ 自锁风险 (FE-02): 被置位的端口会转为**纯 MAVLink 遥测口**,
-      //   该口的二进制指令由固件通道层门卫**静默丢弃** —— 即"通过 USB 连接时把 bit0 置 1"
-      //   会立刻失去 USB 配置通道, 且该值**落 NVS 持久化**(重启不恢复)。
-      //   解除方式只有三种: 从另一个未被占用的口(BLE)改回、NVS 全分区擦除、出厂复位。
-      //   → UI 侧必须提示用户, 并禁止把"当前正在使用的那个口"置位。
+      // 独占遥测转发端口位掩码: bit0=USB, bit1=BLE
+      // ⚠ 自锁风险 (FE-02): 被置位的端口会转为**纯 CRSF 遥测输出口**，该口的二进制
+      //   指令由固件通道层门卫**静默丢弃**（上位机侧表现为无响应），且该值**落 NVS
+      //   持久化**（重启不恢复）。固件拒绝 mask=0x03（两口全占）。
+      //   解除方式只有三种: 从另一个未被占用的口改回、NVS 全分区擦除、出厂复位。
+      //   → UI 侧必须提示用户，并禁止把"当前正在使用的那个口"置位。
       w.u8(Number(params.mask ?? 0))
+      break
+    case CMD.SET_TELEM_RSSI_MODE:
+      // 转发出口的 RSSI 字节口径: 0=ELRS 原生 int8 dBm(透传) / 1=TBS·Crossfire uint8=-dBm
+      //   两种口径对同一字节的解释互斥: ELRS 的 0xD4(-44 dBm) 若被按 uint8 读成 212，
+      //   即 -212 dBm 越界 → 地面站显示 0%。第三方手机地面站按后者解析，故默认 1。
+      w.u8(Number(params.mode ?? 1) ? 1 : 0)
       break
     case CMD.SET_LOCK_ZERO:
       // 「AUX1 解锁时三轴归零」开关: 0=关, 1=开
@@ -544,12 +551,12 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
         return { cmd: name, content_type: r.u8(), interval_ms: r.u16(), flags: r.u8() }
       case CMD.SET_TELEM2:
         // 回显生效后的掩码 (bit0=USB, bit1=BLE)
-        // 注: 非 OK 状态已在 decodeResponse() 入口提前返回, 故此处读到的一定是成功回显。
-        //     固件对 mask==0x03 返回 S_BAD_PARAM (自锁保护), 前端会走错误分支而非解析出假掩码。
+        // 注: 非 OK 状态已在 decodeResponse() 入口提前返回，故此处读到的一定是成功回显；
+        //     固件对 mask==0x03 返回 S_BAD_PARAM (自锁保护)，前端会走错误分支。
         return { cmd: name, ok: true, telem2_mask: r.u8() }
-      case CMD.MAVLINK_LINK_STATS:
-        // §5.12 桥视角链路快照：RF 字段(ul_*/dl_*) + 桥自身下行(手柄 → GCS)出口统计
-        return decodeMavlinkLinkStats(r, name)
+      case CMD.SET_TELEM_RSSI_MODE:
+        // 回显生效后的口径 (0=ELRS 原生 int8 dBm / 1=TBS·Crossfire uint8=-dBm)
+        return { cmd: name, ok: true, rssi_mode: r.u8() }
       case CMD.SET_LOCK_ZERO:
         // 回显生效后的开关值
         return { cmd: name, ok: true, lock_zero_imu: r.u8() !== 0 }
@@ -627,7 +634,10 @@ function decodeGetConfig(r: Reader, name: string): Record<string, unknown> {
     else if (tag === 0x02) cfg.active_model = rr.i32()
     else if (tag === 0x03) cfg.lpf_alpha = rr.i32()
     else if (tag === 0x04) cfg.runtime_model = rr.i32()
+    // 遥测转发端口掩码 (bit0=USB, bit1=BLE)：系统页开关的回读来源；无此项 = 固件不支持
     else if (tag === 0x05) cfg.telem2_mask = rr.u8()
+    // 转发口 RSSI 口径 (tag 0x07): 1=TBS/Crossfire uint8=-dBm, 0=ELRS 原生 int8 dBm
+    else if (tag === 0x07) cfg.telem_rssi_cf = rr.u8() !== 0
     else if (tag === 0x06) cfg.lock_zero_imu = rr.u8() !== 0
     else if (tag >= 0x10 && tag <= 0x17) {
       const slot = tag - 0x10
@@ -725,42 +735,6 @@ function decodeLinkStats(r: Reader, name: string): Record<string, unknown> {
   return out
 }
 
-/**
- * §5.12 MAVLINK_LINK_STATS 响应（38 字节）。
- * 读取顺序必须严格为线上字段顺序：valid / last_update_ms / link_age_ms / ul_* / 链路属性 / dl_* / 5×u32。
- * 注意方向语义：ul_* = RF 链路上行(手柄 → 飞控)，dl_* = RF 链路下行(飞控 → 手柄)，
- * 后 5 个 u32 才是桥自身下行(手柄 → GCS)出口统计。
- */
-function decodeMavlinkLinkStats (r: Reader, name: string): Record<string, unknown> {
-  const valid = !!r.u8()
-  const lastUpdateMs = r.u32()
-  const linkAgeMs = r.u32()
-  return {
-    cmd: name,
-    ok: true,
-    valid,
-    last_update_ms: lastUpdateMs,
-    link_age_ms: valid ? linkAgeMs : null, // 固件在 valid=0 时回 0xFFFFFFFF
-    // RF 链路上行（手柄 → 飞控）
-    ul_rssi: r.i8(),
-    ul_lq: r.u8(),
-    ul_snr: r.i8(),
-    ul_tx_power: r.u8(),
-    active_antenna: r.u8(),
-    rf_mode: r.u8(),
-    // RF 链路下行（飞控 → 手柄）
-    dl_rssi: r.i8(),
-    dl_lq: r.u8(),
-    dl_snr: r.i8(),
-    // 桥自身下行出口（手柄 → GCS）
-    radio_status_count: r.u32(),
-    link_node_status_count: r.u32(),
-    downlink_msg_count: r.u32(),
-    downlink_bytes: r.u32(),
-    tx_rate_bps: r.u32(),
-  }
-}
-
 /** 清理 ELRS 字段文本：剔除非法解码残留（U+FFFD）与不可见控制字符，并去除首尾空白 */
 function sanitizeFieldText(s: string): string {
   // eslint-disable-next-line no-control-regex
@@ -821,6 +795,10 @@ export function decodeEvent(payload: Uint8Array, streamFlags = 0): Record<string
         return { evt: eventId, contentType, data: decodePowerState(new Reader(dataBytes), 'stream_power') }
       case STREAM_LINK:
         return { evt: eventId, contentType, data: decodeLinkStats(new Reader(dataBytes), 'stream_link') }
+      case STREAM_CRSF_TELEM:
+        // 飞控遥测原始帧：不做对象化，整段字节交给遥测 Store 解析
+        //   （帧内含 CRSF 二进制，展开成对象既费时又丢失 CRC 校验信息）
+        return { evt: eventId, contentType, raw: dataBytes }
       default:
         return null
     }

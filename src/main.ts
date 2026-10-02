@@ -4,33 +4,31 @@
  * Bootstraps Vuetify, Pinia, Router then mounts the App
  */
 
-// Plugins
-import { registerPlugins } from '@/plugins'
-
-// Components
-import App from './App.vue'
-
+// Pinia
+import { createPinia } from 'pinia'
 // Composables
 import { createApp } from 'vue'
 
-// Pinia
-import { createPinia } from 'pinia'
-
+// Plugins
+import { registerPlugins } from '@/plugins'
+// Serial (自动检测 Web/Electron 环境)
+import {
+  bleService,
+  electronSerialService,
+  serialService,
+  webSerialService,
+} from '@/services/SerialService'
+import { useCalibrationStore } from '@/stores/calibration'
 // Stores (import definition at top, usage after pinia install)
 import { useChannelStore } from '@/stores/channels'
 import { useConfigStore } from '@/stores/config'
-import { usePowerStore } from '@/stores/power'
-import { useCalibrationStore } from '@/stores/calibration'
 import { useLinkStatsStore } from '@/stores/linkStats'
+import { usePowerStore } from '@/stores/power'
 import { handleStreamResponse } from '@/stores/stream'
+import { useTelemetryStore } from '@/stores/telemetry'
 
-// Serial (自动检测 Web/Electron 环境)
-import {
-  serialService,
-  webSerialService,
-  electronSerialService,
-  bleService,
-} from '@/services/SerialService'
+// Components
+import App from './App.vue'
 
 const app = createApp(App)
 
@@ -42,23 +40,29 @@ app.use(pinia)
  * 各后端已把二进制帧解码为对象（响应带 cmd 字段、事件带 evt 字段），这里只做路由。
  * 回调在 pinia 安装后才收到数据，调用 useStore 安全
  */
-function routeObject(obj: Record<string, unknown>): void {
+function routeObject (obj: Record<string, unknown>): void {
   // 流式事件（STREAM_START 后固件定时推送）
-  if (obj.evt === 0x0001) {
-    routeStreamEvent(Number(obj.contentType), obj.data as Record<string, unknown>)
+  if (obj.evt === 0x00_01) {
+    routeStreamEvent(
+      Number(obj.contentType),
+      obj.data as Record<string, unknown>,
+      obj.raw as Uint8Array | undefined,
+    )
     return
   }
 
   const cmd = obj.cmd as string | undefined
-  if (!cmd) return
+  if (!cmd) {
+    return
+  }
 
   // get_link_stats / elrs_list_fields / elrs_set_param → 链路统计 Store
   if (cmd === 'get_link_stats') {
     useLinkStatsStore().update(obj)
     return
   }
-  if (cmd === 'elrs_list_fields' || cmd === 'elrs_set_param' ||
-      cmd === 'elrs_rescan_fields') {
+  if (cmd === 'elrs_list_fields' || cmd === 'elrs_set_param'
+    || cmd === 'elrs_rescan_fields') {
     useLinkStatsStore().handleElrsResponse(obj)
     return
   }
@@ -96,8 +100,12 @@ function routeObject(obj: Record<string, unknown>): void {
   useConfigStore().handleResponse(obj)
 }
 
-/** 流式事件路由（STREAM content_type：0=通道 1=raw+IMU 2=电源 3=链路） */
-function routeStreamEvent(contentType: number, data: Record<string, unknown>): void {
+/** 流式事件路由（STREAM content_type：0=通道 1=raw+IMU 2=电源 3=链路 4=飞控遥测原始帧） */
+function routeStreamEvent (
+  contentType: number,
+  data: Record<string, unknown>,
+  raw?: Uint8Array,
+): void {
   switch (contentType) {
     case 0: {
       const channels = data.channels as number[] | undefined
@@ -109,26 +117,38 @@ function routeStreamEvent(contentType: number, data: Record<string, unknown>): v
       }
       break
     }
-    case 1:
+    case 1: {
       // 实时 raw+IMU（校准页流式数据）
       useCalibrationStore().applyCalRaw(data)
       break
-    case 2:
+    }
+    case 2: {
       usePowerStore().handleResponse(data)
       break
-    case 3:
+    }
+    case 3: {
       useLinkStatsStore().update(data)
       break
-    default:
+    }
+    case 4: {
+      // 飞控遥测（CRSF 原始帧）：只有遥测 Store 需要，且必须在 streaming 时才消费
+      if (raw) {
+        useTelemetryStore().handleStreamPayload(raw)
+      }
       break
+    }
+    default: {
+      break
+    }
   }
 }
 
 // 注册对象路由到全部后端实例。
 // 注意：setSerialBackend() 只替换 serialService 引用、不迁移 onObject 监听器，
 // 因此必须对每个后端单独注册，否则切换到 BLE 后收到的 notify 数据无人消费。
-;[webSerialService, electronSerialService, bleService]
-  .forEach(svc => svc.onObject(routeObject))
+;for (const svc of [webSerialService, electronSerialService, bleService]) {
+  svc.onObject(routeObject)
+}
 // 活动后端引用兜底（若未来新增后端实例未在上面枚举）
 serialService.onObject(routeObject)
 

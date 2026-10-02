@@ -94,8 +94,11 @@ export const CMD = {
   ELRS_FLASH_CHUNK: 0x07_0D, // 数据：u32 offset + 原始固件字节
   ELRS_FLASH_FINISH: 0x07_0E, // 结束：目标侧 MD5 校验 + 目标重启
   ELRS_FLASH_ABORT: 0x07_0F, // 中止（幂等）：复位目标并交还 UART
-  MAVLINK_LINK_STATS: 0x08_03,
+  // 飞控遥测独占转发口：被置位的口只吐**原始 CRSF 帧**，不再响应配置命令
   SET_TELEM2: 0x08_04,
+  // 转发出口的 RSSI 字节口径: payload u8 0=ELRS 原生 int8 dBm(透传) / 1=TBS·Crossfire uint8=-dBm
+  //   第三方手机地面站按后者解析，口径不对时 RSSI 会显示成 0%（0x0803 编号复用）
+  SET_TELEM_RSSI_MODE: 0x08_03,
 } as const
 
 /** ELRS_FLASH_BEGIN 的 flags 位（对齐固件 protocol.h FlashBeginFlags） */
@@ -109,6 +112,8 @@ export const STREAM_CHANNELS = 0
 export const STREAM_RAW_IMU = 1
 export const STREAM_POWER = 2
 export const STREAM_LINK = 3
+/** 飞控遥测：原始 CRSF 帧透传（固件不解析，由 utils/crsf.ts 解码） */
+export const STREAM_CRSF_TELEM = 4
 
 /** 命令名 → 命令 id（旧 JSON 命令名兼容） */
 export const CMD_NAME_TO_ID: Record<string, number> = {
@@ -156,8 +161,8 @@ export const CMD_NAME_TO_ID: Record<string, number> = {
   elrs_flash_finish: CMD.ELRS_FLASH_FINISH,
   elrs_flash_abort: CMD.ELRS_FLASH_ABORT,
   set_telem2: CMD.SET_TELEM2,
+  set_telem_rssi_mode: CMD.SET_TELEM_RSSI_MODE,
   set_lock_zero: CMD.SET_LOCK_ZERO,
-  mavlink_link_stats: CMD.MAVLINK_LINK_STATS,
 }
 
 const CMD_ID_TO_NAME: Record<number, string> = Object.fromEntries(

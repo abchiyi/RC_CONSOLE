@@ -243,7 +243,7 @@
             </v-avatar>
           </template>
           <v-card-title>遥测转发</v-card-title>
-          <v-card-subtitle>指定 USB / 蓝牙端口输出飞控 MAVLink 遥测</v-card-subtitle>
+          <v-card-subtitle>指定 USB / 蓝牙端口独占输出飞控 CRSF 遥测（原始帧）</v-card-subtitle>
           <template #append>
             <v-chip v-if="configStore.telem2Busy" color="info" size="x-small" variant="tonal">切换中</v-chip>
             <v-chip v-else-if="telemActive" color="success" size="x-small" variant="tonal">已启用</v-chip>
@@ -254,7 +254,7 @@
           <div class="telem-row">
             <div class="telem-main">
               <div class="idle-row-title">USB 端口</div>
-              <div class="idle-row-sub">开启后 USB 只输出 MAVLink 遥测，不再响应配置命令</div>
+              <div class="idle-row-sub">开启后 USB 只输出飞控 CRSF 遥测原始帧，不再响应配置命令</div>
             </div>
             <v-switch class="telem-switch" :model-value="configStore.telem2Usb" :loading="configStore.telem2Busy"
               :disabled="configStore.telem2Supported === false"
@@ -264,11 +264,23 @@
           <div class="telem-row mt-2">
             <div class="telem-main">
               <div class="idle-row-title">蓝牙端口</div>
-              <div class="idle-row-sub">开启后蓝牙只输出 MAVLink 遥测，不再响应配置命令</div>
+              <div class="idle-row-sub">开启后蓝牙只输出飞控 CRSF 遥测原始帧，不再响应配置命令</div>
             </div>
             <v-switch class="telem-switch" :model-value="configStore.telem2Bt" :loading="configStore.telem2Busy"
               :disabled="configStore.telem2Supported === false"
               @update:model-value="toggleTelem2('bt', $event)" />
+          </div>
+
+          <div class="telem-row mt-2">
+            <div class="telem-main">
+              <div class="idle-row-title">RSSI 口径（TBS / Crossfire）</div>
+              <div class="idle-row-sub">
+                手机地面站按 uint8=-dBm 解析；关闭 = ELRS 原生 int8 dBm（EdgeTX 口径）
+              </div>
+            </div>
+            <v-switch class="telem-switch" :model-value="configStore.telemRssiCf"
+              :loading="configStore.telemRssiBusy" :disabled="configStore.telemRssiSupported === false"
+              @update:model-value="toggleRssiMode" />
           </div>
 
           <v-alert v-if="telemError" color="error" variant="tonal" density="compact" class="mt-3 py-1">
@@ -278,8 +290,9 @@
           <div class="cal-hint hint-neutral mt-3">
             <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
             <span>
-              两个端口不能同时开启（至少保留一个配置通道）。开启后该口转为纯 MAVLink 遥测口，
+              两个端口不能同时开启（至少保留一个配置通道）。开启后该口转为纯 CRSF 遥测输出口，
               其上的配置指令会被设备静默丢弃；若误开了正在使用的端口，请改用另一个端口关闭。
+              注意：转发开启期间遥测页不再接收数据（帧已被独占口取走）。
             </span>
           </div>
         </v-card-text>
@@ -416,7 +429,7 @@
         <v-card-title class="text-body-1">确认开启遥测转发</v-card-title>
         <v-card-text>
           你正在通过{{ telemConfirm?.kind === 'bt' ? '蓝牙' : 'USB' }}连接本设备。开启该端口的遥测转发后，
-          此端口将只输出 MAVLink 遥测，不再响应配置命令（含本页开关）。
+          此端口将只输出飞控 CRSF 遥测原始帧，不再响应配置命令（含本页开关）。
         </v-card-text>
         <v-card-text class="pt-0 text-medium-emphasis">
           如需关闭，请改用另一个端口（{{ telemConfirm?.kind === 'bt' ? 'USB' : '蓝牙' }}）连接后再关闭。
@@ -839,6 +852,17 @@ async function toggleTelem2(kind: 'usb' | 'bt', v: boolean | null): Promise<void
     return
   }
   await applyTelem2(usb, bt)
+}
+
+/** 切换转发出口的 RSSI 字节口径（口径不对时地面站会把 RSSI 显示成 0%） */
+async function toggleRssiMode(v: boolean | null): Promise<void> {
+  const on = !!v
+  const ok = await configStore.setTelemRssiMode(on)
+  if (!ok) {
+    notify(configStore.telemRssiError ?? '设置失败', 'error')
+    return
+  }
+  notify(on ? 'RSSI 口径：TBS / Crossfire' : 'RSSI 口径：ELRS 原生', 'success')
 }
 
 async function applyTelem2(usb: boolean, bt: boolean): Promise<void> {
