@@ -273,10 +273,8 @@
 
           <div class="telem-row mt-2">
             <div class="telem-main">
-              <div class="idle-row-title">RSSI 口径（TBS / Crossfire）</div>
-              <div class="idle-row-sub">
-                手机地面站按 uint8=-dBm 解析；关闭 = ELRS 原生 int8 dBm（EdgeTX 口径）
-              </div>
+              <div class="idle-row-title">RSSI 格式</div>
+              <div class="idle-row-sub">开 = 手机地面站 · 关 = EdgeTX 原生</div>
             </div>
             <v-switch class="telem-switch" :model-value="configStore.telemRssiCf"
               :loading="configStore.telemRssiBusy" :disabled="configStore.telemRssiSupported === false"
@@ -862,7 +860,7 @@ async function toggleRssiMode(v: boolean | null): Promise<void> {
     notify(configStore.telemRssiError ?? '设置失败', 'error')
     return
   }
-  notify(on ? 'RSSI 口径：TBS / Crossfire' : 'RSSI 口径：ELRS 原生', 'success')
+  notify(on ? 'RSSI 格式：手机地面站' : 'RSSI 格式：EdgeTX 原生', 'success')
 }
 
 async function applyTelem2(usb: boolean, bt: boolean): Promise<void> {
