@@ -21,6 +21,7 @@ declare module 'vue-router/auto-routes' {
     '/calibration': RouteRecordInfo<'/calibration', '/calibration', Record<never, never>, Record<never, never>>,
     '/config': RouteRecordInfo<'/config', '/config', Record<never, never>, Record<never, never>>,
     '/elrs': RouteRecordInfo<'/elrs', '/elrs', Record<never, never>, Record<never, never>>,
+    '/factory-test': RouteRecordInfo<'/factory-test', '/factory-test', Record<never, never>, Record<never, never>>,
     '/system': RouteRecordInfo<'/system', '/system', Record<never, never>, Record<never, never>>,
     '/telemetry': RouteRecordInfo<'/telemetry', '/telemetry', Record<never, never>, Record<never, never>>,
   }
@@ -46,6 +47,10 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/elrs.vue': {
       routes: '/elrs'
+      views: never
+    }
+    'src/pages/factory-test.vue': {
+      routes: '/factory-test'
       views: never
     }
     'src/pages/system.vue': {

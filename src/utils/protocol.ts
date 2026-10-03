@@ -114,6 +114,8 @@ export const STREAM_POWER = 2
 export const STREAM_LINK = 3
 /** 飞控遥测：原始 CRSF 帧透传（固件不解析，由 utils/crsf.ts 解码） */
 export const STREAM_CRSF_TELEM = 4
+/** 出厂测试专用：原始输入状态（按钮电平/边沿 + 旋钮格数）+ 16 路通道值 + source 表 */
+export const STREAM_FACTORY = 5
 
 /** 命令名 → 命令 id（旧 JSON 命令名兼容） */
 export const CMD_NAME_TO_ID: Record<string, number> = {

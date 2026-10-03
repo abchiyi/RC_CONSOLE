@@ -19,6 +19,7 @@ import {
   STREAM_POWER,
   STREAM_LINK,
   STREAM_CRSF_TELEM,
+  STREAM_FACTORY,
   EVENT_STREAM_DATA,
   Writer,
   Reader,
@@ -799,6 +800,8 @@ export function decodeEvent(payload: Uint8Array, streamFlags = 0): Record<string
         // 飞控遥测原始帧：不做对象化，整段字节交给遥测 Store 解析
         //   （帧内含 CRSF 二进制，展开成对象既费时又丢失 CRC 校验信息）
         return { evt: eventId, contentType, raw: dataBytes }
+      case STREAM_FACTORY:
+        return { evt: eventId, contentType, data: decodeFactoryInputs(dataBytes) }
       default:
         return null
     }
@@ -830,6 +833,64 @@ function decodeChannels(bytes: Uint8Array, streamFlags: number): Record<string, 
     for (let i = 0; i < 16; i++) sources.push(sourceFromId(bytes[valueLen + i] ?? 0))
   }
   return { channels, sources }
+}
+
+/**
+ * 出厂测试专用帧（content_type=5，固件 STREAM_CT_FACTORY）:
+ *   u8 flags | u16 btn_level | u16 btn_edge | i16 knob | u8 press[5] | u16 ch[16] | u8 src[16]
+ *   | [扩展] u16 trigger | u16 joy_x | u16 joy_y | i16 roll | i16 pitch | i16 yaw
+ * 按钮字段全部来自**固件按钮库的事件回调**（PRESS_DOWN / PRESS_UP），不读通道值：
+ *   - btn_level: bit n = InputSource n 当前按下（位号与 INPUT_SOURCE_NAMES 一致）
+ *   - btn_edge : bit n = 自上一帧以来翻转过（短按也能捕获，轮询做不到）
+ *   - press[n] : 各按钮自开流以来的按下次数（按 Button 枚举顺序，位号与下标一致）
+ * 所以模型没把按键挂到通道上、甚至没配挡位，都照样测得出来。
+ * knob 是 EC11 的 PCNT 累计格数（有符号），同样与通道映射无关。
+ */
+function decodeFactoryInputs(bytes: Uint8Array): Record<string, unknown> {
+  // 长度校验: 短帧直接判废, 避免把缺失字节静默读成 0 (电平位图会假性显示成"全松开")
+  const need = 1 + 2 + 2 + 2 + 5 + 32 + 16
+  if (bytes.length < need) {
+    throw new Error(`出厂测试帧长度不足: 需要 ${need}B, 实际 ${bytes.length}B`)
+  }
+  const r = new Reader(bytes)
+  const flags = r.u8()
+  const btnLevel = r.u16()
+  const btnEdge = r.u16()
+  const knob = r.i16()
+  const press: number[] = []
+  for (let i = 0; i < 5; i++) press.push(r.u8())
+  const channels: number[] = []
+  for (let i = 0; i < 16; i++) channels.push(r.u16())
+  const sources: string[] = []
+  for (let i = 0; i < 16; i++) sources.push(sourceFromId(r.u8()))
+  // 扩展段（新固件才有，追加在帧尾）: 扳机 / 摇杆 ADC 原始值 + IMU 全量数据，仅供观察、不参与判定。
+  //   need 仍按旧帧长算 —— 老固件没有这段时 remaining 不足，得到 undefined，按钮与旋钮照旧能解。
+  //   量化与轴映射同 STREAM_CT_RAW_IMU（acc g×100 / rate °/s×10，轴映射 {2,0,1}）
+  let analog: Record<string, number> | undefined
+  if (r.remaining >= 12) {
+    const trigger = r.u16()
+    const joyX = r.u16()
+    const joyY = r.u16()
+    const roll = r.i16() / 100
+    const pitch = r.i16() / 100
+    const yaw = r.i16() / 100
+    analog = { trigger, joy_x: joyX, joy_y: joyY, roll, pitch, yaw }
+    if (r.remaining >= 12) { // 再有一段: acc ×3 + rate ×3
+      const accX = r.i16() / 100
+      const accY = r.i16() / 100
+      const accZ = r.i16() / 100
+      const rateX = r.i16() / 10
+      const rateY = r.i16() / 10
+      const rateZ = r.i16() / 10
+      analog.acc_x = accZ
+      analog.acc_y = accX
+      analog.acc_z = accY
+      analog.rate_x = rateZ
+      analog.rate_y = rateX
+      analog.rate_z = rateY
+    }
+  }
+  return { flags, btnLevel, btnEdge, knob, press, channels, sources, analog }
 }
 
 /** 11-bit 小端位流解包（固件 pack_channels_11bit 的逆过程） */

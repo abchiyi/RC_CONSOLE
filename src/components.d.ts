@@ -18,6 +18,7 @@ declare module 'vue' {
     ElrsFieldTree: typeof import('./components/elrs/ElrsFieldTree.vue')['default']
     ElrsFlashDialog: typeof import('./components/elrs/ElrsFlashDialog.vue')['default']
     FirmwareUpgradeDialog: typeof import('./components/FirmwareUpgradeDialog.vue')['default']
+    ImuCard: typeof import('./components/calibration/ImuCard.vue')['default']
     OutputCurveEditor: typeof import('./components/config/OutputCurveEditor.vue')['default']
     OutputCurvePanel: typeof import('./components/calibration/OutputCurvePanel.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

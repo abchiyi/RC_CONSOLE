@@ -29,6 +29,7 @@ export interface StreamRequest {
 
 /** 流请求归属方。同一时刻只有一个生效（固件单流会话），冲突时按 OWNER_PRIORITY 取高者 */
 export const OWNER = {
+  FACTORY: 'factory',
   CHANNELS: 'channels',
   CALIBRATION: 'calibration',
   LINK: 'link',
@@ -36,10 +37,14 @@ export const OWNER = {
 } as const
 
 /**
- * owner 优先级：数值大者优先（校准实时性最高 > 链路 / 遥测 > 通道）
+ * owner 优先级：数值大者优先（出厂测试 > 校准实时性最高 > 链路 / 遥测 > 通道）
+ * 出厂测试页独占通道流（content_type=0 + flags 0x01 带 source 表），必须压过通道页的
+ * 常驻请求，否则进页后拿不到带 source 表的帧 —— 那张表是定位按钮 / 旋钮所在通道的唯一依据。
+ * 测试页全程只用这一条（监测期间仅把间隔从 50ms 提到 20ms），不再切 raw 流。
  * 遥测与链路同级：固件是单流会话，两者互斥，谁后申请谁生效（见文件头注释）。
  */
 const OWNER_PRIORITY: Record<string, number> = {
+  [OWNER.FACTORY]: 3,
   [OWNER.CALIBRATION]: 2,
   [OWNER.LINK]: 1,
   [OWNER.TELEMETRY]: 1,
@@ -147,9 +152,12 @@ async function flush(): Promise<void> {
         flags: want.flags,
       })
       echoed = (await p) as Record<string, unknown> | undefined
+      // 诊断: null=固件没回/D 帧被吞; ok:false=固件拒绝(BAD_PARAM); 有回显但没流=启表失败
+      console.log('[Stream] start echo:', JSON.stringify(echoed ?? null))
     } catch {
       // 超时或被新请求取代：退化为信任本地请求值，后续 flush 会用真实响应自愈
       echoed = undefined
+      console.warn('[Stream] start echo timeout, fallback to local request')
     }
 
     if (myGen === gen) {

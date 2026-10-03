@@ -135,10 +135,12 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
    * 从固件拉取 ELRS 字段列表。
    * 固件发现是异步的：缓存从 0 逐步增长，且个别字段在连接态下会整轮超时（模块不响应）。
    * 结束判据（两条任一满足即结束）：
-   *   ① 数量达到历史完整枚举值 → 立即结束
+   *   ① 数量达到历史完整枚举值 → 立即结束（无历史基线时不生效，见下）
    *   ② 数量持续 NO_GROW_MS 不再增长 → 认为发现已收敛
    * 注意：不能用"连续两次读数一致"——缓存增长途中一旦卡在超时字段,
    *       连续两次读数必然相同, 会被误判为稳定, 前端只剩半成品列表。
+   * 注意：knownCompleteCount 为 0 时（冷启动 / 首次访问）不能算"达标"，
+   *       否则刚重扫完的第一轮非空读数就结束，字段树只剩刚发现的前几个。
    */
   async function fetchFields(timeoutMs = 15000): Promise<void> {
     fieldsLoading.value = true
@@ -154,7 +156,8 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
           lastCount = n
           lastGrowAt = Date.now()
         }
-        if (n > 0 && (n >= knownCompleteCount.value || Date.now() - lastGrowAt > NO_GROW_MS)) {
+        const reachedKnown = knownCompleteCount.value > 0 && n >= knownCompleteCount.value
+        if (n > 0 && (reachedKnown || Date.now() - lastGrowAt > NO_GROW_MS)) {
           break
         }
         if (Date.now() < deadline) {
@@ -171,8 +174,9 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
     }
   }
 
-  /** 强制重新发现字段：无条件清空固件缓存并异步重建，轮询拉取新缓存直至非空或超时 */
-  async function rescanFields(): Promise<void> {
+  /** 强制重新发现字段：无条件清空固件缓存并异步重建，轮询拉取新缓存直至非空或超时
+   *  timeoutMs: 整轮发现等待上限（调用方可按节奏收紧，默认给足一轮完整发现） */
+  async function rescanFields (timeoutMs = 25000): Promise<void> {
     fieldsLoading.value = true
     try {
       const p = rr.wait('elrs_rescan_fields', 3000)
@@ -183,7 +187,7 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
         /* timeout */
       }
       // 固件发现是异步的（逐字段队列读取，需数秒；连接态下个别字段会整轮超时）
-      await fetchFields(25000)
+      await fetchFields(timeoutMs)
       fieldsVersion.value++  // 强制下游重建字段树，规避 v-list-group 渲染不同步
     } finally {
       fieldsLoading.value = false

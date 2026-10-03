@@ -47,7 +47,10 @@
                 </div>
                 <div class="stat-kv stat-kv-wide">
                   <span class="stat-label">软件版本</span>
-                  <span class="stat-value mono">{{ configStore.deviceInfo?.fw_version ?? '--' }}</span>
+                  <!-- 隐藏入口: 连点 5 次进入出厂测试（产线专用，不占侧边栏） -->
+                  <span class="stat-value mono ver-tap" @click="tapVersion">
+                    {{ configStore.deviceInfo?.fw_version ?? '--' }}
+                  </span>
                 </div>
                 <div class="stat-kv stat-kv-wide">
                   <span class="stat-label">安全保护</span>
@@ -469,6 +472,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useSerialStore } from '@/stores/serial'
 import { usePowerStore } from '@/stores/power'
 import { useConfigStore } from '@/stores/config'
@@ -482,6 +486,7 @@ import FirmwareUpgradeDialog from '@/components/FirmwareUpgradeDialog.vue'
 const serial = useSerialStore()
 const power = usePowerStore()
 const configStore = useConfigStore()
+const router = useRouter()
 
 // ========== 主控固件升级对话框 (入口: 页面内「关于系统」卡片按钮) ==========
 const upgradeDialog = ref(false)
@@ -618,6 +623,33 @@ const stateError = ref('')
 const {
   text: snackbarMsg, color: snackbarColor, visible: snackbarVisible, show: notify, timeoutMs: noticeTimeout,
 } = useNotice(2000)
+
+// ========== 隐藏入口: 连点「软件版本」进入出厂测试 ==========
+/**
+ * 出厂测试是产线专用页，不占侧边栏（日常用不到），沿用「连点版本号 N 次」的惯例进。
+ *   计数带 3s 窗口：停手即清零，避免随手点几下攒够了误入。
+ */
+const VER_TAPS_TO_ENTER = 5
+const VER_TAP_WINDOW_MS = 3000
+let verTaps = 0
+let verTapTimer: ReturnType<typeof setTimeout> | null = null
+
+function tapVersion() {
+  if (verTapTimer) clearTimeout(verTapTimer)
+  verTapTimer = setTimeout(() => { verTaps = 0 }, VER_TAP_WINDOW_MS)
+  verTaps++
+
+  if (verTaps >= VER_TAPS_TO_ENTER) {
+    verTaps = 0
+    clearTimeout(verTapTimer)
+    verTapTimer = null
+    notify('已进入出厂测试', 'success')
+    void router.push('/factory-test')
+    return
+  }
+  // 点到一半给个反馈，免得以为点了没反应
+  if (verTaps >= 3) notify(`再点 ${VER_TAPS_TO_ENTER - verTaps} 次进入出厂测试`, 'info')
+}
 
 // ========== 配置备份 / 还原 (协议 §5.15) ==========
 //   会话期间暂停状态轮询让出链路带宽；设备侧给的是二进制快照，JSON 编解码在上位机完成。
@@ -1159,6 +1191,17 @@ onUnmounted(() => {
   font-family: 'Cascadia Mono', 'Consolas', monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+}
+
+/* 隐藏入口: 版本号可点（hover 才变色, 不高调提示） */
+.ver-tap {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+.ver-tap:hover {
+  color: rgb(var(--v-theme-primary));
 }
 
 /* ── 电量: 四段电池图标 (固件上报 0~4 档, 不再显示百分比) ── */
