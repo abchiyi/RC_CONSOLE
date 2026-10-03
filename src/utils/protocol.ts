@@ -51,6 +51,7 @@ export const CMD = {
   RESET: 0x00_03,
   FACTORY_RESET_NVS: 0x00_04,
   LOCK_SECURE: 0x00_05, // 锁定 flash 加密为 Release（不可逆，烧 eFuse）
+  GET_EFUSE: 0x00_06, // 读取 eFuse 状态（USB 通道 / JTAG / flash 加密 / secure boot 相关位）
   GET_CONFIG: 0x01_01,
   SET_MODEL: 0x01_02,
   GET_MODEL: 0x01_03,
@@ -124,6 +125,7 @@ export const CMD_NAME_TO_ID: Record<string, number> = {
   reset: CMD.RESET,
   factory_reset_nvs: CMD.FACTORY_RESET_NVS,
   lock_secure: CMD.LOCK_SECURE,
+  get_efuse: CMD.GET_EFUSE,
   get_config: CMD.GET_CONFIG,
   set_model: CMD.SET_MODEL,
   get_model: CMD.GET_MODEL,

@@ -650,6 +650,34 @@ export const useConfigStore = defineStore('config', () => {
     if (cmd) rr.tryResolve(cmd, json.ok)
   }
 
+  /**
+   * 断开场景：丢掉设备信息与全部模型数据（含差分同步 baseline）。
+   * 只清本地镜像，不下发任何命令 —— 连接已断，命令无处可去；下次连接由页面
+   * onMounted 重新拉取，保证新会话里没有上一台设备的残影。
+   */
+  function reset (): void {
+    deviceInfo.value = null
+    config.value = null
+    loading.value = false
+    error.value = null
+    cfgDirty.value = false
+    syncedModels.value = {}
+    _pendingModelSlot = null
+    telem2Usb.value = false
+    telem2Bt.value = false
+    telem2Supported.value = null
+    telem2Busy.value = false
+    telem2Error.value = null
+    telemRssiCf.value = true
+    telemRssiSupported.value = null
+    telemRssiBusy.value = false
+    telemRssiError.value = null
+    lockZeroImu.value = false
+    lockZeroSupported.value = null
+    lockZeroBusy.value = false
+    lockZeroError.value = null
+  }
+
   return {
     deviceInfo,
     config,
@@ -691,5 +719,6 @@ export const useConfigStore = defineStore('config', () => {
     lockZeroError,
     setLockZeroImu,
     handleResponse,
+    reset,
   }
 })

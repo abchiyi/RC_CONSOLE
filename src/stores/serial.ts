@@ -32,6 +32,13 @@ export const useSerialStore = defineStore('serial', () => {
   const loadingPorts = ref(false)
   const lastPortPath = ref('')
   const isBluetooth = ref(false)
+  /** 端口仍被保持打开（软断开）：可免弹窗直接复用，设备侧感知不到断开 */
+  const portHeld = ref(false)
+
+  /** 只有 Web Serial 后端支持软断开/复用端口（Electron 的端口由主进程持有，不在此列） */
+  function isWebSerial (b: SerialBackend): b is SerialService {
+    return typeof (b as SerialService).softDisconnect === 'function'
+  }
 
   // 运行时确定使用哪个后端
   const isElectron = ElectronSerialService.isSupported()
@@ -95,6 +102,18 @@ export const useSerialStore = defineStore('serial', () => {
     error.value = null
 
     try {
+      // 端口仍保持打开（上一次是软断开）→ 直接复用：不弹选择框，也不产生断开事件
+      if (!isElectron && !isBluetooth.value && portHeld.value && isWebSerial(backend)) {
+        if (await backend.resume()) {
+          portHeld.value = false
+          connected.value = true
+          return true
+        }
+        // 复用失败（设备被拔 / 端口失效）→ 退回正常的选端口流程
+        portHeld.value = false
+        await backend.disconnect()
+      }
+
       if (isElectron) {
         // Electron 模式
         let targetPath = portPath
@@ -151,6 +170,7 @@ export const useSerialStore = defineStore('serial', () => {
         const ok = await (backend as SerialService).connect(port)
         if (ok) {
           connected.value = true
+          portHeld.value = false
         } else {
           error.value = '串口打开失败'
         }
@@ -178,6 +198,9 @@ export const useSerialStore = defineStore('serial', () => {
       error.value = '当前环境不支持 Web Bluetooth，请使用 Chromium/Edge 内核浏览器'
       return false
     }
+    // 改用蓝牙前先彻底释放串口端口：软断开保持的端口会一直占用着 USB 设备
+    if (portHeld.value) await releasePort()
+
     ensureBleDisconnect()
     // 切换全局后端：所有直接 import serialService 的模块自动跟随
     setSerialBackend(bleService)
@@ -203,9 +226,36 @@ export const useSerialStore = defineStore('serial', () => {
     return connected.value
   }
 
-  async function disconnect(): Promise<void> {
-    await backend.disconnect()
+  /**
+   * 断开连接
+   *
+   * 默认走**软断开**：只停收发、保留端口 open，设备侧感知不到断开，
+   * 避免主机 deassert 控制信号引发的复位（对通讯中的 RC 链路是致命的）。
+   * 需要真正释放端口的场景（切换端口 / OTA / 设备已自行重启）传 releasePort: true。
+   */
+  async function disconnect (options: { releasePort?: boolean } = {}): Promise<void> {
+    // 断开前先让设备停流：之后主机不再取数，若设备仍在高频上报会把 USB 缓冲顶满，
+    // 反而可能拖死设备端任务；硬断开时这条命令也让设备先安静下来
+    if (connected.value) {
+      try {
+        await backend.sendCommand('stream_stop')
+        await new Promise(resolve => setTimeout(resolve, 80)) // 给最后一帧落地的时间
+      } catch { /* 断开在即，失败无所谓 */ }
+    }
+
+    if (!options.releasePort && isWebSerial(backend)) {
+      await backend.softDisconnect()
+      portHeld.value = backend.hasOpenPort()
+    } else {
+      await backend.disconnect()
+      portHeld.value = false
+    }
     connected.value = false
+  }
+
+  /** 彻底释放端口（会关掉串口，设备侧会感知到断开） */
+  async function releasePort (): Promise<void> {
+    await disconnect({ releasePort: true })
   }
 
   // 注册断线回调
@@ -221,6 +271,7 @@ export const useSerialStore = defineStore('serial', () => {
     availablePorts,
     loadingPorts,
     lastPortPath,
+    portHeld,
     isElectron,
     isBluetooth,
     bluetoothSupported,
@@ -230,6 +281,7 @@ export const useSerialStore = defineStore('serial', () => {
     connect,
     connectBLE,
     disconnect,
+    releasePort,
     listPorts,
     refreshPorts,
   }

@@ -145,6 +145,81 @@
         </v-card-text>
       </v-card>
 
+      <!-- ── MCU eFuse 状态（只读，产线核对烧录 / 锁定结果） ── -->
+      <v-card class="cal-card my-2" elevation="0" rounded="lg" variant="outlined">
+        <v-card-item class="pb-0">
+          <template #prepend>
+            <v-avatar class="cal-avatar" color="primary" size="36">
+              <v-icon color="white" size="20">mdi-fuse</v-icon>
+            </v-avatar>
+          </template>
+
+          <v-card-title>MCU eFuse 状态</v-card-title>
+          <v-card-subtitle>安全保护 / USB 通道 / 调试接口的熔丝位</v-card-subtitle>
+
+          <template #append>
+            <v-btn
+              color="grey"
+              :loading="efuseLoading"
+              prepend-icon="mdi-refresh"
+              size="small"
+              variant="text"
+              @click="fetchEfuse"
+            >
+              刷新
+            </v-btn>
+          </template>
+        </v-card-item>
+
+        <v-card-text class="pt-2 pb-3">
+          <div v-if="efuseError" class="ft-tag-hint">{{ efuseError }}</div>
+
+          <div v-else class="efuse-grid">
+            <div v-for="row in efuseRows" :key="row.name" class="efuse-row">
+              <div class="efuse-name">{{ row.name }}</div>
+              <div class="efuse-desc">{{ row.desc }}</div>
+              <v-chip :color="row.color" size="x-small" variant="tonal">{{ row.value }}</v-chip>
+            </div>
+          </div>
+        </v-card-text>
+      </v-card>
+
+      <!-- ── 出厂锁定: 锁定为 Release 模式（不可撤销） ── -->
+      <v-card class="cal-card my-2" elevation="0" rounded="lg" variant="outlined">
+        <v-card-item class="pb-0">
+          <template #prepend>
+            <v-avatar class="cal-avatar" color="error" size="36">
+              <v-icon color="white" size="20">mdi-lock</v-icon>
+            </v-avatar>
+          </template>
+
+          <v-card-title>出厂锁定</v-card-title>
+          <v-card-subtitle>固化为 Release 模式（不可撤销）</v-card-subtitle>
+
+          <template #append>
+            <v-chip :color="lockStateColor" size="x-small" variant="tonal">{{ lockStateLabel }}</v-chip>
+          </template>
+        </v-card-item>
+
+        <v-card-text class="pt-2 pb-3">
+          <div class="ft-tag-hint mb-2">
+            锁定后仅接受官方签名固件，关闭调试接口并切换 USB 通道（设备重启、端口变化）。
+          </div>
+
+          <v-btn
+            block
+            color="error"
+            :disabled="info.secure !== 1"
+            :loading="lockBusy"
+            prepend-icon="mdi-lock-check"
+            variant="tonal"
+            @click="lockDialog = true"
+          >
+            <span class="btn-text">锁定为 Release 模式</span>
+          </v-btn>
+        </v-card-text>
+      </v-card>
+
       <!-- 交互操作提示: 批量扫描运行期间高亮 -->
       <v-alert
         v-if="instruction"
@@ -379,6 +454,50 @@
           </template>
         </v-card-text>
       </v-card>
+
+      <!-- 锁定为 Release 模式确认: 不可撤销, 需明确说明 -->
+      <v-dialog v-model="lockDialog" max-width="460" persistent>
+        <v-card>
+          <v-card-title class="text-body-1">锁定为 Release 模式</v-card-title>
+
+          <v-card-text>
+            锁定后设备只接受官方签名固件，将关闭调试接口并切换 USB 通道
+            （设备重启后端口会变化，需重新连接）。此操作烧写 eFuse，不可撤销。
+          </v-card-text>
+
+          <v-alert
+            v-if="lockError"
+            class="mx-4 mb-2"
+            color="error"
+            density="compact"
+            variant="tonal"
+          >
+            {{ lockError }}
+          </v-alert>
+
+          <v-card-actions>
+            <v-spacer />
+
+            <v-btn
+              :disabled="lockBusy"
+              variant="text"
+              @click="lockDialog = false"
+            >
+              取消
+            </v-btn>
+
+            <v-btn
+              color="error"
+              :loading="lockBusy"
+              variant="tonal"
+              @click="startLockSecure"
+            >
+              确认锁定
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+
     </div>
   </div>
 </template>
@@ -673,6 +792,145 @@
   // ========== 设备信息摘要 ==========
   const info = reactive({ device: '', hw: '', fw: '', secure: 0 })
   const deviceLabel = computed(() => info.device || '未知设备')
+
+  // ========== MCU eFuse 状态（只读，产线核对烧录 / 锁定结果） ==========
+  const efuseLoading = ref(false)
+  const efuseError = ref('')
+  /** eFuse 关键位状态；null = 固件未回报该字段 */
+  const efuse = reactive({
+    usb_phy_sel: null as boolean | null,        // false=USB Serial/JTAG, true=USB OTG(TinyUSB)
+    dis_usb_jtag: null as boolean | null,       // 已禁用 USB JTAG
+    dis_usb_serial_jtag: null as boolean | null, // 已禁用 USB Serial/JTAG
+    flash_crypt_cnt: null as number | null,     // 0=未加密 1=Development 3=Release
+    secure_boot_en: null as boolean | null,     // secure boot 已启用
+    dis_download_mode: null as boolean | null,  // 已禁用下载模式
+    secure_mode: null as number | null,         // 冗余，与 get_info 一致
+    switch_status: null as number | null,       // USB_PHY_SEL 烧写结果: 0=未尝试 1=已烧 2=失败
+    switch_err: null as number | null,          // 烧写失败时的 esp_err_t
+  })
+
+  function toBool (v: unknown): boolean | null {
+    if (v === null || v === undefined) return null
+    if (typeof v === 'boolean') return v
+    return Number(v) !== 0
+  }
+
+  function toInt (v: unknown): number | null {
+    if (v === null || v === undefined) return null
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+
+  async function fetchEfuse (): Promise<void> {
+    efuseLoading.value = true
+    efuseError.value = ''
+    try {
+      const o = await ask('get_efuse', 3000)
+      if (o.ok === false) {
+        efuseError.value = String(o.error ?? '设备不支持读取 eFuse')
+        return
+      }
+      efuse.usb_phy_sel = toBool(o.usb_phy_sel)
+      efuse.dis_usb_jtag = toBool(o.dis_usb_jtag)
+      efuse.dis_usb_serial_jtag = toBool(o.dis_usb_serial_jtag)
+      efuse.flash_crypt_cnt = toInt(o.flash_crypt_cnt)
+      efuse.secure_boot_en = toBool(o.secure_boot_en)
+      efuse.dis_download_mode = toBool(o.dis_download_mode)
+      efuse.secure_mode = toInt(o.secure_mode)
+      efuse.switch_status = toInt(o.switch_status)
+      efuse.switch_err = toInt(o.switch_err)
+    } catch (error: unknown) {
+      efuseError.value = error instanceof Error ? error.message : '读取 eFuse 超时'
+    } finally {
+      efuseLoading.value = false
+    }
+  }
+
+  interface EfuseRow { name: string, desc: string, value: string, color: string }
+
+  const efuseRows = computed<EfuseRow[]>(() => {
+    const onOff = (v: boolean | null, on: string, off: string, onColor: string, offColor: string) =>
+      ({ value: v === null ? '未知' : (v ? on : off), color: v === null ? 'grey' : (v ? onColor : offColor) })
+
+    const crypt = efuse.flash_crypt_cnt
+    const cryptMap: Record<number, string> = { 0: '未启用', 1: 'Development', 3: 'Release' }
+    const secureMap = ['未启用', '开发模式', '已启用']
+
+    return [
+      {
+        name: 'USB PHY', desc: '内部 PHY 归属（决定走 USB Serial/JTAG 还是 TinyUSB CDC）',
+        value: efuse.usb_phy_sel === null ? '未知' : (efuse.usb_phy_sel ? 'USB OTG (TinyUSB)' : 'USB Serial/JTAG'),
+        color: efuse.usb_phy_sel === null ? 'grey' : (efuse.usb_phy_sel ? 'info' : 'grey'),
+      },
+      { name: 'USB JTAG', desc: 'USB Serial/JTAG 调试口', ...onOff(efuse.dis_usb_jtag, '已禁用', '启用中', 'success', 'warning') },
+      { name: 'USB Serial/JTAG', desc: '整块 USB Serial/JTAG 外设', ...onOff(efuse.dis_usb_serial_jtag, '已禁用', '启用中', 'success', 'grey') },
+      {
+        name: 'Flash 加密', desc: 'flash encryption 计数',
+        value: crypt === null ? '未知' : (cryptMap[crypt] ?? `cnt=${crypt}`),
+        color: crypt === null ? 'grey' : (crypt === 3 ? 'success' : (crypt === 1 ? 'warning' : 'grey')),
+      },
+      { name: 'Secure Boot', desc: '只接受签名固件', ...onOff(efuse.secure_boot_en, '已启用', '未启用', 'success', 'grey') },
+      { name: '下载模式', desc: 'UART/USB 烧录入口', ...onOff(efuse.dis_download_mode, '已禁用', '允许', 'warning', 'grey') },
+      {
+        name: '安全模式', desc: '设备上报的 secure_mode',
+        value: efuse.secure_mode === null ? '未知' : (secureMap[efuse.secure_mode] ?? '未知'),
+        color: efuse.secure_mode === 2 ? 'success' : (efuse.secure_mode === 1 ? 'warning' : 'grey'),
+      },
+      {
+        name: 'USB 切换', desc: 'USB_PHY_SEL 烧写结果（release 机器应切到 TinyUSB）',
+        value: efuse.switch_status === null
+          ? '未知'
+          : (efuse.switch_status === 1
+            ? '已烧写'
+            : (efuse.switch_status === 2 ? `烧写失败 err=${efuse.switch_err ?? 0}` : '未尝试')),
+        color: efuse.switch_status === 1 ? 'success' : (efuse.switch_status === 2 ? 'error' : 'grey'),
+      },
+    ]
+  })
+
+  // ========== 出厂锁定（锁定为 Release 模式） ==========
+  const lockBusy = ref(false)
+  const lockDialog = ref(false)
+  const lockError = ref('')
+
+  /** 0=未加密 1=Development 2=Release（与 get_info 的 secure_mode 一致） */
+  const lockStateLabel = computed(() => {
+    switch (info.secure) {
+      case 0: return '未启用'
+      case 1: return '开发模式'
+      case 2: return '已锁定'
+      default: return '未知'
+    }
+  })
+  const lockStateColor = computed(() => {
+    switch (info.secure) {
+      case 0: return 'grey'
+      case 1: return 'warning'
+      case 2: return 'success'
+      default: return 'grey'
+    }
+  })
+
+  /** 仅 Development（secure_mode=1）可锁定；锁定后设备烧 eFuse 并重启、切换 USB 通道 */
+  async function startLockSecure (): Promise<void> {
+    lockBusy.value = true
+    lockError.value = ''
+    try {
+      const resp = await ask('lock_secure', 8000)
+      if (resp.ok === true) {
+        lockDialog.value = false
+        notify('已锁定为 Release 模式，设备重启后请重新连接', 'success')
+        // 设备即将重启并切换 USB 通道，端口必然失效：延迟释放，等 ACK 落地
+        setTimeout(() => { void serial.disconnect({ releasePort: true }) }, 1300)
+      } else {
+        lockError.value = `锁定失败: ${String(resp.error || '未知错误')}`
+      }
+    } catch (error: unknown) {
+      lockError.value = `锁定失败: ${error instanceof Error ? error.message : String(error)}`
+    } finally {
+      lockBusy.value = false
+    }
+  }
 
   // ========== 测试用例 ==========
   type TestStatus = 'idle' | 'running' | 'pass' | 'fail' | 'warn'
@@ -1171,12 +1429,14 @@
     if (!connected) return
     scanElrs()
     scheduleLinkPoll() // 顶部 TX / RX 读数跟着连接一起恢复（断连时轮询自行停摆）
+    void fetchEfuse() // 恢复连接后重拉一次 eFuse 状态
   })
 
   onMounted(() => {
     serialService.onObject(onObject)
     useFactoryStream(50)
     void syncInputSources()
+    void fetchEfuse() // eFuse 状态: 进页即读
     scanElrs() // 射频: 进页即重新扫描字段，不等手点播放
     scheduleLinkPoll() // 射频通讯质量: 顶部 TX / RX 读数 1s 一刷
     rateTimer = setInterval(() => {
@@ -1245,6 +1505,38 @@
   font-family: 'Cascadia Mono', 'Consolas', monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
+}
+
+/* eFuse 状态行: 名称固定宽 + 说明撑开 + 状态 chip 靠右 */
+.efuse-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.efuse-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.efuse-row:last-child {
+  border-bottom: none;
+}
+
+.efuse-name {
+  width: 130px;
+  flex: none;
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+
+.efuse-desc {
+  flex: 1;
+  font-size: 0.74rem;
+  color: rgba(255, 255, 255, 0.45);
 }
 
 @media (max-width: 600px) {

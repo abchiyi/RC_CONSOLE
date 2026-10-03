@@ -40,6 +40,23 @@ export interface OutputCurve {
 
 export type CurveType = 'trigger' | 'joy_x' | 'joy_y' | 'imu_roll' | 'imu_pitch' | 'imu_yaw'
 
+/** 校准数据归位：清掉行程实测值，死区回到默认 30（reactive 对象就地复位，保持引用不变） */
+function resetAdcCal (c: AdcCal): void {
+  delete c.raw
+  delete c.raw_min
+  delete c.raw_center
+  delete c.raw_max
+  c.deadzone = 30
+}
+
+/** 输出响应曲线归位：控制点回到 (50,50) 线性 */
+function resetCurve (c: OutputCurve): void {
+  c.x1 = 50
+  c.y1 = 50
+  c.x2 = 50
+  c.y2 = 50
+}
+
 export const useCalibrationStore = defineStore('calibration', () => {
   const trigger = reactive<AdcCal>({ deadzone: 30 })
   const joyX = reactive<AdcCal>({ deadzone: 30 })
@@ -401,6 +418,34 @@ export const useCalibrationStore = defineStore('calibration', () => {
     }
   }
 
+  /**
+   * 断开场景：校准数据全部归位。
+   * 只清本地镜像，不下发任何命令；下次连接由页面重新 cal_get 拉取真值。
+   * resolveZeroIMU(false) 让断开瞬间悬着的等待立即失败返回，不留永不 settle 的 Promise。
+   */
+  function reset (): void {
+    stopTimers()
+    resolveZeroIMU(false)
+    resetAdcCal(trigger)
+    resetAdcCal(joyX)
+    resetAdcCal(joyY)
+    for (const k of Object.keys(imu) as Array<keyof ImuCal>) {
+      delete imu[k]
+    }
+    resetCurve(triggerCurve)
+    resetCurve(joyXCurve)
+    resetCurve(joyYCurve)
+    resetCurve(imuRollCurve)
+    resetCurve(imuPitchCurve)
+    resetCurve(imuYawCurve)
+    lpfAlpha.value = 500
+    calProgress.value = 0
+    lastMessage.value = ''
+    lastType.value = null
+    calDirty.value = false
+    _deadzonesLoaded = false
+  }
+
   return {
     trigger,
     joyX,
@@ -436,5 +481,6 @@ export const useCalibrationStore = defineStore('calibration', () => {
     stopTimers,
     stopCalDataPolling,
     handleResponse,
+    reset,
   }
 })

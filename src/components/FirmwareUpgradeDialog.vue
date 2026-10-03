@@ -241,7 +241,8 @@ async function startFirmwareUpdate() {
     setTimeout(async () => {
       try {
         if (serial.connected) {
-          await serial.disconnect()
+          // 烧录需要独占串口：这里必须真正释放端口，不能用软断开
+          await serial.disconnect({ releasePort: true })
         }
         if (serial.isElectron) {
           await serial.connect(serial.lastPortPath)

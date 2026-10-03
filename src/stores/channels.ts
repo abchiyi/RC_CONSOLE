@@ -76,6 +76,17 @@ export const useChannelStore = defineStore('channels', () => {
     releaseAllStreams()
   }
 
+  /**
+   * 断开场景：通道读数归位（下次连接是干净的初始画面，不留上一台设备的残影）。
+   * 与 resetPolling 的区别：这里连数据一起清；流请求的清理统一由 resetAllStores 收口。
+   */
+  function reset(): void {
+    channels.value = Array(16).fill(RAW_CENTER)
+    sources.value = Array(16).fill('NONE')
+    lastUpdate.value = 0
+    releaseAllStreams()
+  }
+
   return {
     channels,
     sources,
@@ -88,5 +99,6 @@ export const useChannelStore = defineStore('channels', () => {
     startPolling,
     stopPolling,
     resetPolling,
+    reset,
   }
 })

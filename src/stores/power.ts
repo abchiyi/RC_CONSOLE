@@ -94,6 +94,17 @@ export const usePowerStore = defineStore('power', () => {
     }
   }
 
+  /**
+   * 断开场景：丢掉实时电源状态与配置镜像。
+   * 下次连接由页面 onMounted 重新拉取，避免拿上一台设备的电量/阈值渲染新会话。
+   */
+  function reset (): void {
+    cfg.value = { idle_warning_s: 300, idle_shutdown_s: 360 }
+    state.value = null
+    loading.value = false
+    error.value = null
+  }
+
   return {
     cfg,
     state,
@@ -103,5 +114,6 @@ export const usePowerStore = defineStore('power', () => {
     saveCfg,
     fetchState,
     handleResponse,
+    reset,
   }
 })

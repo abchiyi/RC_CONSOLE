@@ -20,6 +20,7 @@ declare module 'vue-router/auto-routes' {
   export interface RouteNamedMap {
     '/calibration': RouteRecordInfo<'/calibration', '/calibration', Record<never, never>, Record<never, never>>,
     '/config': RouteRecordInfo<'/config', '/config', Record<never, never>, Record<never, never>>,
+    '/disconnected': RouteRecordInfo<'/disconnected', '/disconnected', Record<never, never>, Record<never, never>>,
     '/elrs': RouteRecordInfo<'/elrs', '/elrs', Record<never, never>, Record<never, never>>,
     '/factory-test': RouteRecordInfo<'/factory-test', '/factory-test', Record<never, never>, Record<never, never>>,
     '/system': RouteRecordInfo<'/system', '/system', Record<never, never>, Record<never, never>>,
@@ -43,6 +44,10 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/config.vue': {
       routes: '/config'
+      views: never
+    }
+    'src/pages/disconnected.vue': {
+      routes: '/disconnected'
       views: never
     }
     'src/pages/elrs.vue': {

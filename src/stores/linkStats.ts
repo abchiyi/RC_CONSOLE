@@ -411,12 +411,40 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
     releaseStream(OWNER.LINK)
   }
 
+  /**
+   * 断开场景：链路统计与 ELRS 字段树整体归零。
+   * knownCompleteCount（历史字段数达标线）一并清零 —— 换设备的字段数不同，
+   * 留着旧基线会让下一轮的发现提前收敛成半成品。
+   * settleToken 自增：让断开瞬间仍在跑的 settleField / watchCommand 尽早退出。
+   */
+  function reset (): void {
+    valid.value = false
+    fieldCount.value = 0
+    ulRssi.value = 0
+    ulLq.value = 0
+    dlRssi.value = 0
+    dlLq.value = 0
+    txPower.value = 0
+    fields.value = []
+    fieldsLoading.value = false
+    knownCompleteCount.value = 0
+    pendingWrites.value = {}
+    writeRejected.value = null
+    writeBlocked.value = null
+    runningCommands.value = {}
+    settleToken++
+    if (pendingSweeper) {
+      clearTimeout(pendingSweeper)
+      pendingSweeper = null
+    }
+  }
+
   return {
     valid, fieldCount, moduleAlive,
     ulRssi, ulLq, dlRssi, dlLq, txPower,
     fields, fieldsVersion, fieldsLoading,
     pendingValues, writeRejected, writeBlocked, runningCommands,
     update, fetchFields, rescanFields, setParam, handleElrsResponse,
-    startLinkStream, stopLinkStream,
+    startLinkStream, stopLinkStream, reset,
   }
 })

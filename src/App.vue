@@ -2,8 +2,8 @@
   <v-app>
     <AppBar @toggle-drawer="drawer = !drawer" />
 
-    <!-- 侧边导航 -->
-    <v-navigation-drawer v-model="drawer" width="240">
+    <!-- 侧边导航 (未连接时无页面可去, 直接隐藏) -->
+    <v-navigation-drawer v-if="serial.connected" v-model="drawer" width="240">
       <v-list density="compact" nav>
         <v-list-item prepend-icon="mdi-cog" title="通道配置" to="/config" />
         <v-list-item prepend-icon="mdi-chip" title="传感器" to="/calibration" />
@@ -64,17 +64,23 @@
 </template>
 
 <script setup lang="ts">
-  import { onMounted, onUnmounted, ref } from 'vue'
+  import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+  import { useRoute, useRouter } from 'vue-router'
   import AppBar from '@/components/AppBar.vue'
   import ElrsFlashDialog from '@/components/elrs/ElrsFlashDialog.vue'
   import { useConfigStore } from '@/stores/config'
+  import { resetAllStores } from '@/stores/resetAll'
   import { useSerialStore } from '@/stores/serial'
 
+  const router = useRouter()
+  const route = useRoute()
   const drawer = ref(true)
   const serial = useSerialStore()
   const configStore = useConfigStore()
   /** 模块固件烧录对话框开关 (入口: ELRS 页「模块固件升级」卡片; 对话框挂全局 → 烧录中切页不中断) */
   const moduleFwDialog = ref(false)
+  /** 断开前停留的页面: 重连后原样回去 (/disconnected 本身不算) */
+  let lastPath: string | null = null
 
   /** ELRS 页「模块固件升级」卡片 → 打开全局烧录对话框 (广播事件, 与「从设备加载」同一套约定) */
   function onFlashElrs () {
@@ -98,6 +104,28 @@
   function onReloadDone () {
     reloading.value = false
   }
+
+  /**
+   * 连接状态 → 页面生命周期 / 数据生命周期
+   *
+   * 断开: 先跳 /disconnected —— 路由切换会卸载旧页面组件, 各页 onUnmounted 停轮询、
+   *       撤流请求、清定时器; 再 nextTick 后清空全部 store, 于是下次连接是干净的。
+   *       (顺序不能反: 先清数据会让仍挂载的页面 watch 到空值, 可能触发无意义重算。)
+   * 连接: 不在未连接页就无事发生; 在未连接页则回到断开前的页面 (首次连接回 /config)。
+   */
+  watch(() => serial.connected, async (connected, prev) => {
+    if (connected) {
+      if (route.path === '/disconnected') await router.replace(lastPath ?? '/config')
+      return
+    }
+    if (!prev) return // 启动即未连接: 没有需要收尾的页面
+    if (route.path !== '/disconnected') lastPath = route.path
+    moduleFwDialog.value = false // 全局烧录对话框一并收掉, 避免重连后仍挂在半途
+    onReloadDone()
+    await router.replace('/disconnected')
+    await nextTick()
+    resetAllStores()
+  })
 
   onMounted(() => {
     window.addEventListener('app:reload-done', onReloadDone)

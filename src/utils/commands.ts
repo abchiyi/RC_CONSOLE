@@ -510,6 +510,7 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
   try {
     switch (cmdId) {
       case CMD.GET_INFO: return decodeGetInfo(r, name)
+      case CMD.GET_EFUSE: return decodeEfuse(r, name)
       case CMD.GET_CONFIG: return decodeGetConfig(r, name)
       case CMD.GET_MODEL: return { cmd: name, ...decodeModelTlv(data) }
       case CMD.CAL_STATUS: return decodeCalStatus(r, name)
@@ -601,6 +602,24 @@ function statusText(status: number): string {
     case 8: return '不支持'
     case 9: return '内部错误'
     default: return `设备错误(${status})`
+  }
+}
+
+function decodeEfuse(r: Reader, name: string): Record<string, unknown> {
+  // payload（与固件协议对齐）：9 个 u8
+  //   前 7 个逐位反映关键 eFuse 状态；后 2 个是 USB_PHY_SEL 的烧写结果与错误码
+  //   （release 变体日志级别 NONE，烧位失败在串口上没有任何痕迹，只能靠这两个字节诊断）
+  return {
+    cmd: name,
+    usb_phy_sel: r.u8() !== 0,        // 0=USB Serial/JTAG, 1=USB OTG (TinyUSB)
+    dis_usb_jtag: r.u8() !== 0,       // 1=已禁用 USB JTAG
+    dis_usb_serial_jtag: r.u8() !== 0, // 1=已禁用 USB Serial/JTAG
+    flash_crypt_cnt: r.u8(),          // 0=未加密 1=Development 3=Release
+    secure_boot_en: r.u8() !== 0,     // 1=已启用 secure boot
+    dis_download_mode: r.u8() !== 0,  // 1=已禁用下载模式
+    secure_mode: r.u8(),              // 0/1/2，与 get_info 一致
+    switch_status: r.u8(),            // 0=未尝试（非 Release） 1=已烧写 2=烧写失败
+    switch_err: r.u8(),               // 烧写失败时的 esp_err_t
   }
 }
 
