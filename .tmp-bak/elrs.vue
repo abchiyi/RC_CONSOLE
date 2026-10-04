@@ -320,13 +320,13 @@ onUnmounted(async () => {
 
 /* 卡片外壳 (与校准页 CalWizard 一致: 纯色底 + 通栏细边框) */
 .cal-card {
-  background: rgb(var(--v-theme-surface)) !important;
-  border-color: rgba(var(--v-theme-on-surface), 0.08) !important;
+  background: #1e1e1e !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
   transition: border-color 0.3s, background-color 0.3s;
 }
 
 .cal-card:hover {
-  border-color: rgba(var(--v-theme-on-surface), 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
 }
 
 /* ── 卡片内容排版: 分组面板 + 自适应键值网格 ── */
@@ -339,8 +339,8 @@ onUnmounted(async () => {
 .stat-group {
   flex: 1 1 200px;
   min-width: 0;
-  background: rgba(var(--v-theme-on-surface), 0.03);
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 10px;
   padding: 8px 10px;
 }
@@ -350,7 +350,7 @@ onUnmounted(async () => {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(var(--v-theme-on-surface), 0.5);
+  color: rgba(255, 255, 255, 0.5);
   margin-bottom: 5px;
 }
 
@@ -371,7 +371,7 @@ onUnmounted(async () => {
 .stat-label {
   flex: 0 0 auto;
   font-size: 0.68rem;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .stat-value {
@@ -380,7 +380,7 @@ onUnmounted(async () => {
   text-align: right;
   font-size: 0.85rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.92);
+  color: rgba(255, 255, 255, 0.92);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -407,23 +407,21 @@ onUnmounted(async () => {
   border-radius: 8px;
   border: 1px solid rgba(255, 179, 0, 0.5);
   background: rgba(255, 179, 0, 0.1);
-  /* 同色系文字: 语义色反相 (亮=深橙 / 暗=浅琥珀), 保留橙调风格 */
-  color: rgb(var(--v-theme-warning));
-  font-weight: 500;
+  color: rgba(255, 235, 190, 0.9);
   font-size: 0.75rem;
   line-height: 1.45;
 }
 
 .hint-neutral {
-  border-color: rgba(var(--v-theme-on-surface), 0.12);
-  background: rgba(var(--v-theme-on-surface), 0.03);
-  color: rgba(var(--v-theme-on-surface), 0.7);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.7);
 }
 
-/* 次要按钮: surface-variant 底 + 该底的配套文字色 (亮暗各自配对, 不再写死白字) */
+/* 次要按钮: 深色底 + 白字 (与 config / system 页一致) */
 .btn-secondary {
   background-color: rgb(var(--v-theme-surface-variant)) !important;
-  color: rgb(var(--v-theme-on-surface-variant)) !important;
+  color: #fff !important;
 }
 
 </style>

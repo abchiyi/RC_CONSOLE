@@ -8,6 +8,9 @@
 
     <v-spacer />
 
+    <!-- 亮/跟随系统/暗: 属于界面偏好而非设备操作, 未连接时同样可用, 故常显 -->
+    <ThemeModeToggle class="ml-2" />
+
     <!-- 连接入口统一收在「未连接」页, 这里只在已连接时给设备操作 -->
     <template v-if="serial.connected">
       <!-- RF 安全门: 校准不齐 → 固件把外部 ELRS 模块的 EN 拉低, 射频完全停发。
@@ -57,6 +60,7 @@
 <script setup lang="ts">
 import { watch, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import ThemeModeToggle from '@/components/ThemeModeToggle.vue'
 import { useSerialStore } from '@/stores/serial'
 import { useChannelStore } from '@/stores/channels'
 import { useCalibrationStore } from '@/stores/calibration'

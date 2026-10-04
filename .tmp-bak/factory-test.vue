@@ -133,11 +133,10 @@
             </v-btn>
 
             <v-btn
-              color="primary"
+              class="btn-secondary"
               :disabled="busy"
               prepend-icon="mdi-restart"
               size="small"
-              variant="tonal"
               @click="resetAll"
             >
               <span class="btn-text">清空结果</span>
@@ -1490,21 +1489,24 @@
 
 /* 卡片外壳 (与校准/系统页一致) */
 .cal-card {
-  background: rgb(var(--v-theme-surface)) !important;
-  border-color: rgba(var(--v-theme-on-surface), 0.08) !important;
+  background: #1e1e1e !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
   transition: border-color 0.3s, background-color 0.3s;
 }
 
 .cal-card:hover {
-  border-color: rgba(var(--v-theme-on-surface), 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
 }
 
 .cal-avatar {
   margin-right: 4px;
 }
 
-/* 底栏/次级按钮: surface-variant 底 + 该底的配套文字色 (亮暗各自配对, 不再写死白字) */
-/* 旧 .btn-secondary 实底已移除: 按钮统一走 Vuetify tonal (与"扫描自动项"同款) */
+/* 底栏/次级按钮: 深色底 + 白字 */
+.btn-secondary {
+  background-color: rgb(var(--v-theme-surface-variant)) !important;
+  color: #fff !important;
+}
 
 .mono {
   font-family: 'Cascadia Mono', 'Consolas', monospace;
@@ -1524,7 +1526,7 @@
   align-items: center;
   gap: 12px;
   padding: 6px 0;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .efuse-row:last-child {
@@ -1541,7 +1543,7 @@
 .efuse-desc {
   flex: 1;
   font-size: 0.74rem;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(255, 255, 255, 0.45);
 }
 
 @media (max-width: 600px) {
@@ -1560,8 +1562,8 @@
 .ft-sum {
   padding: 8px 10px;
   border-radius: 10px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
-  background: rgba(var(--v-theme-on-surface), 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
   text-align: center;
 }
 
@@ -1575,7 +1577,7 @@
   margin-top: 2px;
   font-size: 0.66rem;
   letter-spacing: 0.06em;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .ft-sum-pass .ft-sum-num {
@@ -1591,7 +1593,7 @@
 }
 
 .ft-sum-total .ft-sum-num {
-  color: rgba(var(--v-theme-on-surface), 0.85);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 /* ── 交互操作提示 ── */
@@ -1609,7 +1611,7 @@
 /* ── 手动判定条 ── */
 .ft-manual-obs {
   font-size: 0.78rem;
-  color: rgba(var(--v-theme-on-surface), 0.75);
+  color: rgba(255, 255, 255, 0.75);
 }
 
 /* ── 按钮 / 旋钮标签（键盘测试式） ── */
@@ -1622,8 +1624,8 @@
 .ft-tag {
   padding: 7px 6px;
   border-radius: 10px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-  background: rgba(var(--v-theme-on-surface), 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
   text-align: center;
   transition: background-color 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
@@ -1647,13 +1649,13 @@
 .ft-tag-name {
   font-size: 0.82rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.92);
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .ft-tag-hint {
   margin-top: 8px;
   font-size: 0.66rem;
-  color: rgba(var(--v-theme-on-surface), 0.35);
+  color: rgba(255, 255, 255, 0.35);
 }
 
 /* ── 模拟输入观察（扳机 / 摇杆 / IMU） ──
@@ -1672,8 +1674,8 @@
 .ft-analog {
   padding: 6px 8px;
   border-radius: 8px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-  background: rgba(var(--v-theme-on-surface), 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .ft-analog-head {
@@ -1685,13 +1687,13 @@
 
 .ft-analog-name {
   font-size: 0.7rem;
-  color: rgba(var(--v-theme-on-surface), 0.6);
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .ft-analog-val {
   font-size: 0.82rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.9);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 /* 位置条只是「当前在哪」的指针，不是进度 */
@@ -1699,13 +1701,13 @@
   margin-top: 5px;
   height: 4px;
   border-radius: 2px;
-  background: rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 
 .ft-analog-fill {
   height: 100%;
-  background: rgba(var(--v-theme-on-surface), 0.45);
+  background: rgba(255, 255, 255, 0.45);
   transition: width 0.08s linear;
 }
 
@@ -1713,7 +1715,7 @@
 .ft-progress-note {
   margin-top: 6px;
   font-size: 0.66rem;
-  color: rgba(var(--v-theme-on-surface), 0.42);
+  color: rgba(255, 255, 255, 0.42);
 }
 
 /* ── 测试项行 ── */
@@ -1724,15 +1726,15 @@
   gap: 10px;
   padding: 9px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
-  background: rgba(var(--v-theme-on-surface), 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
 
 .ft-row:hover {
   border-color: rgba(var(--v-theme-primary), 0.5);
-  background: rgba(var(--v-theme-on-surface), 0.06);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 /* 相邻条目间距（最后一条不加，避免撑高卡片底部） */
@@ -1750,17 +1752,17 @@
   gap: 4px;
   font-size: 0.78rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.8);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .ft-row-badge {
-  color: rgba(var(--v-theme-on-surface), 0.35);
+  color: rgba(255, 255, 255, 0.35);
 }
 
 .ft-row-sub {
   margin-top: 1px;
   font-size: 0.66rem;
-  color: rgba(var(--v-theme-on-surface), 0.4);
+  color: rgba(255, 255, 255, 0.4);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1776,7 +1778,7 @@
 .ft-row-val {
   font-size: 0.78rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.9);
+  color: rgba(255, 255, 255, 0.9);
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;

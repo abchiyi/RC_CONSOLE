@@ -330,14 +330,14 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
 .ft-row {
   padding: 9px 11px;
   border-radius: 12px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.05);
-  background: rgba(var(--v-theme-on-surface), 0.028);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.028);
   transition: background-color 0.2s, border-color 0.2s;
 }
 
 .ft-row:hover {
-  border-color: rgba(var(--v-theme-on-surface), 0.1);
-  background: rgba(var(--v-theme-on-surface), 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .ft-row.is-busy {
@@ -371,7 +371,7 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
 .ft-name {
   font-size: 0.78rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.88);
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .ft-spacer {
@@ -391,7 +391,7 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
   margin: 6px 0 0;
   font-size: 0.75rem;
   line-height: 1.5;
-  color: rgba(var(--v-theme-on-surface), 0.6);
+  color: rgba(255, 255, 255, 0.6);
 }
 
 /* ── 选项 / 按钮：胶囊 ── */
@@ -407,9 +407,9 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
 .ft-btn {
   padding: 4px 11px;
   border-radius: 999px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   background: transparent;
-  color: rgba(var(--v-theme-on-surface), 0.72);
+  color: rgba(255, 255, 255, 0.72);
   font-size: 0.74rem;
   line-height: 1.6;
   cursor: pointer;
@@ -418,8 +418,8 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
 
 .ft-option:hover:not(:disabled),
 .ft-btn:hover:not(:disabled) {
-  border-color: rgba(var(--v-theme-on-surface), 0.3);
-  color: rgb(var(--v-theme-on-surface));
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
 }
 
 .ft-option.is-active {
@@ -427,7 +427,7 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
   background: rgb(var(--v-theme-primary));
   color: #fff;
   font-weight: 600;
-  box-shadow: none; /* 扁平化: 选中态靠实色底表达, 不加投影 */
+  box-shadow: 0 2px 10px rgba(var(--v-theme-primary), 0.35);
 }
 
 .ft-btn.is-primary {
@@ -445,10 +445,10 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
 .ft-tag {
   padding: 0 6px;
   border-radius: 999px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   font-size: 0.62rem;
   line-height: 1.5;
-  color: rgba(var(--v-theme-on-surface), 0.5);
+  color: rgba(255, 255, 255, 0.5);
   white-space: nowrap;
 }
 
@@ -482,16 +482,16 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
   width: 26px;
   height: 26px;
   border-radius: 8px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   background: transparent;
-  color: rgba(var(--v-theme-on-surface), 0.72);
+  color: rgba(255, 255, 255, 0.72);
   cursor: pointer;
   transition: all 0.16s;
 }
 
 .ft-step:hover:not(:disabled) {
-  border-color: rgba(var(--v-theme-on-surface), 0.3);
-  color: rgb(var(--v-theme-on-surface));
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
 }
 
 .ft-input {
@@ -499,11 +499,9 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
   height: 26px;
   padding: 0 6px;
   border-radius: 8px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-  /* 输入框此前写死"黑 25% 底 + 亮字"; 亮色下会变成深底黑字。改为 on-surface 派生:
-     暗色=微亮底白字, 亮色=浅灰底黑字, 两主题都自洽 */
-  background: rgba(var(--v-theme-on-surface), 0.06);
-  color: rgb(var(--v-theme-on-surface));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  color: rgba(255, 255, 255, 0.92);
   font-family: 'Cascadia Mono', 'Consolas', monospace;
   font-variant-numeric: tabular-nums;
   font-size: 0.78rem;
@@ -535,9 +533,9 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
   width: 100%;
   padding: 8px 10px;
   border-radius: 10px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
-  background: rgba(var(--v-theme-on-surface), 0.05);
-  color: rgba(var(--v-theme-on-surface), 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.85);
   font-size: 0.78rem;
   font-weight: 600;
   text-align: left;
@@ -546,8 +544,8 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
 }
 
 .ft-folder-head:hover {
-  background: rgba(var(--v-theme-on-surface), 0.08);
-  border-color: rgba(var(--v-theme-on-surface), 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 .ft-folder-icon {
@@ -562,12 +560,12 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
   margin-left: auto;
   font-size: 0.66rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(255, 255, 255, 0.45);
   font-variant-numeric: tabular-nums;
 }
 
 .ft-folder-chevron {
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(255, 255, 255, 0.45);
   transition: transform 0.2s;
 }
 
@@ -578,12 +576,12 @@ function cmdActions(field: ElrsFieldInfo): CommandAction[] {
 .ft-folder-body {
   margin: 6px 0 2px 12px;
   padding-left: 10px;
-  border-left: 1px dashed rgba(var(--v-theme-on-surface), 0.12);
+  border-left: 1px dashed rgba(255, 255, 255, 0.12);
 }
 
 .ft-empty {
   padding: 6px 2px;
   font-size: 0.72rem;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(255, 255, 255, 0.45);
 }
 </style>

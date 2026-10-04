@@ -658,14 +658,14 @@ function fmtDeg(v?: number): string {
 <style scoped>
 /* ============ 弹窗外壳 (与 elrs 页面卡片一致) ============ */
 .cal-dialog-card {
-  background: rgb(var(--v-theme-surface)) !important;
+  background: #1e1e1e !important;
   box-shadow: none !important;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
 .cal-avatar {
   border-radius: 10px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 /* ============ 强制模式 (mandatory): 整屏铺满 + 顶部射频关断警示 ============ */
@@ -700,8 +700,7 @@ function fmtDeg(v?: number): string {
 .gw-lock-title {
   font-size: 0.82rem;
   font-weight: 700;
-  /* 同色系文字: 语义色反相 (亮=#e53935 深红 / 暗=#ef5350 浅红), 原写死浅红亮色下发虚 */
-  color: rgb(var(--v-theme-error));
+  color: #ff8a80;
 }
 
 .gw-lock-sub {
@@ -712,7 +711,7 @@ function fmtDeg(v?: number): string {
 }
 
 .gw-head {
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* ============ 主体布局: 左导览 + 右内容 ============ */
@@ -742,16 +741,16 @@ function fmtDeg(v?: number): string {
   width: 100%;
   padding: 9px 11px;
   border-radius: 10px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
-  background: rgba(var(--v-theme-on-surface), 0.028);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.028);
   text-align: left;
   cursor: pointer;
   transition: background-color 0.18s, border-color 0.18s, opacity 0.18s;
 }
 
 .gw-nav-item:hover:not(:disabled) {
-  background: rgba(var(--v-theme-on-surface), 0.055);
-  border-color: rgba(var(--v-theme-on-surface), 0.12);
+  background: rgba(255, 255, 255, 0.055);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .gw-nav-item.is-active {
@@ -772,8 +771,8 @@ function fmtDeg(v?: number): string {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: rgba(var(--v-theme-on-surface), 0.08);
-  color: rgba(var(--v-theme-on-surface), 0.65);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.65);
   font-size: 0.68rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -788,7 +787,7 @@ function fmtDeg(v?: number): string {
 
 .gw-nav-item.is-done .gw-nav-dot {
   background: rgba(76, 175, 80, 0.22);
-  color: rgb(var(--v-theme-success)); /* 亮=深绿 / 暗=浅绿, 原写死浅绿亮色下不可读 */
+  color: #81c784;
 }
 
 .gw-nav-text {
@@ -800,13 +799,13 @@ function fmtDeg(v?: number): string {
 .gw-nav-title {
   font-size: 0.78rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.88);
+  color: rgba(255, 255, 255, 0.88);
   line-height: 1.35;
 }
 
 .gw-nav-desc {
   font-size: 0.66rem;
-  color: rgba(var(--v-theme-on-surface), 0.42);
+  color: rgba(255, 255, 255, 0.42);
   line-height: 1.35;
 }
 
@@ -821,13 +820,13 @@ function fmtDeg(v?: number): string {
 .gw-section-title {
   font-size: 0.86rem;
   font-weight: 700;
-  color: rgba(var(--v-theme-on-surface), 0.92);
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .gw-section-sub {
   font-size: 0.72rem;
   line-height: 1.5;
-  color: rgba(var(--v-theme-on-surface), 0.5);
+  color: rgba(255, 255, 255, 0.5);
 }
 
 /* ---- 内联阶段指示条 (替代嵌套 v-stepper-header) ---- */
@@ -842,7 +841,7 @@ function fmtDeg(v?: number): string {
 .gw-phase-sep {
   width: 14px;
   height: 1px;
-  background: rgba(var(--v-theme-on-surface), 0.14);
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .gw-phase {
@@ -851,21 +850,21 @@ function fmtDeg(v?: number): string {
   gap: 6px;
   padding: 3px 10px 3px 4px;
   border-radius: 999px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-  background: rgba(var(--v-theme-on-surface), 0.028);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.028);
   font-size: 0.72rem;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(255, 255, 255, 0.45);
   transition: all 0.18s;
 }
 
 .gw-phase.is-done {
-  color: rgba(var(--v-theme-on-surface), 0.72);
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .gw-phase.is-active {
   border-color: rgba(var(--v-theme-primary), 0.5);
   background: rgba(var(--v-theme-primary), 0.12);
-  color: rgb(var(--v-theme-on-surface));
+  color: #fff;
 }
 
 .gw-phase-dot {
@@ -875,7 +874,7 @@ function fmtDeg(v?: number): string {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(255, 255, 255, 0.08);
   font-size: 0.66rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -888,7 +887,7 @@ function fmtDeg(v?: number): string {
 
 .gw-phase.is-done .gw-phase-dot {
   background: rgba(76, 175, 80, 0.24);
-  color: rgb(var(--v-theme-success)); /* 亮=深绿 / 暗=浅绿 */
+  color: #81c784;
 }
 
 /* ============ 条目选择: 卡片式开关行 (补上原先缺失的样式) ============ */
@@ -905,16 +904,16 @@ function fmtDeg(v?: number): string {
   width: 100%;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.07);
-  background: rgba(var(--v-theme-on-surface), 0.028);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.028);
   text-align: left;
   cursor: pointer;
   transition: background-color 0.18s, border-color 0.18s;
 }
 
 .gw-pick:hover {
-  background: rgba(var(--v-theme-on-surface), 0.05);
-  border-color: rgba(var(--v-theme-on-surface), 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 .gw-pick.is-on {
@@ -929,8 +928,8 @@ function fmtDeg(v?: number): string {
 }
 
 .gw-pick:disabled:hover {
-  background: rgba(var(--v-theme-on-surface), 0.028);
-  border-color: rgba(var(--v-theme-on-surface), 0.07);
+  background: rgba(255, 255, 255, 0.028);
+  border-color: rgba(255, 255, 255, 0.07);
 }
 
 .gw-pick-avatar {
@@ -947,12 +946,12 @@ function fmtDeg(v?: number): string {
 .gw-pick-title {
   font-size: 0.82rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.92);
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .gw-pick-desc {
   font-size: 0.7rem;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(255, 255, 255, 0.45);
 }
 
 /* 紧凑开关 */
@@ -962,8 +961,8 @@ function fmtDeg(v?: number): string {
   width: 34px;
   height: 20px;
   border-radius: 999px;
-  background: rgba(var(--v-theme-on-surface), 0.12);
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   transition: background-color 0.2s, border-color 0.2s;
 }
 
@@ -979,7 +978,7 @@ function fmtDeg(v?: number): string {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: rgb(var(--v-theme-surface));
+  background: #fff;
   transition: transform 0.2s;
 }
 
@@ -991,8 +990,8 @@ function fmtDeg(v?: number): string {
 .stat-group {
   flex: 1 1 200px;
   min-width: 0;
-  background: rgba(var(--v-theme-on-surface), 0.03);
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 10px;
   padding: 8px 10px;
 }
@@ -1002,7 +1001,7 @@ function fmtDeg(v?: number): string {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(var(--v-theme-on-surface), 0.5);
+  color: rgba(255, 255, 255, 0.5);
   margin-bottom: 5px;
 }
 
@@ -1023,7 +1022,7 @@ function fmtDeg(v?: number): string {
 .stat-label {
   flex: 0 0 auto;
   font-size: 0.68rem;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .stat-value {
@@ -1032,7 +1031,7 @@ function fmtDeg(v?: number): string {
   text-align: right;
   font-size: 0.85rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.92);
+  color: rgba(255, 255, 255, 0.92);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1064,30 +1063,27 @@ function fmtDeg(v?: number): string {
   gap: 6px;
   padding: 8px 10px;
   border-radius: 8px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
-  background: rgba(var(--v-theme-on-surface), 0.03);
-  color: rgba(var(--v-theme-on-surface), 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.72);
   font-size: 0.75rem;
   line-height: 1.5;
 }
 
 .cal-hint b {
-  color: rgba(var(--v-theme-on-surface), 0.95);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .hint-icon {
   flex: 0 0 auto;
   margin-top: 2px;
-  color: rgba(var(--v-theme-on-surface), 0.6);
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .hint-warn {
   border-color: rgba(255, 179, 0, 0.45);
   background: rgba(255, 179, 0, 0.1);
-  /* 同色系文字: 语义色变量本身即按主题反相 (亮色=#ef6c00 深橙 / 暗色=#ffb300 浅琥珀),
-     保留橙色调风格的同时保证对比; 字重 500 补强小字号可读性 */
-  color: rgb(var(--v-theme-warning));
-  font-weight: 500;
+  color: rgba(255, 235, 190, 0.9);
 }
 
 .hint-warn .hint-icon {
@@ -1097,13 +1093,11 @@ function fmtDeg(v?: number): string {
 .hint-ok {
   border-color: rgba(76, 175, 80, 0.45);
   background: rgba(76, 175, 80, 0.1);
-  /* 同 hint-warn: 语义色反相 (亮色=#2e7d32 深绿 / 暗色=#81c784 浅绿) */
-  color: rgb(var(--v-theme-success));
-  font-weight: 500;
+  color: rgba(200, 245, 205, 0.92);
 }
 
 .hint-ok .hint-icon {
-  color: rgb(var(--v-theme-success)); /* 亮=深绿 / 暗=浅绿, 自动反相 (原写死浅绿亮色下发虚) */
+  color: #81c784;
 }
 
 /* ============ 量程条 (颜色由 --accent 下发) ============ */
@@ -1144,7 +1138,7 @@ function fmtDeg(v?: number): string {
   align-items: baseline;
   justify-content: space-between;
   font-size: 0.66rem;
-  color: rgba(var(--v-theme-on-surface), 0.42);
+  color: rgba(255, 255, 255, 0.42);
   margin-bottom: 3px;
 }
 
@@ -1160,8 +1154,8 @@ function fmtDeg(v?: number): string {
   position: relative;
   height: 12px;
   border-radius: 8px;
-  background: rgba(var(--v-theme-on-surface), 0.06);
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 
@@ -1170,7 +1164,7 @@ function fmtDeg(v?: number): string {
   position: absolute;
   inset: 0;
   background-image: linear-gradient(90deg,
-      rgba(var(--v-theme-on-surface), 0.1) 1px, transparent 1px);
+      rgba(255, 255, 255, 0.1) 1px, transparent 1px);
   background-size: 25% 100%;
   pointer-events: none;
 }
@@ -1200,8 +1194,7 @@ function fmtDeg(v?: number): string {
   top: 0;
   bottom: 0;
   width: 2px;
-  /* 中性浅灰: 0.6 在亮色下近乎黑线, 抢了实时输入的视觉; 与 CalWizard / ChannelGrid 统一 */
-  background: rgba(var(--v-theme-on-surface), 0.25);
+  background: rgba(255, 255, 255, 0.6);
   transform: translateX(-50%);
   transition: left 0.2s;
 }
@@ -1222,8 +1215,7 @@ function fmtDeg(v?: number): string {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  /* 实时输入位置点: 原纯 on-surface 实心 (亮色=纯黑), 压过轨道; 改浅灰由橙色环承担指示 */
-  background: rgba(var(--v-theme-on-surface), 0.45);
+  background: #fff;
   border: 3px solid var(--accent);
   box-shadow: 0 0 6px rgba(0, 0, 0, 0.5);
 }
@@ -1243,9 +1235,9 @@ function fmtDeg(v?: number): string {
   gap: 4px;
   padding: 5px 14px;
   border-radius: 999px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   background: transparent;
-  color: rgba(var(--v-theme-on-surface), 0.75);
+  color: rgba(255, 255, 255, 0.75);
   font-size: 0.76rem;
   font-weight: 600;
   line-height: 1.7;
@@ -1254,9 +1246,9 @@ function fmtDeg(v?: number): string {
 }
 
 .gw-btn:hover:not(:disabled) {
-  border-color: rgba(var(--v-theme-on-surface), 0.34);
+  border-color: rgba(255, 255, 255, 0.34);
   color: #fff;
-  background: rgba(var(--v-theme-on-surface), 0.05);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .gw-btn:disabled {
@@ -1269,7 +1261,7 @@ function fmtDeg(v?: number): string {
   border-color: transparent;
   background: var(--accent, rgb(var(--v-theme-primary)));
   color: #fff;
-  box-shadow: none; /* 扁平化: 与全站按钮一致 */
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 
 .gw-btn-primary:hover:not(:disabled) {
@@ -1293,8 +1285,7 @@ function fmtDeg(v?: number): string {
 .gw-btn-ok {
   border-color: rgba(76, 175, 80, 0.45);
   background: rgba(76, 175, 80, 0.18);
-  /* 按钮文字同样是同色系: 语义色反相, 亮色下深绿字压得住淡绿底 */
-  color: rgb(var(--v-theme-success));
+  color: #81c784;
 }
 
 .gw-btn-ok:hover:not(:disabled) {

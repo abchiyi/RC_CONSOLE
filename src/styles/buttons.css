@@ -1,0 +1,47 @@
+/**
+ * buttons.css — 按钮外观全局统一
+ *
+ * 为什么放全局: config / calibration 页的保存等按钮 <Teleport to="#global-footer-right">
+ * 到 App.vue 底栏 —— Teleport 后元素脱离页面 DOM 树, 页面 scoped 样式的 data-v
+ * 祖先链断开, 其 :deep() 规则永远不命中 (可用态的类选择器把 data-v 属性挂在
+ * 元素自身, 所以不受影响)。禁用态必须放全局才能覆盖 Vuetify 默认行为。
+ *
+ * 只精确匹配自定义 .btn-* 类, 不透传到 Vuetify 内部按钮 (v-number-input 的
+ * ± / 工具栏图标按钮), 内部按钮保持官方禁用半透明行为。
+ *
+ * 配色走 on-surface 派生 (Material 3 禁用规范): 亮色 = 浅灰底 + 深灰字,
+ * 暗色 = 微亮底 + 暗浅字。替代默认「实色橙 × opacity .26」叠出的脏芥末色,
+ * 文字也不再是叠淡后的黑字。
+ */
+
+.v-btn.btn-primary:disabled,
+.v-btn.btn-secondary:disabled,
+.v-btn.btn-accent:disabled,
+.v-btn.btn-danger:disabled {
+  opacity: 1 !important;
+  background-color: rgba(var(--v-theme-on-surface), 0.12) !important;
+  color: rgba(var(--v-theme-on-surface), 0.38) !important;
+  box-shadow: none !important;
+}
+
+/* 禁用观感完全由上面的底色/字色表达, Vuetify 的表面 overlay 一并关掉 */
+.v-btn.btn-primary:disabled .v-btn__overlay,
+.v-btn.btn-secondary:disabled .v-btn__overlay,
+.v-btn.btn-accent:disabled .v-btn__overlay,
+.v-btn.btn-danger:disabled .v-btn__overlay {
+  opacity: 0 !important;
+}
+
+/* ── 扁平化: 全站按钮不使用投影 ──
+   Vuetify 默认给 v-btn 带 elevation-2, 且 hover / focus-visible / active 会再叠一层;
+   层级与状态统一由底色和边框表达。放在这里而非各页 scoped, 才能覆盖 Teleport 到
+   全局底栏的按钮以及各处直接使用的 v-btn。
+   (滑块气泡 / 浮层等非按钮元素仍保留投影, 它们靠阴影与页面内容分层) */
+.v-btn,
+.v-btn:hover,
+.v-btn:focus-visible,
+.v-btn--active,
+.v-btn--elevated,
+.v-btn-group {
+  box-shadow: none !important;
+}

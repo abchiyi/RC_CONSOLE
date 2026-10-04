@@ -37,12 +37,12 @@
         <svg ref="svgRef" class="curve-overlay" viewBox="-28 -118 158 146" preserveAspectRatio="xMidYMid meet"
           @pointermove="onControlMove" @pointerup="onControlUp" @pointercancel="onControlUp">
         <!-- 坐标轴 (X=0 竖 / Y=0 横) 强化为主分割线 -->
-        <g class="curve-axis" stroke="rgba(255,255,255,0.25)" stroke-width="1.5">
+        <g stroke="rgba(255,255,255,0.25)" stroke-width="1.5">
           <line x1="0" y1="-100" x2="0" y2="0" />
           <line x1="0" y1="0" x2="100" y2="0" />
         </g>
         <!-- 参考网格 (25 步进, 仅正向象限) -->
-        <g class="curve-grid" stroke="#2f2f2f" stroke-width="1">
+        <g stroke="#2f2f2f" stroke-width="1">
           <line x1="0" y1="-100" x2="100" y2="-100" />
           <line x1="0" y1="-75" x2="100" y2="-75" />
           <line x1="0" y1="-50" x2="100" y2="-50" />
@@ -53,40 +53,40 @@
           <line x1="100" y1="-100" x2="100" y2="0" />
         </g>
         <!-- 原始输入恒等直线 (仅正向段) -->
-        <line class="curve-baseline" x1="0" y1="0" x2="100" y2="-100" stroke="#8a8a8a" stroke-width="1.5" stroke-dasharray="4 4" />
+        <line x1="0" y1="0" x2="100" y2="-100" stroke="#8a8a8a" stroke-width="1.5" stroke-dasharray="4 4" />
         <!-- 各输入源曲线 (多色, 贝塞尔采样, 仅正向 [0,100]; 负半周由固件按奇对称共用) -->
         <path v-for="ln in curves" :key="ln.id" :d="pathStr(ln.points)" fill="none" :stroke="ln.color" stroke-width="1.5" />
         <!-- 当前选中曲线的控制点 (可拖动, Y 限制 0~100) -->
         <g v-if="activeCurve">
-          <line class="ctrl-guide" :x1="0" :y1="0" :x2="controlPoints[0].x" :y2="controlPoints[0].y" stroke="#ffffff" stroke-opacity="0.35"
+          <line :x1="0" :y1="0" :x2="controlPoints[0].x" :y2="controlPoints[0].y" stroke="#ffffff" stroke-opacity="0.35"
             stroke-width="0.75" stroke-dasharray="3 3" />
-          <line class="ctrl-guide" :x1="100" :y1="-100" :x2="controlPoints[1].x" :y2="controlPoints[1].y" stroke="#ffffff"
+          <line :x1="100" :y1="-100" :x2="controlPoints[1].x" :y2="controlPoints[1].y" stroke="#ffffff"
             stroke-opacity="0.35" stroke-width="0.75" stroke-dasharray="3 3" />
           <circle v-for="cp in controlPoints" :key="cp.id" :cx="cp.x" :cy="cp.y" r="6" fill="rgba(255,255,255,0.15)"
             stroke="#fff" stroke-width="1" class="ctrl-dot" @pointerdown="onControlDown(cp.id, $event)" />
         </g>
         <!-- 曲线效果演示指示点 (自动往返扫描, 显示当前输入→输出映射) -->
         <g v-if="activeCurve">
-          <line class="demo-guide" :x1="animX" :y1="0" :x2="animX" :y2="-animY" stroke="rgba(255,255,255,0.3)" stroke-width="0.75"
+          <line :x1="animX" :y1="0" :x2="animX" :y2="-animY" stroke="rgba(255,255,255,0.3)" stroke-width="0.75"
             stroke-dasharray="2 2" />
-          <line class="demo-guide" :x1="0" :y1="-animY" :x2="animX" :y2="-animY" stroke="rgba(255,255,255,0.3)" stroke-width="0.75"
+          <line :x1="0" :y1="-animY" :x2="animX" :y2="-animY" stroke="rgba(255,255,255,0.3)" stroke-width="0.75"
             stroke-dasharray="2 2" />
-          <circle class="demo-dot" :cx="animX" :cy="-animY" r="3.5" fill="#fff" stroke="none" />
+          <circle :cx="animX" :cy="-animY" r="3.5" fill="#fff" stroke="none" />
         </g>
         <!-- 轴名称: 位于各轴末端, 沿用全局字体 -->
-        <g class="axis-labels" font-size="8" fill="rgba(255,255,255,0.5)">
+        <g font-size="8" fill="rgba(255,255,255,0.5)">
           <text x="0" y="-106" text-anchor="middle">输出</text>
           <text x="115" y="8" text-anchor="middle">输入</text>
         </g>
         <!-- 刻度: Y 轴左侧数值标签 + 小刻度线 -->
-        <g class="ticks" font-family="'Cascadia Mono', 'Consolas', monospace" font-size="8" fill="rgba(255,255,255,0.4)">
+        <g font-family="'Cascadia Mono', 'Consolas', monospace" font-size="8" fill="rgba(255,255,255,0.4)">
           <g v-for="t in yTicks" :key="'y' + t.value">
             <line :x1="-3" :x2="0" :y1="t.y" :y2="t.y" stroke="rgba(255,255,255,0.35)" stroke-width="1" />
             <text :x="-5" :y="t.y + 3" text-anchor="end" :class="tickClass(t.value)">{{ t.value }}</text>
           </g>
         </g>
         <!-- 刻度: X 轴底部数值标签 + 小刻度线 -->
-        <g class="ticks" font-family="'Cascadia Mono', 'Consolas', monospace" font-size="8" fill="rgba(255,255,255,0.4)">
+        <g font-family="'Cascadia Mono', 'Consolas', monospace" font-size="8" fill="rgba(255,255,255,0.4)">
           <g v-for="t in xTicks" :key="'x' + t.value">
             <line :x1="t.x" :x2="t.x" :y1="0" :y2="3" stroke="rgba(255,255,255,0.35)" stroke-width="1" />
             <text :x="t.x" :y="13" text-anchor="middle" :class="tickClass(t.value)">{{ t.value }}</text>
@@ -442,9 +442,7 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 .curve-overlay-wrap {
-  /* 画布底走 on-surface 派生: 亮色=浅灰纸面, 暗色=微亮于 surface (≈原深色块观感)。
-     SVG 图元同步由「白色系」改为 on-surface 系 (见 tick-hl 后的图元规则), 两主题自动反相 */
-  background: rgba(var(--v-theme-on-surface), 0.04);
+  background: #191919;
   border-radius: 8px;
   padding: 10px;
   display: flex;
@@ -460,9 +458,9 @@ onBeforeUnmount(() => {
   touch-action: none;
   cursor: crosshair;
 }
-/* 曲线效果演示面板 (条形图 + 数字): 底/文字/条槽全部 on-surface 派生, 跟随主题 */
+/* 曲线效果演示面板 (条形图 + 数字) */
 .curve-anim-panel {
-  background: rgba(var(--v-theme-on-surface), 0.04);
+  background: #191919;
   border-radius: 8px;
   padding: 8px 12px;
   display: flex;
@@ -470,40 +468,40 @@ onBeforeUnmount(() => {
   align-items: stretch;
   gap: 8px;
 }
-.anim-title{
+.anim-title {
   display: inline-flex;
   align-items: center;
   font-size: 12px;
-  color: rgba(var(--v-theme-on-surface), 0.7);
+  color: rgba(255, 255, 255, 0.7);
 }
 .anim-bars {
   display: flex;
   flex-direction: column;
   gap: 5px;
 }
-.anim-bar-row{
+.anim-bar-row {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: rgba(var(--v-theme-on-surface), 0.75);
+  color: rgba(255, 255, 255, 0.75);
 }
-.anim-bar-row b{
+.anim-bar-row b {
   width: 26px;
   text-align: right;
-  color: rgba(var(--v-theme-on-surface), 0.9);
+  color: rgba(255, 255, 255, 0.9);
   flex-shrink: 0;
 }
-.bar-label{
+.bar-label {
   width: 30px;
-  color: rgba(var(--v-theme-on-surface), 0.6);
+  color: rgba(255, 255, 255, 0.6);
   flex-shrink: 0;
 }
-.bar-track{
+.bar-track {
   flex: 1;
   height: 10px;
   border-radius: 5px;
-  background: rgba(var(--v-theme-on-surface), 0.1);
+  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 .bar-fill {
@@ -511,8 +509,8 @@ onBeforeUnmount(() => {
   border-radius: 5px;
   transition: width 0.05s linear;
 }
-.bar-fill.input{
-  background: rgba(var(--v-theme-on-surface), 0.45);
+.bar-fill.input {
+  background: rgba(255, 255, 255, 0.45);
 }
 /* 宽屏: 左侧 SVG 独占, 右侧动画 + 编辑器上下分布 */
 @media (min-width: 960px) {
@@ -555,12 +553,12 @@ onBeforeUnmount(() => {
   width: 100%;
   max-width: 360px; /* 与图形区同宽对齐 */
 }
-.legend-item{
+.legend-item {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  color: rgba(var(--v-theme-on-surface), 0.7);
+  color: rgba(255, 255, 255, 0.7);
 }
 .legend-dot {
   width: 10px;
@@ -568,51 +566,14 @@ onBeforeUnmount(() => {
   border-radius: 2px;
   display: inline-block;
 }
-/* 刻度标签: 0 值主题色, 100 加粗 */
+/* 刻度标签: 0 值主题色, 100 白色加粗 */
 .curve-overlay text.tick-zero {
   fill: rgb(var(--v-theme-primary));
   font-weight: 700;
 }
 .curve-overlay text.tick-hl {
-  fill: rgb(var(--v-theme-on-surface));
+  fill: #fff;
   font-weight: 700;
-}
-
-/* SVG 图元主题化: 画布底改为 on-surface 派生后, 图元从「白色系」切到 on-surface 系,
-   两主题自动反相。CSS 规则优先级高于 SVG presentation attributes,
-   模板里的 stroke/fill 属性仅作 CSS 未加载时的兜底 */
-.curve-overlay .curve-axis {
-  stroke: rgba(var(--v-theme-on-surface), 0.45);
-}
-.curve-overlay .curve-grid line {
-  stroke: rgba(var(--v-theme-on-surface), 0.1);
-}
-.curve-overlay .curve-baseline {
-  stroke: rgba(var(--v-theme-on-surface), 0.45);
-}
-.curve-overlay .ctrl-guide {
-  stroke: rgb(var(--v-theme-on-surface));
-  stroke-opacity: 0.35;
-}
-.curve-overlay .ctrl-dot {
-  fill: rgba(var(--v-theme-on-surface), 0.15);
-  stroke: rgba(var(--v-theme-on-surface), 0.55); /* 描边用灰, 不再用纯 on-surface 实色 */
-}
-.curve-overlay .demo-guide {
-  stroke: rgb(var(--v-theme-on-surface));
-  stroke-opacity: 0.3;
-}
-.curve-overlay .demo-dot {
-  fill: rgba(var(--v-theme-on-surface), 0.45); /* 中灰: 指示点醒目但不发黑 */
-}
-.curve-overlay .axis-labels text {
-  fill: rgba(var(--v-theme-on-surface), 0.6);
-}
-.curve-overlay .ticks line {
-  stroke: rgba(var(--v-theme-on-surface), 0.35);
-}
-.curve-overlay .ticks text {
-  fill: rgba(var(--v-theme-on-surface), 0.55);
 }
 
 </style>

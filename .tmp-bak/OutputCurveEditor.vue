@@ -72,7 +72,7 @@ function commit(): void {
 .dz-p1 :deep(.v-slider-thumb__label) {
   background: rgb(var(--v-theme-primary));
   color: rgb(var(--v-theme-on-primary));
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   font-weight: 600;
 }
 .dz-p1 :deep(.v-slider-thumb__label::before) {
@@ -81,7 +81,7 @@ function commit(): void {
 .dz-p2 :deep(.v-slider-thumb__label) {
   background: rgb(var(--v-theme-warning));
   color: rgb(var(--v-theme-on-warning));
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   font-weight: 600;
 }
 .dz-p2 :deep(.v-slider-thumb__label::before) {

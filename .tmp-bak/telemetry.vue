@@ -592,13 +592,13 @@
 
 /* 卡片外壳 (与 elrs / CalWizard 一致) */
 .cal-card {
-  background: rgb(var(--v-theme-surface)) !important;
-  border-color: rgba(var(--v-theme-on-surface), 0.08) !important;
+  background: #1e1e1e !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
   transition: border-color 0.3s, background-color 0.3s;
 }
 
 .cal-card:hover {
-  border-color: rgba(var(--v-theme-on-surface), 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
 }
 
 /* ── 分组面板 + 键值网格 (复用 elrs 页排版) ── */
@@ -611,8 +611,8 @@
 .stat-group {
   flex: 1 1 200px;
   min-width: 0;
-  background: rgba(var(--v-theme-on-surface), 0.03);
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 10px;
   padding: 8px 10px;
 }
@@ -622,7 +622,7 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(var(--v-theme-on-surface), 0.5);
+  color: rgba(255, 255, 255, 0.5);
   margin-bottom: 5px;
 }
 
@@ -643,7 +643,7 @@
 .stat-label {
   flex: 0 0 auto;
   font-size: 0.68rem;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .stat-value {
@@ -652,7 +652,7 @@
   text-align: right;
   font-size: 0.85rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.92);
+  color: rgba(255, 255, 255, 0.92);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -695,28 +695,26 @@
   border-radius: 8px;
   border: 1px solid rgba(255, 179, 0, 0.5);
   background: rgba(255, 179, 0, 0.1);
-  /* 同色系文字: 语义色反相 (亮=深橙 / 暗=浅琥珀), 保留橙调风格 */
-  color: rgb(var(--v-theme-warning));
-  font-weight: 500;
+  color: rgba(255, 235, 190, 0.9);
   font-size: 0.75rem;
   line-height: 1.45;
 }
 
 .hint-neutral {
-  border-color: rgba(var(--v-theme-on-surface), 0.12);
-  background: rgba(var(--v-theme-on-surface), 0.03);
-  color: rgba(var(--v-theme-on-surface), 0.7);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .hint-empty {
   font-size: 0.75rem;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(255, 255, 255, 0.45);
   padding: 4px 2px;
 }
 
 /* ── 帧统计表 ── */
 .msg-table {
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -731,7 +729,7 @@
 }
 
 .msg-row:nth-child(even) {
-  background: rgba(var(--v-theme-on-surface), 0.02);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .msg-head {
@@ -739,8 +737,8 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgba(var(--v-theme-on-surface), 0.45);
-  background: rgba(var(--v-theme-on-surface), 0.04);
+  color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .msg-name {
@@ -772,24 +770,24 @@
 }
 
 .hex-row:nth-child(odd) {
-  background: rgba(var(--v-theme-on-surface), 0.02);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .hex-time {
   flex: 0 0 74px;
-  color: rgba(var(--v-theme-on-surface), 0.4);
+  color: rgba(255, 255, 255, 0.4);
   font-size: 0.7rem;
 }
 
 .hex-name {
   flex: 0 0 168px;
-  color: rgba(var(--v-theme-on-surface), 0.7);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .hex-body {
   flex: 1 1 auto;
   min-width: 0;
-  color: rgba(var(--v-theme-on-surface), 0.55);
+  color: rgba(255, 255, 255, 0.55);
   word-break: break-all;
 }
 </style>

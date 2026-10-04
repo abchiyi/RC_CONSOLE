@@ -183,8 +183,8 @@
 .disc-card {
   width: 100%;
   max-width: 460px;
-  background: rgb(var(--v-theme-surface)) !important;
-  border-color: rgba(var(--v-theme-on-surface), 0.08) !important;
+  background: #1e1e1e !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 .disc-body {
@@ -194,8 +194,8 @@
 
 .disc-avatar {
   margin-bottom: 14px;
-  background: rgba(var(--v-theme-on-surface), 0.06);
-  color: rgba(var(--v-theme-on-surface), 0.55);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .disc-title {
@@ -205,7 +205,7 @@
 .disc-sub {
   margin-top: 4px;
   font-size: 0.78rem;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(255, 255, 255, 0.45);
 }
 
 /* 连接入口: 居中横排, 窄屏自动换行 */
@@ -235,6 +235,6 @@
   font-size: 0.7rem;
   line-height: 1.45;
   text-align: left;
-  color: rgba(var(--v-theme-on-surface), 0.38);
+  color: rgba(255, 255, 255, 0.38);
 }
 </style>

@@ -141,8 +141,9 @@ function barStyle(percent: number): Record<string, string> {
   top: 0;
   width: 2px;
   height: 100%;
+  /* 中位浅灰标记: 与校准量程/向导的中心线统一为 0.25 */
   background: rgb(var(--v-theme-on-surface));
-  opacity: 0.3;
+  opacity: 0.25;
 }
 .gap-2 {
   gap: 8px;

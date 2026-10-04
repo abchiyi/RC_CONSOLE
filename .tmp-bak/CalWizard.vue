@@ -368,13 +368,13 @@ onUnmounted(async () => {
 }
 
 .cal-card {
-  background: rgb(var(--v-theme-surface)) !important;
-  border-color: rgba(var(--v-theme-on-surface), 0.08) !important;
+  background: #1e1e1e !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
   transition: border-color 0.3s, background-color 0.3s;
 }
 
 .cal-card:hover {
-  border-color: rgba(var(--v-theme-on-surface), 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
 }
 
 /* 等宽数字字体 */
@@ -401,9 +401,7 @@ onUnmounted(async () => {
   border-radius: 8px;
   border: 1px solid rgba(255, 179, 0, 0.5);
   background: rgba(255, 179, 0, 0.1);
-  /* 同色系文字: 语义色反相 (亮=深橙 / 暗=浅琥珀), 保留橙调风格 */
-  color: rgb(var(--v-theme-warning));
-  font-weight: 500;
+  color: rgba(255, 235, 190, 0.9);
   font-size: 0.75rem;
   line-height: 1.45;
 }
@@ -412,7 +410,7 @@ onUnmounted(async () => {
 .dz-slider :deep(.v-slider-thumb__label) {
   font-weight: 700;
   font-family: 'Cascadia Mono', 'Consolas', monospace;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
 /* 扳机死区: primary 气泡 */
@@ -447,8 +445,8 @@ onUnmounted(async () => {
   position: relative;
   height: 12px;
   border-radius: 8px;
-  background: rgba(var(--v-theme-on-surface), 0.06);
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   overflow: visible;
 }
 
@@ -476,8 +474,7 @@ onUnmounted(async () => {
   top: -4px;
   bottom: -4px;
   width: 2px;
-  /* 中性浅灰标记线: 与 CalStepperGuide / ChannelGrid 统一为 0.25, 不抢橙色量程带 */
-  background: rgba(var(--v-theme-on-surface), 0.25);
+  background: rgba(255, 255, 255, 0.55);
   transform: translateX(-50%);
   transition: left 0.2s;
 }
@@ -516,13 +513,12 @@ onUnmounted(async () => {
 }
 
 .joy-2d-bg {
-  /* 底与曲线画布/IMU 视窗统一: on-surface 4% (亮=浅灰纸面, 暗=微亮), 原为 rgba(0,0,0,.35) 半透明黑 */
-  fill: rgba(var(--v-theme-on-surface), 0.04);
-  stroke: rgba(var(--v-theme-on-surface), 0.1);
+  fill: rgba(0, 0, 0, 0.35);
+  stroke: rgba(255, 255, 255, 0.1);
 }
 
 .joy-2d-line {
-  stroke: rgba(var(--v-theme-on-surface), 0.18);
+  stroke: rgba(255, 255, 255, 0.18);
   stroke-width: 1;
 }
 
@@ -535,12 +531,12 @@ onUnmounted(async () => {
 
 .joy-2d-bound {
   fill: none;
-  stroke: rgba(var(--v-theme-on-surface), 0.14);
+  stroke: rgba(255, 255, 255, 0.14);
   stroke-dasharray: 4 4;
 }
 
 .joy-2d-dot {
-  fill: rgb(var(--v-theme-on-surface));
+  fill: #fff;
   transition: cx 0.1s linear, cy 0.1s linear;
 }
 
@@ -558,7 +554,7 @@ onUnmounted(async () => {
   gap: 12px;
   padding: 6px 12px;
   border-radius: 8px;
-  background: rgba(var(--v-theme-on-surface), 0.04);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 /* 响应式: 窄屏下 2D 与读数值堆叠 */

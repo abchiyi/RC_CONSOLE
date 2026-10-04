@@ -97,11 +97,16 @@ const guideOpen = ref(false)
 }
 
 /* ── 底栏「保存到设备」: 与通道页 (.config-page) 同一套按钮风格 ── */
-/* 实色主色填充 + 深色字; 阴影由 src/styles/buttons.css 全局统一去除 */
+/* 实色主色填充 + 深色字; 扁平化去阴影 (与通道页 :deep(.v-btn) 一致) */
 .btn-primary {
   background-color: rgb(var(--v-theme-primary)) !important;
   color: #1a1a1a !important;
+  box-shadow: none !important;
 }
 
-/* 停用态已统一到 src/styles/buttons.css (全局): 本页保存按钮同样 Teleport 到全局底栏 */
+/* 停用态不要用实色主色, 否则与"可点"混淆 */
+.btn-primary.v-btn--disabled {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+}
 </style>

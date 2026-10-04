@@ -258,13 +258,6 @@
   ]
   const AXIS_LEN = 1.25
 
-  /** canvas 内不能用 CSS var(): 绘制前从元素读 Vuetify 主题通道值 (形如 "0,0,0") → rgba。
-      rAF 每帧现取, 切换主题下一帧自动换色 */
-  function themeRgba (canvas: HTMLCanvasElement, name: string, alpha: number): string {
-    const channels = getComputedStyle(canvas).getPropertyValue(`--v-theme-${name}`).trim()
-    return channels ? `rgba(${channels},${alpha})` : `rgba(0,0,0,${alpha})`
-  }
-
   function drawScene (): void {
     const canvas = imuCanvas.value
     if (!canvas) return
@@ -275,17 +268,13 @@
     const W = canvas.width
     const H = canvas.height
 
-    // 底色必须不透明 —— 这一步同时承担每帧清屏: 先铺 surface 实色, 再罩一层 on-surface 4%,
-    // 得到亮色=浅灰纸面 / 暗色=微亮于卡片底。若直接用半透明色 fillRect, 每帧只叠不清,
-    // 残影无限累积 (底越叠越黑、立方体糊成实心), 必然拖影
-    ctx.fillStyle = themeRgba(canvas, 'surface', 1)
-    ctx.fillRect(0, 0, W, H)
-    ctx.fillStyle = themeRgba(canvas, 'on-surface', 0.04)
+    // 黑底
+    ctx.fillStyle = '#000'
     ctx.fillRect(0, 0, W, H)
 
-    // 网格 28px: on-surface 8%, 两主题自动反相
+    // 浅灰网格 28px
     const g = 28
-    ctx.strokeStyle = themeRgba(canvas, 'on-surface', 0.08)
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)'
     ctx.lineWidth = 1
     ctx.beginPath()
     for (let x = 0; x <= W; x += g) { ctx.moveTo(x, 0); ctx.lineTo(x, H) }
@@ -293,7 +282,7 @@
     ctx.stroke()
 
     // 中央十字 (提亮)
-    ctx.strokeStyle = themeRgba(canvas, 'on-surface', 0.3)
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)'
     ctx.beginPath()
     ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H)
     ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2)
@@ -391,7 +380,7 @@
     else { dx /= dlen; dy /= dlen }
     const size = 11
     const px = -dy, py = dx // 垂直于箭头方向的单位向量
-    ctx.fillStyle = themeRgba(canvas, 'on-surface', 1) // 箭头: 亮色下黑, 暗色下白 (原写死白)
+    ctx.fillStyle = '#fff'
     ctx.beginPath()
     ctx.moveTo(f.x + dx * size, f.y + dy * size)                                            // 尖端
     ctx.lineTo(f.x - dx * size * 0.6 + px * size * 0.6, f.y - dy * size * 0.6 + py * size * 0.6)
@@ -400,7 +389,7 @@
     ctx.fill()
 
     // 原点标记
-    ctx.fillStyle = themeRgba(canvas, 'on-surface', 0.85)
+    ctx.fillStyle = 'rgba(255,255,255,0.85)'
     ctx.beginPath()
     ctx.arc(o.x, o.y, 2.5, 0, Math.PI * 2)
     ctx.fill()
@@ -445,13 +434,13 @@
 
 <style scoped>
 .cal-card {
-  background: rgb(var(--v-theme-surface)) !important;
-  border-color: rgba(var(--v-theme-on-surface), 0.08) !important;
+  background: #1e1e1e !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
   transition: border-color 0.3s, background-color 0.3s;
 }
 
 .cal-card:hover {
-  border-color: rgba(var(--v-theme-on-surface), 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
 }
 
 .cal-avatar {
@@ -474,9 +463,7 @@
   border-radius: 8px;
   border: 1px solid rgba(255, 179, 0, 0.5);
   background: rgba(255, 179, 0, 0.1);
-  /* 同色系文字: 语义色反相 (亮=深橙 / 暗=浅琥珀), 保留橙调风格 */
-  color: rgb(var(--v-theme-warning));
-  font-weight: 500;
+  color: rgba(255, 235, 190, 0.9);
   font-size: 0.75rem;
   line-height: 1.45;
 }
@@ -485,7 +472,7 @@
 .stat-col {
   border-radius: 10px;
   padding: 6px 8px;
-  background: rgba(var(--v-theme-on-surface), 0.03);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 /* 状态数值网格: flex + gap 产生真实间距 (不依赖 Vuetify gutter, 避免被 stat-col padding 覆盖) */
@@ -522,7 +509,7 @@
   height: 100%;
   overflow: hidden;
   border-radius: 12px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 /* 画布: 填满父节点, cover 等比显示 + 裁剪, 比例尺恒定不失真 */
@@ -547,9 +534,9 @@
 
 /* 参数分组卡片: 浅色圆角块, 无阴影扁平 */
 .imu-group {
-  background: rgba(var(--v-theme-on-surface), 0.03);
+  background: rgba(255, 255, 255, 0.03);
   border-radius: 10px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   padding: 10px 12px;
 }
 
@@ -558,7 +545,7 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(var(--v-theme-on-surface), 0.5);
+  color: rgba(255, 255, 255, 0.5);
   margin-bottom: 6px;
 }
 

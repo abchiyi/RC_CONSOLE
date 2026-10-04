@@ -6,13 +6,15 @@
 
 // Styles
 import '@/styles/mdi-subset.css'
-import '@/styles/selects.css'
 import 'vuetify/styles'
+import '@/styles/buttons.css'
+import '@/styles/selects.css'
 import '@/styles/switches.css'
 import '@/styles/snackbars.css'
 
 // Composables
 import { createVuetify } from 'vuetify'
+import { readThemeMode, resolveThemeName } from '@/utils/themePreference'
 
 // https://vuetifyjs.com/en/introduction/why-vuetify/#feature-guides
 
@@ -31,7 +33,10 @@ export default createVuetify({
     },
   },
   theme: {
-    defaultTheme: 'system',
+    // 启动首帧就用本地偏好解析出的具体主题(light/dark)，不再写死 'system'：
+    // 'system' 交给 Vuetify 解析会在 MediaQuery 可用前先出一帧错色。
+    // 运行期切换由 stores/theme.ts 接管（唯一写点见 App.vue 的 watchEffect）。
+    defaultTheme: resolveThemeName(readThemeMode()),
     themes: {
       light: {
         dark: false,
@@ -62,6 +67,7 @@ export default createVuetify({
           background: '#121212',
           surface: '#1e1e1e',
           'surface-variant': '#252525',
+          'on-surface-variant': '#e0e0e0', // 显式补齐: 亮色取默认 #EEEEEE, 暗色需与 #252525 深底配对
           'on-primary': '#1a1a1a',
           bluetooth: '#477AC7',   // 蓝牙主题蓝
         },

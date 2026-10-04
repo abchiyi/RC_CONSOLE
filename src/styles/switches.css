@@ -7,10 +7,12 @@
  * 本文件须在 vuetify/styles 之后引入以覆盖默认皮肤。
  */
 
-/* 未激活 (off) 且可用: 轨道统一深灰 #404040
+/* 未激活 (off) 且可用: 轨道 = on-surface 26%
+   —— 用主题变量而非固定色号: 暗色下是"浅灰压深底", 亮色下自动反相成"深灰压浅底",
+      否则切到亮色会出现亮底上的浅灰轨道(几乎看不见)。
    (须排除激活态: 开启态颜色由 Vuetify 的 bg-<color> 类提供, 默认 primary, 语义色仍有效) */
 .v-switch .v-selection-control:not(.v-selection-control--dirty):not(.v-selection-control--disabled) .v-switch__track {
-  background-color: #404040 !important;
+  background-color: rgba(var(--v-theme-on-surface), 0.26) !important;
 }
 
 /* 轨道常显不透明 (Vuetify 默认 0.6), 开启与关闭通用 */
@@ -18,20 +20,21 @@
   opacity: 1 !important;
 }
 
+/* 拨杆: 跟随 surface —— 暗色 #1e1e1e 上"亮块", 亮色 #fff 上"暗块", 始终与轨道反相 */
 .v-switch .v-switch__thumb {
-  background: #ffffff !important;
+  background: rgb(var(--v-theme-surface)) !important;
   border: none !important;
   box-shadow: none !important;
 }
 
-/* 禁用态: 轨道 #262626 + 拨杆 #727272 */
+/* 禁用态: 轨道 12% + 拨杆 38% (同为 on-surface 派生, 亮暗自动反相) */
 .v-switch .v-selection-control--disabled .v-switch__track {
-  background: #262626 !important;
+  background: rgba(var(--v-theme-on-surface), 0.12) !important;
   opacity: 1 !important;
 }
 
 .v-switch .v-selection-control--disabled .v-switch__thumb {
-  background: #727272 !important;
+  background: rgba(var(--v-theme-on-surface), 0.38) !important;
 }
 
 /* 点击涟漪: 跟随组件 color, 统一透明度 */

@@ -384,13 +384,11 @@
           </v-alert>
 
           <div class="d-flex justify-end mt-3">
-            <!-- 与页面其他操作按钮同款: primary tonal (淡橙底 + 语义色字, 两主题自动反相);
-                 原遗留 .btn-secondary 实底 (亮=浅灰 / 暗=#252525) 与 tonal 家族脱节 -->
-            <v-btn class="me-2" size="small" color="primary" variant="tonal" prepend-icon="mdi-file-export"
+            <v-btn class="btn-secondary me-2" size="small" prepend-icon="mdi-file-export"
               :disabled="!serial.connected || backupBusy" @click="onExportConfig">
               <span class="btn-text">导出配置</span>
             </v-btn>
-            <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-file-import"
+            <v-btn class="btn-secondary" size="small" prepend-icon="mdi-file-import"
               :disabled="!serial.connected || backupBusy" @click="onImportConfig">
               <span class="btn-text">导入配置</span>
             </v-btn>
@@ -1160,19 +1158,19 @@ onUnmounted(() => {
 
 /* 卡片外壳 (与校准页 CalWizard 一致: 纯色底 + 通栏细边框) */
 .cal-card {
-  background: rgb(var(--v-theme-surface)) !important;
-  border-color: rgba(var(--v-theme-on-surface), 0.08) !important;
+  background: #1e1e1e !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
   transition: border-color 0.3s, background-color 0.3s;
 }
 
 .cal-card:hover {
-  border-color: rgba(var(--v-theme-on-surface), 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
 }
 
-/* 底栏次要按钮: surface-variant 底 + 该底的配套文字色 (亮暗各自配对, 不再写死白字) */
+/* 底栏次要按钮: 深色底 + 白字 (与 config 页一致) */
 .btn-secondary {
   background-color: rgb(var(--v-theme-surface-variant)) !important;
-  color: rgb(var(--v-theme-on-surface-variant)) !important;
+  color: #fff !important;
 }
 
 /* 窄屏隐藏按钮文字只留图标 */
@@ -1192,8 +1190,8 @@ onUnmounted(() => {
 .stat-group {
   flex: 1 1 260px;
   min-width: 0;
-  background: rgba(var(--v-theme-on-surface), 0.03);
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 10px;
   padding: 8px 10px;
 }
@@ -1203,7 +1201,7 @@ onUnmounted(() => {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(var(--v-theme-on-surface), 0.5);
+  color: rgba(255, 255, 255, 0.5);
   margin-bottom: 5px;
 }
 
@@ -1225,7 +1223,7 @@ onUnmounted(() => {
 .stat-label {
   flex: 0 0 auto;
   font-size: 0.68rem;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .stat-value {
@@ -1234,7 +1232,7 @@ onUnmounted(() => {
   text-align: right;
   font-size: 0.85rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.92);
+  color: rgba(255, 255, 255, 0.92);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1282,7 +1280,7 @@ onUnmounted(() => {
 .batt {
   display: inline-flex;
   align-items: center;
-  color: var(--batt-c, rgba(var(--v-theme-on-surface), 0.45));
+  color: var(--batt-c, rgba(255, 255, 255, 0.45));
 }
 
 /* 正极帽 */
@@ -1310,7 +1308,7 @@ onUnmounted(() => {
   width: 8px;
   height: 9px;
   border-radius: 1px;
-  background: rgba(var(--v-theme-on-surface), 0.12);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .batt-cell-on {
@@ -1320,7 +1318,7 @@ onUnmounted(() => {
 .batt-text {
   font-size: 0.78rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.75);
+  color: rgba(255, 255, 255, 0.75);
 }
 
 /* ── 空闲关机: 单行配置条, 整行可点, 值右对齐 ── */
@@ -1331,8 +1329,8 @@ onUnmounted(() => {
   gap: 12px;
   padding: 8px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  background: rgba(var(--v-theme-on-surface), 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
@@ -1340,20 +1338,20 @@ onUnmounted(() => {
 .idle-row:hover,
 .idle-row:focus-visible {
   border-color: rgba(var(--v-theme-primary), 0.55);
-  background: rgba(var(--v-theme-on-surface), 0.06);
+  background: rgba(255, 255, 255, 0.06);
   outline: none;
 }
 
 .idle-row-title {
   font-size: 0.78rem;
   font-weight: 600;
-  color: rgba(var(--v-theme-on-surface), 0.75);
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .idle-row-sub {
   margin-top: 1px;
   font-size: 0.68rem;
-  color: rgba(var(--v-theme-on-surface), 0.38);
+  color: rgba(255, 255, 255, 0.38);
 }
 
 .idle-row-value {
@@ -1373,7 +1371,7 @@ onUnmounted(() => {
   gap: 5px;
   margin-top: 8px;
   font-size: 0.7rem;
-  color: rgba(var(--v-theme-on-surface), 0.42);
+  color: rgba(255, 255, 255, 0.42);
 }
 
 /* ── 实时空闲倒计时 ── */
@@ -1381,8 +1379,8 @@ onUnmounted(() => {
   margin-top: 10px;
   padding: 8px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  background: rgba(var(--v-theme-on-surface), 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .idle-count-head {
@@ -1390,7 +1388,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 5px;
   font-size: 0.72rem;
-  color: rgba(var(--v-theme-on-surface), 0.55);
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .idle-count-val {
@@ -1401,7 +1399,7 @@ onUnmounted(() => {
 .idle-count-elapsed {
   margin-left: 2px;
   font-size: 0.68rem;
-  color: rgba(var(--v-theme-on-surface), 0.35);
+  color: rgba(255, 255, 255, 0.35);
 }
 
 .tone-error .idle-count-val {
@@ -1423,7 +1421,7 @@ onUnmounted(() => {
   gap: 4px;
   margin-top: 5px;
   font-size: 0.66rem;
-  color: rgba(var(--v-theme-on-surface), 0.45);
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .idle-count-warn {
@@ -1445,8 +1443,8 @@ onUnmounted(() => {
   gap: 12px;
   padding: 6px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  background: rgba(var(--v-theme-on-surface), 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .telem-main {
@@ -1473,24 +1471,20 @@ onUnmounted(() => {
   border-radius: 8px;
   border: 1px solid rgba(255, 179, 0, 0.5);
   background: rgba(255, 179, 0, 0.1);
-  /* 同色系文字: 语义色反相 (亮=深橙 / 暗=浅琥珀), 保留橙调风格 */
-  color: rgb(var(--v-theme-warning));
-  font-weight: 500;
+  color: rgba(255, 235, 190, 0.9);
   font-size: 0.75rem;
   line-height: 1.45;
 }
 
 .hint-neutral {
-  border-color: rgba(var(--v-theme-on-surface), 0.12);
-  background: rgba(var(--v-theme-on-surface), 0.03);
-  color: rgba(var(--v-theme-on-surface), 0.7);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .hint-error {
   border-color: rgba(255, 82, 82, 0.5);
   background: rgba(255, 82, 82, 0.1);
-  /* 同色系文字: 语义色反相 (亮色=#e53935 深红 / 暗色=#ef5350 浅红), 原浅粉字亮色下不可读 */
-  color: rgb(var(--v-theme-error));
-  font-weight: 500;
+  color: rgba(255, 205, 210, 0.9);
 }
 </style>

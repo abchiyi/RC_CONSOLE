@@ -1,13 +1,10 @@
-/* 所有下拉选项框统一样式 (参考通道卡片输入源): 无边框扁平化, 背景色区分边界 */
+/* 所有下拉选项框统一样式 (参考通道卡片输入源): 无边框扁平化, 背景色区分边界。
+   底色用 on-surface 派生: 亮色=黑8%≈#ebebeb 浅灰, 暗色=白8% 微亮 —— 替代原先
+   "#404040 + .v-theme--light 覆盖 #ececec" 的两套硬编码 */
 .v-select .v-field {
-  background: #404040;
+  background: rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 6px;
   box-shadow: none;
-}
-
-/* 亮色主题下用浅灰背景, 保证深色文字可读 */
-.v-theme--light .v-select .v-field {
-  background: #ececec;
 }
 
 .v-select .v-field__outline {
@@ -24,13 +21,9 @@
 
 /* 数字输入框扁平化：与下拉框统一风格 */
 .v-number-input .v-field {
-  background: #404040;
+  background: rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 8px;
   box-shadow: none;
-}
-
-.v-theme--light .v-number-input .v-field {
-  background: #ececec;
 }
 
 .v-number-input .v-field__outline {

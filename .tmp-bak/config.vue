@@ -59,7 +59,7 @@
         <template v-if="configStore.config && editChannels.length > 0">
           <template v-for="{ ch, idx } in visibleChannels" :key="idx">
                 <v-sheet rounded="lg" class="my-2 chan-card" :class="{ 'card-selected': expandedIdx === idx }"
-                  style="position:relative; overflow:visible; background: rgb(var(--v-theme-surface));">
+                  style="position:relative; overflow:visible; background: #1e1e1e;">
                   <!-- 头部行 -->
                   <div class="chan-header-row" style="cursor:pointer" @click="toggleExpand(idx)">
                     <!-- 布局: 左右两栏 (左=通道信息分组, 右=输出范围); 分组: CH号 | 输入源; 点击头部行任意处展开/收起 -->
@@ -165,7 +165,7 @@
                             </div>
                           </template>
                           <div v-if="btnEntryCount(ch) < GEAR_COUNT" class="mt-2">
-                            <v-btn size="small" rounded="lg" color="primary" variant="tonal" prepend-icon="mdi-plus"
+                            <v-btn class="btn-secondary" size="small" rounded="lg" prepend-icon="mdi-plus"
                               @click="addBtnEntry(ch)">添加按钮</v-btn>
                           </div>
                         </v-sheet>
@@ -232,8 +232,8 @@
                                   <v-switch v-model="mi.reverse" color="warning" label="反向" />
                                 </div>
                               </div>
-                              <v-btn v-if="(ch.mix_items?.length ?? 0) < 4" size="x-small"
-                                rounded="lg" color="primary" variant="tonal" prepend-icon="mdi-plus"
+                              <v-btn v-if="(ch.mix_items?.length ?? 0) < 4" class="btn-secondary" size="x-small"
+                                rounded="lg" prepend-icon="mdi-plus"
                                 @click="ch.mix_items!.push({ src: 'IMU_ROLL', w: 50, reverse: false })">
                                 添加混合项
                               </v-btn>
@@ -365,7 +365,7 @@
                         <v-sheet rounded="lg" class="pa-3 mb-3">
                           <div class="param-group">
                             <span class="text-caption font-weight-bold">&#9889; 触发规则</span>
-                            <v-btn size="x-small" rounded="lg" color="primary" variant="tonal" prepend-icon="mdi-plus"
+                            <v-btn class="btn-secondary" size="x-small" rounded="lg" prepend-icon="mdi-plus"
                               :disabled="(ch.triggers?.length ?? 0) >= TRIGGER_COUNT" @click="addTrigger(ch)">
                               添加规则
                             </v-btn>
@@ -1397,14 +1397,14 @@ onUnmounted(() => {
   gap: 24px;
 }
 
-/* 左栏: 通道编号 + 名称 + 输入源 (底色此前写死 #262626, 亮色下是白卡片上的黑块) */
+/* 左栏: 通道编号 + 名称 + 输入源 */
 .chan-head-left {
   display: flex;
   flex-direction: column;
   gap: 4px;
   flex-shrink: 0;
   width: 190px;
-  background: rgba(var(--v-theme-on-surface), 0.04);
+  background: #262626;
   padding: 8px;
   border-radius: 8px;
   align-self: stretch;
@@ -1594,9 +1594,9 @@ onUnmounted(() => {
   transition: border-color 0.3s, background-color 0.3s;
 }
 
-/* 展开内容区: 比卡片底色 rgb(var(--v-theme-surface)) 略深 */
+/* 展开内容区: 比卡片底色 #1e1e1e 略深 */
 .chan-expand-body {
-  background: rgba(var(--v-theme-on-surface), 0.05);
+  background: #1a1a1a;
   border-radius: 0 0 8px 8px;
 }
 
@@ -1640,8 +1640,7 @@ onUnmounted(() => {
 }
 
 :deep(.v-slider-track__background) {
-  /* 未激活轨道: 此前写死 #3a3a3a, 亮色下与白底脱节; 改 on-surface 派生自动反相 */
-  background: rgba(var(--v-theme-on-surface), 0.24) !important;
+  background: #3a3a3a !important;
   opacity: 1 !important;
 }
 
@@ -1679,11 +1678,8 @@ onUnmounted(() => {
   bottom: 2px;
   width: 3px;
   border-radius: 2px;
-  /* 可拖动的中位值输入线: 原为纯 on-surface (亮色下 = 纯黑粗线, 压过量程滑块和实时值条);
-     改浅灰 — 它是要调整的"输入"而非结论读数, 不应比数据本身更抢眼。
-     可交互性由 cursor: ew-resize + 拖动气泡表达, 不靠颜色浓度 */
-  background: rgba(var(--v-theme-on-surface), 0.4);
-  box-shadow: 0 0 2px rgba(0, 0, 0, 0.25);
+  background: #fff;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
 }
 /* 中心值气泡: 复用 SliderLabel 组件 (与拨杆气泡结构/样式一致) */
 .center-mark-label {
@@ -1721,7 +1717,7 @@ onUnmounted(() => {
   margin-left: 0;
   margin-right: 0;
   font-size: 0.68rem;
-  color: rgba(var(--v-theme-on-surface), 0.4);
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .range-tick {
@@ -1743,18 +1739,18 @@ onUnmounted(() => {
   top: -8px;
   width: 1px;
   height: 7px;
-  background: rgba(var(--v-theme-on-surface), 0.3);
+  background: rgba(255, 255, 255, 0.3);
   transform: translateX(-50%);
 }
 
 /* 高亮刻度 (1000/1500/2000) */
 .range-tick.tick-hl {
-  color: rgb(var(--v-theme-on-surface));
+  color: #ffffff;
   font-weight: 700;
 }
 
 .range-tick.tick-hl::before {
-  background: rgb(var(--v-theme-on-surface));
+  background: #ffffff;
   height: 9px;
 }
 
@@ -1795,7 +1791,12 @@ onUnmounted(() => {
   min-height: 56px;
 }
 
-/* ── 统一按钮风格 (阴影/禁用态统一在 src/styles/buttons.css, 全局) ── */
+/* ── 统一按钮风格 ── */
+
+/* 扁平化设计: 禁用按钮阴影 */
+:deep(.v-btn) {
+  box-shadow: none !important;
+}
 
 /* 主要按钮: 实色填充 (激活/开始) */
 .btn-primary {
@@ -1803,10 +1804,10 @@ onUnmounted(() => {
   color: #1a1a1a !important;
 }
 
-/* 次要按钮: surface-variant 底 + 该底的配套文字色 (亮暗各自配对, 不再写死白字) */
+/* 次要按钮: 深色底 + 白字 (保存/添加) */
 .btn-secondary {
   background-color: rgb(var(--v-theme-surface-variant)) !important;
-  color: rgb(var(--v-theme-on-surface-variant)) !important;
+  color: #fff !important;
 }
 
 /* 强调次要按钮: 深色底 + 橙色文字 (从设备加载) */
@@ -1821,8 +1822,27 @@ onUnmounted(() => {
   color: #fff !important;
 }
 
-/* 禁用态已统一到 src/styles/buttons.css (全局):
-   本页 .btn-* 按钮全部 Teleport 到全局底栏, scoped 的 :deep() 禁用规则
-   因 data-v 祖先链断开而永不命中, 曾导致禁用按钮走 Vuetify 默认
-   (实色橙 × opacity .26 = 脏芥末色 + 黑字) */
+/* 禁用按钮: 深色底 + 浅灰文字 (覆盖 Vuetify 默认 disabled 半透明)
+   只匹配页面自定义实色按钮: 若用 .v-btn--disabled 全匹配会透传到 Vuetify 内部按钮
+   (v-number-input 的 ± / 工具栏图标按钮), 使 overlay 被强制全不透明 —— 既会出现
+   灰底块, 又在禁用↔可用切换时先渲染一帧高亮再淡出(闪烁)。内部按钮保持官方禁用态 */
+:deep(.v-btn.btn-primary:disabled),
+:deep(.v-btn.btn-secondary:disabled),
+:deep(.v-btn.btn-accent:disabled),
+:deep(.v-btn.btn-danger:disabled) {
+  opacity: 1 !important;
+}
+:deep(.v-btn.btn-primary:disabled .v-btn__overlay),
+:deep(.v-btn.btn-secondary:disabled .v-btn__overlay),
+:deep(.v-btn.btn-accent:disabled .v-btn__overlay),
+:deep(.v-btn.btn-danger:disabled .v-btn__overlay) {
+  opacity: 1 !important;
+}
+:deep(.v-btn.btn-primary:disabled),
+:deep(.v-btn.btn-secondary:disabled),
+:deep(.v-btn.btn-accent:disabled),
+:deep(.v-btn.btn-danger:disabled) {
+  background-color: rgb(var(--v-theme-surface-variant)) !important;
+  color: rgba(255, 255, 255, 0.35) !important;
+}
 </style>

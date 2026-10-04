@@ -64,14 +64,16 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+  import { computed, nextTick, onMounted, onUnmounted, ref, watch, watchEffect } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
+  import { useTheme } from 'vuetify'
   import AppBar from '@/components/AppBar.vue'
   import ElrsFlashDialog from '@/components/elrs/ElrsFlashDialog.vue'
   import { useCalibrationStore } from '@/stores/calibration'
   import { useConfigStore } from '@/stores/config'
   import { resetAllStores } from '@/stores/resetAll'
   import { useSerialStore } from '@/stores/serial'
+  import { useThemeStore } from '@/stores/theme'
 
   const router = useRouter()
   const route = useRoute()
@@ -85,6 +87,23 @@
   const moduleFwDialog = ref(false)
   /** 断开前停留的页面: 重连后原样回去 (/disconnected 本身不算) */
   let lastPath: string | null = null
+
+  // ---- 亮/暗主题：全局唯一写点 ----
+  // 两个来源（用户在 AppBar 三段开关的选择、系统 prefers-color-scheme 变化）
+  // 都在 stores/theme.ts 里收敛成 effective，这里只负责把它推给 Vuetify。
+  // 分散到多处写 theme.global.name 会出现「切了又被改回去」的竞态。
+  const themeStore = useThemeStore()
+  const vuetifyTheme = useTheme()
+
+  watchEffect(() => {
+    vuetifyTheme.global.name.value = themeStore.effective
+  })
+
+  // 浏览器/系统 UI 着色（地址栏、任务栏）跟随主题；index.html 里的静态 #eea600 由此接管
+  watchEffect(() => {
+    document.querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', themeStore.effective === 'dark' ? '#121212' : '#fafafa')
+  })
 
   /** ELRS 页「模块固件升级」卡片 → 打开全局烧录对话框 (广播事件, 与「从设备加载」同一套约定) */
   function onFlashElrs () {
@@ -170,10 +189,10 @@
   max-width: none;
 }
 
-/* 全局底栏: 深色扁平, 顶部细线分隔 */
+/* 全局底栏: 跟随主题底色, 顶部细线分隔 (原写死 #121212 —— 切亮色会顶着一条黑底) */
 .global-footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(18, 18, 18, 0.95) !important;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  background: rgb(var(--v-theme-surface)) !important;
 }
 
 .global-footer :deep(.v-toolbar__content) {
@@ -194,10 +213,10 @@
   letter-spacing: 0;
 }
 
-/* 全局默认「从设备加载」按钮: 深色底白字 */
+/* 全局默认「从设备加载」按钮: 底色与文字均由主题派生, 亮暗自动反相 */
 .global-footer .footer-btn-secondary {
-  background: rgba(255, 255, 255, 0.08) !important;
-  color: #fff !important;
+  background: rgba(var(--v-theme-on-surface), 0.08) !important;
+  color: rgb(var(--v-theme-on-surface)) !important;
 }
 
 /* 「从设备加载」始终排在右侧槽最末尾 (Teleport 注入内容在前) */
