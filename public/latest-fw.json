@@ -1,6 +1,6 @@
 {
-  "fw_version": "3.1.3",
-  "commit": "784c73bc",
+  "fw_version": "3.1.4",
+  "commit": "66ae5222",
   "released_at": "2026-10-04",
-  "notes": "ci(release): 增加发布凭据自检步骤"
+  "notes": "feat(静音): 新增蜂鸣器全局静音模式\n静音开启后按键音、通道提示音、告警及开关机音全部禁鸣，"
 }
