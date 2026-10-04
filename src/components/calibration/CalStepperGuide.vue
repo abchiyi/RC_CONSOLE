@@ -1,6 +1,17 @@
 <template>
-  <v-dialog v-model="open" max-width="880" persistent>
-    <v-card class="cal-dialog-card" rounded="lg" elevation="0">
+  <v-dialog v-model="open" max-width="880" persistent :fullscreen="mandatory">
+    <v-card class="cal-dialog-card" :class="{ 'gw-fs-card': mandatory }" rounded="lg" elevation="0">
+      <!-- ===== 强制模式警示条: 说清射频为何没输出、怎样才恢复 ===== -->
+      <div v-if="mandatory" class="gw-lock-banner">
+        <v-icon size="18" class="gw-lock-icon">mdi-wifi-off</v-icon>
+        <div class="gw-lock-text">
+          <div class="gw-lock-title">射频已硬件关断 · 完成校准后自动恢复</div>
+          <div class="gw-lock-sub">
+            未校准前设备不会发射任何信号，模型不会有反应。待完成：{{ calStore.missingItems.join('、') || '—' }}
+          </div>
+        </div>
+      </div>
+
       <!-- ===== 头部: avatar + 标题 + 进度 chip + 关闭 ===== -->
       <v-card-item class="gw-head pb-3">
         <template #prepend>
@@ -15,7 +26,8 @@
             <v-icon start size="12">mdi-circle</v-icon>进行中
           </v-chip>
           <v-chip v-else color="grey" size="x-small" variant="tonal">{{ doneCount }} / {{ totalCount }}</v-chip>
-          <v-btn icon="mdi-close" variant="text" size="small" density="compact" @click="closeGuide" />
+          <v-btn v-if="!mandatory" icon="mdi-close" variant="text" size="small" density="compact"
+            @click="closeGuide" />
         </template>
       </v-card-item>
 
@@ -47,7 +59,8 @@
 
               <div class="gw-pick-list">
                 <button v-for="opt in pickOptions" :key="opt.key" type="button" class="gw-pick"
-                  :class="{ 'is-on': opt.model.value }" @click="opt.model.value = !opt.model.value">
+                  :class="{ 'is-on': opt.model.value }" :disabled="mandatory && isMissing(opt.key)"
+                  @click="opt.model.value = !opt.model.value">
                   <v-avatar :color="opt.avatar" size="34" rounded="lg" class="gw-pick-avatar">
                     <v-icon color="white" size="18">{{ opt.icon }}</v-icon>
                   </v-avatar>
@@ -236,7 +249,7 @@
       <v-card-actions class="gw-actions" :style="activeAccentVars">
         <!-- 步骤 0 -->
         <template v-if="step === 0">
-          <button type="button" class="gw-btn" @click="closeGuide">关闭</button>
+          <button v-if="!mandatory" type="button" class="gw-btn" @click="closeGuide">关闭</button>
           <span class="gw-gap" />
           <button type="button" class="gw-btn gw-btn-primary" :disabled="!anySelected" @click="startSelected">
             <v-icon size="16" class="mr-1">mdi-play</v-icon>开始校准
@@ -246,7 +259,7 @@
         <!-- 步骤 1: IMU -->
         <template v-else-if="step === 1">
           <template v-if="imuStep === 0">
-            <button type="button" class="gw-btn" @click="closeGuide">关闭</button>
+            <button v-if="!mandatory" type="button" class="gw-btn" @click="closeGuide">关闭</button>
             <span class="gw-gap" />
             <button v-if="runningType !== 'imu'" type="button" class="gw-btn gw-btn-primary" @click="startCal('imu')">
               <v-icon size="16" class="mr-1">mdi-play</v-icon>开始校准
@@ -275,7 +288,7 @@
         <!-- 步骤 2 / 3: 扳机 / 摇杆 -->
         <template v-else>
           <template v-if="activeSubStep === 0">
-            <button type="button" class="gw-btn" @click="closeGuide">取消</button>
+            <button v-if="!mandatory" type="button" class="gw-btn" @click="closeGuide">取消</button>
             <span class="gw-gap" />
             <button v-if="!activeBusy" type="button" class="gw-btn gw-btn-primary" @click="runStep(1)">
               <v-icon size="16" class="mr-1">mdi-play</v-icon>开始采样
@@ -311,8 +324,11 @@ import { computed, reactive, ref, watch, type WritableComputedRef } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useCalibrationStore, type AdcCal } from '@/stores/calibration'
 
-const props = defineProps<{ modelValue: boolean }>()
-const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
+const props = defineProps<{ modelValue: boolean; mandatory?: boolean }>()
+const emit = defineEmits<{
+  (e: 'update:modelValue', v: boolean): void
+  (e: 'completed'): void
+}>()
 
 const calStore = useCalibrationStore()
 const trigger = calStore.trigger
@@ -349,6 +365,20 @@ const open = computed({
 })
 
 const imuDone = computed(() => imuStep.value >= 1)
+
+/**
+ * 三项里各自是否「尚未校准」(bit0 扳机 / bit1 摇杆X / bit2 摇杆Y / bit3 IMU)。
+ * 强制模式据此决定默认勾选与「不可取消」: 摇杆两轴任一未校准就算缺失, 因为
+ * joy_xy 是一次校两轴, 分开没有意义。
+ */
+const missing = computed(() => {
+  const m = calStore.calMask
+  return { imu: !(m & 0x08), trigger: !(m & 0x01), joy: !(m & 0x02) || !(m & 0x04) }
+})
+
+function isMissing(k: string): boolean {
+  return k === 'imu' ? missing.value.imu : k === 'trigger' ? missing.value.trigger : missing.value.joy
+}
 
 // 双轴量程展示 (reactive 使嵌套的 joyX/joyY ref 自动解包)
 const joyAxes = reactive([
@@ -478,6 +508,16 @@ async function runStep(s: 1 | 2): Promise<void> {
 // 打开向导: 仅定位到正在进行的校准, 不自动启动
 watch(() => props.modelValue, (v) => {
   if (!v) return
+  // 强制模式: 默认只勾缺失项 (已完成的让用户自己补勾, 但不强制)。
+  //   缺失项在条目页「不可取消」—— 取消会导致永远走不出这一页。
+  if (props.mandatory) {
+    selected.imu = missing.value.imu
+    selected.trigger = missing.value.trigger
+    selected.joy = missing.value.joy
+    if (!selected.imu && !selected.trigger && !selected.joy) {
+      selected.imu = selected.trigger = selected.joy = true // 全齐时兜底全勾, 否则「开始校准」是死的
+    }
+  }
   const rt = calStore.runningType
   if (rt === 'imu') { step.value = 1; maxStep.value = 1; imuStep.value = 0; joyStep.value = 0 }
   else if (rt === 'trigger') { step.value = 2; maxStep.value = 2; imuStep.value = 0; triggerStep.value = 0; joyStep.value = 0 }
@@ -567,6 +607,8 @@ async function cancelCal(): Promise<void> {
 
 function closeGuide(): void {
   if (calStore.runningType) calStore.cancelCal()
+  // 强制模式: 不关闭 —— 出口只有「完成全部校准」这一条, 由宿主去核对是否真解锁
+  if (props.mandatory) { emit('completed'); return }
   open.value = false
 }
 
@@ -624,6 +666,48 @@ function fmtDeg(v?: number): string {
 .cal-avatar {
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+/* ============ 强制模式 (mandatory): 整屏铺满 + 顶部射频关断警示 ============ */
+/* dialog 已 fullscreen, 这里让卡片撑满并把内容区变成唯一滚动容器 */
+.gw-fs-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: none !important;
+}
+
+.gw-fs-card .gw-body-wrap {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.gw-lock-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(244, 67, 54, 0.32);
+  background: rgba(244, 67, 54, 0.14);
+}
+
+.gw-lock-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #ef5350;
+}
+
+.gw-lock-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #ff8a80;
+}
+
+.gw-lock-sub {
+  margin-top: 2px;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: rgba(255, 205, 200, 0.85);
 }
 
 .gw-head {
@@ -835,6 +919,17 @@ function fmtDeg(v?: number): string {
 .gw-pick.is-on {
   border-color: rgba(var(--v-theme-primary), 0.45);
   background: rgba(var(--v-theme-primary), 0.1);
+}
+
+/* 强制模式下缺失项不允许取消: 取消就没法走出这一页了 */
+.gw-pick:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.gw-pick:disabled:hover {
+  background: rgba(255, 255, 255, 0.028);
+  border-color: rgba(255, 255, 255, 0.07);
 }
 
 .gw-pick-avatar {

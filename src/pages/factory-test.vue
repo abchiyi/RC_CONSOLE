@@ -839,6 +839,9 @@
       efuse.secure_mode = toInt(o.secure_mode)
       efuse.switch_status = toInt(o.switch_status)
       efuse.switch_err = toInt(o.switch_err)
+      // ★ 同步「出厂锁定」的判定依据: 本字段与 get_info 的 secure_mode 同源 (见响应注释),
+      //   而进页必跑 fetchEfuse —— get_info 偶发丢帧时这里能把按钮补亮。
+      if (efuse.secure_mode !== null) info.secure = efuse.secure_mode
     } catch (error: unknown) {
       efuseError.value = error instanceof Error ? error.message : '读取 eFuse 超时'
     } finally {
@@ -1414,6 +1417,10 @@
       info.device = String(o.device ?? '')
       info.hw = String(o.hw_version ?? '')
       info.fw = String(o.fw_version ?? '')
+      // ★ 安全模式: 「出厂锁定」按钮的启用条件 (disabled="info.secure !== 1")。
+      //   本函数是进页唯一跑的 get_info —— 漏了这行按钮就永远灰着, 只有手动跑一遍
+      //   「扫描自动项」(走 tInfo) 才会亮。
+      info.secure = Number(o.secure_mode ?? 0)
       const list = Array.isArray(o.input_sources) ? o.input_sources as Array<{ id?: unknown }> : null
       if (!list) return
       const ids = new Set(list.map(s => String(s.id ?? '')))

@@ -515,6 +515,8 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
       case CMD.GET_MODEL: return { cmd: name, ...decodeModelTlv(data) }
       case CMD.CAL_STATUS: return decodeCalStatus(r, name)
       case CMD.CAL_GET: return decodeCalGet(r, name)
+      case CMD.GET_WORK_MODE: return decodeWorkMode(r, name)
+      case CMD.CAL_RESET: return { cmd: name, ok: true, cal_mask: r.u8() }
       case CMD.GET_POWER_CFG: return { cmd: name, idle_warning_s: r.u16(), idle_shutdown_s: r.u16() }
       case CMD.GET_POWER_STATE: return decodePowerState(r, name)
       case CMD.GET_LINK_STATS: return decodeLinkStats(r, name)
@@ -711,6 +713,20 @@ function decodeCalGet(r: Reader, name: string): Record<string, unknown> {
     imu: { cal: { gyro_bias_x: r.f32(), gyro_bias_y: r.f32(), gyro_bias_z: r.f32() } },
     cal_state: r.u8(),
     lpf_alpha: r.i32(),
+    // 校准完成位图 (bit0 扳机 bit1 摇杆X bit2 摇杆Y bit3 IMU)。
+    //   固件追加在**载荷末尾**。Reader.u8() 越界会抛异常并让整个 CAL_GET 解析失败,
+    //   故必须先看 remaining —— 旧固件没有这一字节时按 0 (未校准) 处理, 保守且安全。
+    cal_mask: r.remaining >= 1 ? r.u8() : 0,
+  }
+}
+
+/** RF 安全门状态 (0x010B): u8 rf_locked + u8 cal_mask + str desc */
+function decodeWorkMode(r: Reader, name: string): Record<string, unknown> {
+  return {
+    cmd: name,
+    rf_locked: !!r.u8(),
+    cal_mask: r.u8(),
+    message: r.str(),
   }
 }
 

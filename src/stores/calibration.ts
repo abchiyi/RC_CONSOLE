@@ -4,7 +4,7 @@
  * 替代 CalWizard.vue 中的 addLineListener / sendCommand 直连逻辑
  */
 import { defineStore } from 'pinia'
-import { ref, reactive } from 'vue'
+import { computed, ref, reactive } from 'vue'
 import { serialService } from '@/services/SerialService'
 import { RequestResponseHandler, waitIdempotentAck } from '@/utils/requestResponse'
 import { OWNER, requestStream, releaseStream } from './stream'
@@ -79,6 +79,26 @@ export const useCalibrationStore = defineStore('calibration', () => {
   /** 有"仅改设备内存、尚未保存"的改动 —— 与通道页同一套模式: 改 → 保存 → 落 NVS */
   const calDirty = ref(false)
 
+  // ── RF 安全门状态 (CMD_GET_WORK_MODE / CMD_CAL_GET 的 cal_mask) ──
+  //   rfLocked = 校准不齐 → 固件把外部 ELRS 模块的 EN 拉低, 射频完全停发。
+  //   此时模型不会有反应, UI 必须给出解释, 否则用户只会以为设备故障。
+  //   null = 尚未从设备读到 (刚连上/旧固件), UI 不据此做任何判断。
+  const rfLocked = ref<boolean | null>(null)
+  /** 校准完成位图: bit0 扳机 bit1 摇杆X bit2 摇杆Y bit3 IMU */
+  const calMask = ref(0)
+  /** 全部四项的掩码 —— 与固件 WorkMode::kCalAll 对齐 */
+  const CAL_MASK_ALL = 0x0f
+  /** 缺失项的可读列表 (UI 直接展示) */
+  const missingItems = computed(() => {
+    const m = calMask.value
+    const miss: string[] = []
+    if (!(m & 0x01)) miss.push('扳机')
+    if (!(m & 0x02)) miss.push('摇杆X')
+    if (!(m & 0x04)) miss.push('摇杆Y')
+    if (!(m & 0x08)) miss.push('IMU')
+    return miss
+  })
+
   // 保存是全局的（CMD_SAVE 一次落下 通道 + 校准 + 曲线）→ 任一页保存成功都清掉本页标志
   window.addEventListener('app:config-saved', () => { calDirty.value = false })
 
@@ -114,6 +134,26 @@ export const useCalibrationStore = defineStore('calibration', () => {
 
   async function fetchCalData(): Promise<void> {
     await serialService.sendCommand('cal_get')
+  }
+
+  /**
+   * 查询 RF 安全门状态。上位机连上后应当**先问一次** —— rf_locked 时后续所有操作
+   * 都不会让模型动起来, UI 必须先把这件事说清楚。
+   * BLE 链路丢帧率可达 10~40%, 故带一次重试。
+   */
+  async function fetchWorkMode(): Promise<void> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await serialService.sendCommand('get_work_mode')
+      await new Promise(resolve => { setTimeout(resolve, 250) })
+      if (rfLocked.value !== null) return // 已收到 → 不再重试
+    }
+  }
+
+  /** 清除全部校准 (三轴量程 + IMU 零偏) → 设备会在运行中重新把射频锁上 */
+  async function resetCal(): Promise<void> {
+    await serialService.sendCommand('cal_reset')
+    calMask.value = 0
+    rfLocked.value = true
   }
 
   /** 设置死区: 只改设备内存(立即生效), 落盘由 saveCal() 统一负责 */
@@ -280,6 +320,23 @@ export const useCalibrationStore = defineStore('calibration', () => {
       return
     }
 
+    // RF 安全门状态 (get_work_mode: 连接后的第一次查询)
+    if (json.cmd === 'get_work_mode') {
+      rfLocked.value = json.rf_locked === true
+      calMask.value = Number(json.cal_mask) || 0
+      if (json.message) lastMessage.value = String(json.message)
+      return
+    }
+
+    // cal_reset: 设备已清空调准 → 运行中会立刻把 EN 重新拉低, 这里同步状态,
+    //   不等下一次 get_work_mode (用户点完就看得到"已锁")
+    if (json.cmd === 'cal_reset') {
+      calMask.value = Number(json.cal_mask) || 0
+      rfLocked.value = true
+      lastMessage.value = '已清除校准数据，射频已禁用'
+      return
+    }
+
     // cal_zero_imu 响应 (0位校准: 成功 {cmd, ok:true} / 失败 {cmd, ok:false, error, status})
     if (json.cmd === 'cal_zero_imu') {
       const ok = json.ok === true
@@ -381,6 +438,15 @@ export const useCalibrationStore = defineStore('calibration', () => {
     if (data.lpf_alpha !== undefined) {
       lpfAlpha.value = data.lpf_alpha
     }
+    // 校准位图 (cal_get 载荷末尾追加)。校准完成后会再次拉到, 据此把门口的上锁状态刷新。
+    //   只在已经拿到过 get_work_mode 结论时才同步 rfLocked —— 否则连询问都没问过,
+    //   却凭一个可能为 0 的默认值断言"射频禁用"是不安全的。
+    if (data.cal_mask !== undefined) {
+      calMask.value = Number(data.cal_mask) || 0
+      if (rfLocked.value !== null) {
+        rfLocked.value = (calMask.value & CAL_MASK_ALL) !== CAL_MASK_ALL
+      }
+    }
   }
 
   /**
@@ -444,6 +510,8 @@ export const useCalibrationStore = defineStore('calibration', () => {
     lastType.value = null
     calDirty.value = false
     _deadzonesLoaded = false
+    rfLocked.value = null // 下次连接重新查询, 不留上一次的结论
+    calMask.value = 0
   }
 
   return {
@@ -467,6 +535,12 @@ export const useCalibrationStore = defineStore('calibration', () => {
     cancelCal,
     pollStatus,
     fetchCalData,
+    // ---- RF 安全门 ----
+    rfLocked,
+    calMask,
+    missingItems,
+    fetchWorkMode,
+    resetCal,
     applyCalRaw,
     setDeadzone,
     setLpf,

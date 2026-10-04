@@ -67,6 +67,14 @@ function routeObject (obj: Record<string, unknown>): void {
     return
   }
 
+  // get_work_mode → 校准 Store (RF 安全门状态, 连接后第一个要问的东西)。
+  //   ★ 必须单独列出: 它不以 cal_ 开头, 否则会被下方的 cal_ / 兜底路由吃掉,
+  //     顶栏就永远显示不出"射频已禁用"。
+  if (cmd === 'get_work_mode') {
+    useCalibrationStore().handleResponse(obj)
+    return
+  }
+
   // cal_* → 校准 Store（通道/raw+IMU 已并入流式推送）
   if (cmd.startsWith('cal_')) {
     useCalibrationStore().handleResponse(obj)

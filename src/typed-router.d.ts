@@ -23,6 +23,7 @@ declare module 'vue-router/auto-routes' {
     '/disconnected': RouteRecordInfo<'/disconnected', '/disconnected', Record<never, never>, Record<never, never>>,
     '/elrs': RouteRecordInfo<'/elrs', '/elrs', Record<never, never>, Record<never, never>>,
     '/factory-test': RouteRecordInfo<'/factory-test', '/factory-test', Record<never, never>, Record<never, never>>,
+    '/setup': RouteRecordInfo<'/setup', '/setup', Record<never, never>, Record<never, never>>,
     '/system': RouteRecordInfo<'/system', '/system', Record<never, never>, Record<never, never>>,
     '/telemetry': RouteRecordInfo<'/telemetry', '/telemetry', Record<never, never>, Record<never, never>>,
   }
@@ -56,6 +57,10 @@ declare module 'vue-router/auto-routes' {
     }
     'src/pages/factory-test.vue': {
       routes: '/factory-test'
+      views: never
+    }
+    'src/pages/setup.vue': {
+      routes: '/setup'
       views: never
     }
     'src/pages/system.vue': {

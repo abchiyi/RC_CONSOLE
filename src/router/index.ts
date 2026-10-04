@@ -7,6 +7,7 @@
 // Composables
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { routes } from 'vue-router/auto-routes'
+import { useCalibrationStore } from '@/stores/calibration'
 import { useSerialStore } from '@/stores/serial'
 
 const router = createRouter({
@@ -25,13 +26,24 @@ const router = createRouter({
  * 旧页面的 onUnmounted 会停掉轮询 / 撤掉流请求。
  *
  * 断开瞬间的主动跳转在 App.vue（watch connected），两者互为兜底。
+ *
+ * 校准门禁（同一套模式）：校准不齐时固件会把外部 ELRS 模块的 EN 拉低，射频完全停发，
+ * 此时进任何业务页都没意义。未完成时只允许停在 /setup，手改地址栏 hash 也会被弹回。
+ * 注意 rfLocked === null（尚未问到 / 旧固件无此命令）不拦 —— 不能凭未知状态锁死整站。
  */
 router.beforeEach(to => {
   const serial = useSerialStore()
+  const cal = useCalibrationStore()
   if (!serial.connected && to.path !== '/disconnected') {
     return { path: '/disconnected' }
   }
   if (serial.connected && to.path === '/disconnected') {
+    return { path: '/' }
+  }
+  if (serial.connected && cal.rfLocked === true && to.path !== '/setup') {
+    return { path: '/setup' }
+  }
+  if (serial.connected && cal.rfLocked !== true && to.path === '/setup') {
     return { path: '/' }
   }
   return true

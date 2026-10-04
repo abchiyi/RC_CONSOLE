@@ -62,6 +62,9 @@ export const CMD = {
   STREAM_START: 0x01_08,
   STREAM_STOP: 0x01_09,
   SET_LOCK_ZERO: 0x01_0A, // 「AUX1 解锁时三轴归零」开关: u8 enable(0/1)
+  // RF 安全门状态查询: req 空; resp = u8 rf_locked + u8 cal_mask + str desc
+  //   rf_locked=1 → 校准不齐, 外部 ELRS 模块被 EN 拉低锁住, 无射频输出
+  GET_WORK_MODE: 0x01_0B,
   // 配置备份 / 还原（§5.15）：JSON 文件，会话式分块
   CONFIG_EXPORT_BEGIN: 0x01_10,
   CONFIG_EXPORT_CHUNK: 0x01_11,
@@ -81,6 +84,8 @@ export const CMD = {
   CAL_SET_LPF_ALPHA: 0x03_06,
   CAL_ZERO_IMU: 0x03_07,
   CAL_SET_CURVE: 0x03_08,
+  // 清除全部校准（三轴量程 + IMU 零偏）→ 回到出厂未校准态 → RF 门在运行中重新上锁
+  CAL_RESET: 0x03_09,
   GET_POWER_CFG: 0x04_01,
   SET_POWER_CFG: 0x04_02,
   GET_POWER_STATE: 0x04_03,
@@ -153,6 +158,8 @@ export const CMD_NAME_TO_ID: Record<string, number> = {
   cal_set_lpf_alpha: CMD.CAL_SET_LPF_ALPHA,
   cal_zero_imu: CMD.CAL_ZERO_IMU,
   cal_set_curve: CMD.CAL_SET_CURVE,
+  cal_reset: CMD.CAL_RESET,
+  get_work_mode: CMD.GET_WORK_MODE,
   get_power_cfg: CMD.GET_POWER_CFG,
   set_power_cfg: CMD.SET_POWER_CFG,
   get_power_state: CMD.GET_POWER_STATE,

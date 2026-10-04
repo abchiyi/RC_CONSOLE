@@ -3,7 +3,7 @@
     <AppBar @toggle-drawer="drawer = !drawer" />
 
     <!-- 侧边导航 (未连接时无页面可去, 直接隐藏) -->
-    <v-navigation-drawer v-if="serial.connected" v-model="drawer" width="240">
+    <v-navigation-drawer v-if="serial.connected && !isSetup" v-model="drawer" width="240">
       <v-list density="compact" nav>
         <v-list-item prepend-icon="mdi-cog" title="通道配置" to="/config" />
         <v-list-item prepend-icon="mdi-chip" title="传感器" to="/calibration" />
@@ -25,14 +25,14 @@
 
     <!-- 主内容区 -->
     <v-main>
-      <div class="content-wrap">
+      <div class="content-wrap" :class="{ 'content-full': isSetup }">
         <router-view />
       </div>
     </v-main>
 
     <!-- 全局底栏: 左状态右操作双槽, 容器常驻 DOM (Teleport 目标), 未连接时隐藏 -->
     <v-app-bar
-      v-show="serial.connected"
+      v-show="serial.connected && !isSetup"
       color="surface"
       density="comfortable"
       class="px-3 global-footer"
@@ -64,10 +64,11 @@
 </template>
 
 <script setup lang="ts">
-  import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+  import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import AppBar from '@/components/AppBar.vue'
   import ElrsFlashDialog from '@/components/elrs/ElrsFlashDialog.vue'
+  import { useCalibrationStore } from '@/stores/calibration'
   import { useConfigStore } from '@/stores/config'
   import { resetAllStores } from '@/stores/resetAll'
   import { useSerialStore } from '@/stores/serial'
@@ -77,6 +78,9 @@
   const drawer = ref(true)
   const serial = useSerialStore()
   const configStore = useConfigStore()
+  const calStore = useCalibrationStore()
+  /** 未校准强制向导页 (/setup): 全屏独占, 侧栏与底栏一并隐藏 */
+  const isSetup = computed(() => route.path === '/setup')
   /** 模块固件烧录对话框开关 (入口: ELRS 页「模块固件升级」卡片; 对话框挂全局 → 烧录中切页不中断) */
   const moduleFwDialog = ref(false)
   /** 断开前停留的页面: 重连后原样回去 (/disconnected 本身不算) */
@@ -127,6 +131,21 @@
     resetAllStores()
   })
 
+  /**
+   * RF 安全门 → 页面。
+   * 连上后路由会先落到业务页 (此刻 rfLocked 仍是 null), 而 get_work_mode 的结论常在
+   * 0.3~0.7s 之后才回来 (BLE 丢帧还要重试一次)。这里补上跳转, 与 router 的 beforeEach
+   * 门禁互为兜底: 守卫管"手改地址栏", 本 watch 管"结论迟到"。
+   */
+  watch(() => calStore.rfLocked, locked => {
+    if (!serial.connected) return
+    if (locked === true && route.path !== '/setup') {
+      void router.replace('/setup')
+    } else if (locked !== true && route.path === '/setup') {
+      void router.replace('/config')
+    }
+  })
+
   onMounted(() => {
     window.addEventListener('app:reload-done', onReloadDone)
     window.addEventListener('app:flash-elrs', onFlashElrs)
@@ -144,6 +163,11 @@
   max-width: 1000px;
   margin: 0 auto;
   width: 100%;
+}
+
+/* 强制向导页 (/setup): 全屏独占, 不再限宽 */
+.content-full {
+  max-width: none;
 }
 
 /* 全局底栏: 深色扁平, 顶部细线分隔 */
