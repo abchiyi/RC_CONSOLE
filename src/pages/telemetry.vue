@@ -156,16 +156,6 @@
             同一帧既写到该口、也复制一份给本页，两边同时可见。
           </v-alert>
 
-          <div class="cal-hint hint-neutral">
-            <v-icon class="mt-0.5" size="16">mdi-information-outline</v-icon>
-
-            <span>
-              固件是「单流会话」：本页与 ELRS 页的链路流互斥，切换时会互相顶掉，属预期行为。
-              下方字段来自 CRSF 遥测帧原样解码，量纲系数集中在
-              <code>utils/crsfTelemetry.ts</code> 的 <code>SCALE</code>，
-              与飞控自带显示不一致时先核对那里。
-            </span>
-          </div>
         </v-card-text>
       </v-card>
 
@@ -389,10 +379,6 @@
             </div>
           </div>
 
-          <div class="cal-hint hint-neutral">
-            <v-icon class="mt-0.5" size="16">mdi-information-outline</v-icon>
-            <span>链路质量也可在 ELRS 页看（同一份 CRSF 0x14 帧，本页是遥测帧里的原始值）。</span>
-          </div>
         </v-card-text>
       </v-card>
 
