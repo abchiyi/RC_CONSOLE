@@ -50,6 +50,14 @@
                   <!-- 隐藏入口: 连点 5 次进入出厂测试（产线专用，不占侧边栏） -->
                   <span class="stat-value mono ver-tap" @click="tapVersion">
                     {{ configStore.deviceInfo?.fw_version ?? '--' }}
+                    <v-chip v-if="fwRelease.outdated" class="ml-1" color="warning" size="x-small"
+                      variant="tonal">
+                      可升级
+                    </v-chip>
+                    <v-chip v-else-if="fwRelease.upToDate" class="ml-1" color="success" size="x-small"
+                      variant="tonal">
+                      最新
+                    </v-chip>
                   </span>
                 </div>
               </div>
@@ -61,10 +69,25 @@
             <span>升级中请勿断电或拔线，写完后设备自动重启进入新固件。</span>
           </div>
 
+          <!-- 固件版本校验: 只在确实拿到在线发布清单时才有结论 (离线/超时 → 不提示) -->
+          <v-alert v-if="fwRelease.outdated" class="mt-3" color="warning" density="compact"
+            icon="mdi-update" variant="tonal">
+            当前固件 {{ configStore.deviceInfo?.fw_version }} 低于最新版本
+            {{ fwRelease.latest?.fw_version }}，建议升级。
+            <span v-if="fwRelease.latest?.notes" class="d-block mt-1 text-caption">
+              {{ fwRelease.latest.notes }}
+            </span>
+          </v-alert>
+
           <!-- 与 ELRS 页「模块固件升级」卡片一致: 整宽主色 tonal 按钮 (深色底上不如实色刺眼) -->
           <v-btn block class="mt-3" color="primary" prepend-icon="mdi-upload-network" variant="tonal"
             @click="upgradeDialog = true">
             <span class="btn-text">固件升级</span>
+          </v-btn>
+
+          <v-btn block class="mt-2" size="small" variant="text" prepend-icon="mdi-refresh"
+            :loading="fwRelease.status === 'checking'" @click="onCheckUpdate">
+            <span class="btn-text">检查更新</span>
           </v-btn>
         </v-card-text>
       </v-card>
@@ -422,6 +445,51 @@
 
     <FirmwareUpgradeDialog v-model="upgradeDialog" />
 
+    <!-- 固件升级提示弹窗: 自动检查/手动检查发现新版本时弹出
+         触发与消噪: 自动检查到新版本才弹, 且同一版本每次会话只自动弹一次 (sessionStorage),
+         手动点「检查更新」不受此限 —— 用户主动要结果就必须给反馈 -->
+    <v-dialog v-if="fwRelease.latest" v-model="updatePrompt" max-width="420">
+      <v-card rounded="lg">
+        <v-card-item class="pb-0">
+          <template #prepend>
+            <v-avatar color="warning" size="36" class="cal-avatar">
+              <v-icon color="white" size="20">mdi-update</v-icon>
+            </v-avatar>
+          </template>
+          <v-card-title>发现新固件</v-card-title>
+          <v-card-subtitle>
+            {{ configStore.deviceInfo?.fw_version ?? '--' }} → {{ fwRelease.latest.fw_version }}
+          </v-card-subtitle>
+        </v-card-item>
+
+        <v-card-text class="pt-3">
+          设备当前固件 <code>{{ configStore.deviceInfo?.fw_version ?? '--' }}</code>，最新版本
+          <code>{{ fwRelease.latest.fw_version }}</code>，建议升级。
+          <div v-if="fwRelease.latest.notes" class="text-caption mt-2">
+            {{ fwRelease.latest.notes }}
+          </div>
+          <div v-if="fwRelease.latest.released_at" class="text-caption mt-1">
+            发布于 {{ fwRelease.latest.released_at }}
+          </div>
+          <div class="cal-hint hint-neutral mt-3">
+            <v-icon size="16" class="mt-0.5">mdi-alert-outline</v-icon>
+            <span>升级中请勿断电或拔线，写完后设备自动重启。</span>
+          </div>
+        </v-card-text>
+
+        <v-card-actions class="pt-0">
+          <v-spacer />
+          <v-btn variant="text" size="small" @click="updatePrompt = false">
+            <span class="btn-text">以后再说</span>
+          </v-btn>
+          <v-btn color="primary" variant="tonal" size="small" prepend-icon="mdi-upload-network"
+            @click="startUpgradeFromPrompt">
+            <span class="btn-text">立即升级</span>
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- 底栏操作按钮: Teleport 到全局底栏右侧槽 (App.vue)
          注: 主控固件升级入口已移入页面内「关于系统」卡片 -->
     <Teleport to="#global-footer-right">
@@ -445,14 +513,43 @@ import { exportSnapshot, importSnapshot } from '@/services/configBackup'
 import { jsonToSnapshot, snapshotToJson } from '@/utils/configSnapshot'
 import { openTextFile, saveTextFile } from '@/utils/fileDialog'
 import FirmwareUpgradeDialog from '@/components/FirmwareUpgradeDialog.vue'
+import { useFirmwareReleaseStore } from '@/stores/firmwareRelease'
 
 const serial = useSerialStore()
 const power = usePowerStore()
 const configStore = useConfigStore()
+const fwRelease = useFirmwareReleaseStore()
 const router = useRouter()
 
 // ========== 主控固件升级对话框 (入口: 页面内「关于系统」卡片按钮) ==========
 const upgradeDialog = ref(false)
+
+// ========== 固件升级提示弹窗 ==========
+/** 自动检查到新版本时只弹一次 (记版本, 不记布尔): 换新版才再提醒, 重连/切页不重复打扰 */
+const FW_PROMPTED_KEY = 'fw:update-prompted'
+const updatePrompt = ref(false)
+
+watch(
+  () => fwRelease.outdated,
+  (outdated) => {
+    const v = fwRelease.latest?.fw_version
+    if (!outdated || !v) return
+    if (sessionStorage.getItem(FW_PROMPTED_KEY) === v) return
+    updatePrompt.value = true
+  },
+)
+
+// 关闭即记录: 「以后再说」「立即升级」以及点遮罩/Esc 都走这里
+watch(updatePrompt, (open) => {
+  const v = fwRelease.latest?.fw_version
+  if (!open && v) sessionStorage.setItem(FW_PROMPTED_KEY, v)
+})
+
+/** 弹窗内「立即升级」: 先关提示再开升级对话框, 避免两层遮罩叠在一起 */
+function startUpgradeFromPrompt(): void {
+  updatePrompt.value = false
+  upgradeDialog.value = true
+}
 
 // ========== 轮询 ==========
 const pollActive = ref(false)
@@ -612,6 +709,26 @@ function tapVersion() {
   }
   // 点到一半给个反馈，免得以为点了没反应
   if (verTaps >= 3) notify(`再点 ${VER_TAPS_TO_ENTER - verTaps} 次进入出厂测试`, 'info')
+}
+
+// ========== 固件版本校验 ==========
+/**
+ * 手动检查更新: 与进页时自动检查的区别是**失败要给反馈**。
+ *   自动检查走 enterPage() → 离线/超时一律静默(不打扰), 结果只体现在版本行的 chip 上;
+ *   用户主动点了按钮却查不到, 必须明确告诉他"连不上", 否则会以为点了没反应。
+ */
+async function onCheckUpdate(): Promise<void> {
+  const ok = await fwRelease.check()
+  if (!ok) {
+    notify('暂时无法连接更新服务，请检查网络', 'warning')
+    return
+  }
+  // 用户主动点了就必须给弹窗, 不受"同一版本只自动弹一次"限制
+  if (fwRelease.outdated) {
+    updatePrompt.value = true
+    return
+  }
+  notify('当前已是最新固件', 'success')
 }
 
 // ========== 配置备份 / 还原 (协议 §5.15) ==========
@@ -817,6 +934,8 @@ watch(shutdownSec, () => {
 /** 进入页面/连接建立后：拉取配置并启动轮询 */
 function enterPage(): void {
   reloadAll()
+  // 固件版本校验: 依赖在线发布清单; 离线/超时一律静默失败(不提示), 用户可点「检查更新」重试
+  void fwRelease.check()
 }
 
 // 串口状态监听
