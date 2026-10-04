@@ -170,6 +170,47 @@
         </v-card-text>
       </v-card>
 
+      <!-- 静音模式卡片 -->
+      <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
+        <v-card-item class="pb-0">
+          <template #prepend>
+            <v-avatar :color="configStore.silentMode ? 'grey' : 'primary'" size="36" class="cal-avatar">
+              <v-icon color="white" size="20">
+                {{ configStore.silentMode ? 'mdi-volume-off' : 'mdi-volume-high' }}
+              </v-icon>
+            </v-avatar>
+          </template>
+          <v-card-title>静音模式</v-card-title>
+          <v-card-subtitle>关闭蜂鸣器的全部提示音</v-card-subtitle>
+          <template #append>
+            <v-chip v-if="configStore.silentMode" color="warning" size="x-small" variant="tonal">
+              已静音
+            </v-chip>
+          </template>
+        </v-card-item>
+
+        <v-card-text class="pt-2 pb-3">
+          <div class="telem-row">
+            <div class="telem-main">
+              <div class="idle-row-title">静音</div>
+              <div class="idle-row-sub">开启后按键音、通道提示音、空闲与低电告警、开关机音全部不响</div>
+            </div>
+            <v-switch class="telem-switch" :model-value="configStore.silentMode"
+              :loading="configStore.silentModeBusy" :disabled="configStore.silentModeSupported === false"
+              @update:model-value="toggleSilent" />
+          </div>
+
+          <v-alert v-if="silentError" color="error" variant="tonal" density="compact" class="mt-3 py-1">
+            {{ silentError }}
+          </v-alert>
+
+          <div class="cal-hint hint-neutral mt-3">
+            <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
+            <span>仅静音蜂鸣器，LED 指示不受影响；开关即时生效并掉电保持（随配置备份一同导出）。</span>
+          </div>
+        </v-card-text>
+      </v-card>
+
       <!-- 空闲关机设置卡片 -->
       <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
         <v-card-item class="pb-0">
@@ -900,6 +941,21 @@ async function toggleRssiMode(v: boolean | null): Promise<void> {
     return
   }
   notify(on ? 'RSSI 格式：手机地面站' : 'RSSI 格式：EdgeTX 原生', 'success')
+}
+
+// ========== 静音模式开关 (SET_SILENT 0x010C) ==========
+const silentError = ref('')
+
+/** 切换静音模式: 设备侧落 NVS 并立即作用于蜂鸣器, 无需再点「保存到设备」 */
+async function toggleSilent(v: boolean | null): Promise<void> {
+  const on = !!v
+  silentError.value = ''
+  const ok = await configStore.setSilentMode(on)
+  if (!ok) {
+    silentError.value = configStore.silentModeError ?? '设置失败'
+    return
+  }
+  notify(on ? '已开启静音：蜂鸣器不再鸣响' : '已关闭静音', 'success')
 }
 
 async function applyTelem2(usb: boolean, bt: boolean): Promise<void> {

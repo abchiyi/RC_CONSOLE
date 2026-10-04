@@ -124,6 +124,16 @@ export const useConfigStore = defineStore('config', () => {
   const lockZeroBusy = ref(false)
   const lockZeroError = ref<string | null>(null)
 
+  // ---- 静音模式 (SET_SILENT 0x010C) ----
+  //   true  = 蜂鸣器全局禁鸣 (按键音/通道提示音/空闲·低电告警/开关机音全静)
+  //   false = 正常出声
+  //   ★ 只影响蜂鸣器: LED 指示不受影响。开关本身落 NVS, 设备收到即生效。
+  const silentMode = ref(false)
+  /** null = 尚未从设备读到; false = 固件 get_config 无 0x08 项 (不支持) */
+  const silentModeSupported = ref<boolean | null>(null)
+  const silentModeBusy = ref(false)
+  const silentModeError = ref<string | null>(null)
+
   // 已同步到固件 RAM 的模型 baseline (差分同步对比基准)
   const syncedModels = ref<Record<number, ModelConfig>>({})
 
@@ -480,6 +490,24 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
+  /** 设置静音模式 (设备收到即落 NVS, 掉电保持, 并立即作用于蜂鸣器) */
+  async function setSilentMode(v: boolean): Promise<boolean> {
+    silentModeBusy.value = true
+    silentModeError.value = null
+    const p = rr.wait('set_silent', 3000)
+    try {
+      await serialService.sendCommand('set_silent', { enable: v ? 1 : 0 })
+      const ok = await p
+      if (ok === false && !silentModeError.value) silentModeError.value = '设置被设备拒绝'
+      return ok !== false
+    } catch {
+      silentModeError.value = '设置超时'
+      return false
+    } finally {
+      silentModeBusy.value = false
+    }
+  }
+
   function handleResponse(json: Record<string, unknown>): void {
     const cmd = json.cmd as string | undefined
 
@@ -522,6 +550,18 @@ export const useConfigStore = defineStore('config', () => {
       return
     }
 
+    // set_silent 响应: 回显生效后的开关值
+    if (cmd === 'set_silent') {
+      const ok = json.ok !== false
+      if (ok && typeof json.silent_mode === 'boolean') silentMode.value = json.silent_mode
+      if (!ok) {
+        silentModeError.value = (json.error as string) || '静音模式设置失败'
+        error.value = silentModeError.value
+      }
+      rr.tryResolve('set_silent', ok)
+      return
+    }
+
     // get_config 中的遥测端口掩码 (tag 0x05): 无此项 = 固件不支持
     if (cmd === 'get_config') {
       if (typeof json.telem2_mask === 'number') applyTelem2Mask(json.telem2_mask)
@@ -539,6 +579,13 @@ export const useConfigStore = defineStore('config', () => {
         lockZeroSupported.value = true
       } else {
         lockZeroSupported.value = false
+      }
+      // 静音模式 (tag 0x08): 无此项 = 固件不支持
+      if (typeof json.silent_mode === 'boolean') {
+        silentMode.value = json.silent_mode
+        silentModeSupported.value = true
+      } else {
+        silentModeSupported.value = false
       }
     }
 
@@ -676,6 +723,10 @@ export const useConfigStore = defineStore('config', () => {
     lockZeroSupported.value = null
     lockZeroBusy.value = false
     lockZeroError.value = null
+    silentMode.value = false
+    silentModeSupported.value = null
+    silentModeBusy.value = false
+    silentModeError.value = null
   }
 
   return {
@@ -718,6 +769,11 @@ export const useConfigStore = defineStore('config', () => {
     lockZeroBusy,
     lockZeroError,
     setLockZeroImu,
+    silentMode,
+    silentModeSupported,
+    silentModeBusy,
+    silentModeError,
+    setSilentMode,
     handleResponse,
     reset,
   }

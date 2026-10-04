@@ -65,6 +65,9 @@ export const CMD = {
   // RF 安全门状态查询: req 空; resp = u8 rf_locked + u8 cal_mask + str desc
   //   rf_locked=1 → 校准不齐, 外部 ELRS 模块被 EN 拉低锁住, 无射频输出
   GET_WORK_MODE: 0x01_0B,
+  // 「静音模式」开关: payload u8 enable(0/1), 回显 u8 生效值
+  //   1 = 蜂鸣器全局禁鸣 (按键音/通道提示音/告警音/开关机音全静), LED 不受影响
+  SET_SILENT: 0x01_0C,
   // 配置备份 / 还原（§5.15）：JSON 文件，会话式分块
   CONFIG_EXPORT_BEGIN: 0x01_10,
   CONFIG_EXPORT_CHUNK: 0x01_11,
@@ -174,6 +177,7 @@ export const CMD_NAME_TO_ID: Record<string, number> = {
   set_telem2: CMD.SET_TELEM2,
   set_telem_rssi_mode: CMD.SET_TELEM_RSSI_MODE,
   set_lock_zero: CMD.SET_LOCK_ZERO,
+  set_silent: CMD.SET_SILENT,
 }
 
 const CMD_ID_TO_NAME: Record<number, string> = Object.fromEntries(

@@ -194,6 +194,10 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
       // 「AUX1 解锁时三轴归零」开关: 0=关, 1=开
       w.u8(Number(params.enable ?? 0) ? 1 : 0)
       break
+    case CMD.SET_SILENT:
+      // 「静音模式」开关: 0=关 (有提示音), 1=开 (蜂鸣器全局禁鸣)
+      w.u8(Number(params.enable ?? 0) ? 1 : 0)
+      break
     case CMD.OTA_BEGIN:
       w.u32(Number(params.size ?? 0))
       break
@@ -564,6 +568,9 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
       case CMD.SET_LOCK_ZERO:
         // 回显生效后的开关值
         return { cmd: name, ok: true, lock_zero_imu: r.u8() !== 0 }
+      case CMD.SET_SILENT:
+        // 回显生效后的开关值
+        return { cmd: name, ok: true, silent_mode: r.u8() !== 0 }
       // ── 配置备份 / 还原（§5.15）──
       case CMD.CONFIG_EXPORT_BEGIN:
         return {
@@ -661,6 +668,8 @@ function decodeGetConfig(r: Reader, name: string): Record<string, unknown> {
     // 转发口 RSSI 口径 (tag 0x07): 1=TBS/Crossfire uint8=-dBm, 0=ELRS 原生 int8 dBm
     else if (tag === 0x07) cfg.telem_rssi_cf = rr.u8() !== 0
     else if (tag === 0x06) cfg.lock_zero_imu = rr.u8() !== 0
+    // 静音模式 (tag 0x08): 1=蜂鸣器全局禁鸣; 无此项 = 固件不支持
+    else if (tag === 0x08) cfg.silent_mode = rr.u8() !== 0
     else if (tag >= 0x10 && tag <= 0x17) {
       const slot = tag - 0x10
       // 固件仅回模型名 str（完整通道数据经 GET_MODEL 按需拉取）
