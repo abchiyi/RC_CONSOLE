@@ -508,6 +508,24 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
       const rerr = new Reader(data)
       return { cmd: name, ok: false, error: statusText(status), status, expected_offset: rerr.u32() }
     }
+    // 配置导入失败: 设备随响应回传具体原因 ——
+    //   "no import session" / "crc mismatch" / "low memory" / "snapshot apply failed"
+    // 必须透出, 否则 UI 只显示笼统的「参数错误」, 无法区分是传输丢字节、堆不足还是快照解析失败。
+    if (cmdId === CMD.CONFIG_IMPORT_APPLY && data.length >= 1) {
+      try {
+        const rerr = new Reader(data)
+        const itemCount = rerr.u8()
+        const message = rerr.remaining >= 1 ? rerr.str() : ''
+        return {
+          cmd: name,
+          ok: false,
+          status,
+          item_count: itemCount,
+          message,
+          error: message ? `${statusText(status)}（${message}）` : statusText(status),
+        }
+      } catch { /* 解析失败时落到下面的通用分支 */ }
+    }
     return { cmd: name, ok: false, error: statusText(status), status }
   }
   const r = new Reader(data)
