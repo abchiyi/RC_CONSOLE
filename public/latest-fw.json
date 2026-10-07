@@ -1,6 +1,6 @@
 {
-  "fw_version": "3.1.4",
-  "commit": "66ae5222",
-  "released_at": "2026-10-04",
-  "notes": "feat(静音): 新增蜂鸣器全局静音模式\n静音开启后按键音、通道提示音、告警及开关机音全部禁鸣，"
+  "fw_version": "3.1.5",
+  "commit": "9603e654",
+  "released_at": "2026-10-06",
+  "notes": "fix: 修复备份配置导入失败的bug"
 }
