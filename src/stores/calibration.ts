@@ -84,6 +84,12 @@ export const useCalibrationStore = defineStore('calibration', () => {
   //   此时模型不会有反应, UI 必须给出解释, 否则用户只会以为设备故障。
   //   null = 尚未从设备读到 (刚连上/旧固件), UI 不据此做任何判断。
   const rfLocked = ref<boolean | null>(null)
+  /**
+   * 出厂测试一次性放行标志 (由首次开机页的隐藏入口置位, 路由守卫消费后立刻清零)。
+   *   产线拿到的是未校准新机 —— 此刻射频上锁、门禁把人按在 /setup, 而出厂测试恰恰要在
+   *   这个状态下做, 所以这条路径必须能破一次门禁。用完即清, 不留常开后门。
+   */
+  const factoryBypass = ref(false)
   /** 校准完成位图: bit0 扳机 bit1 摇杆X bit2 摇杆Y bit3 IMU */
   const calMask = ref(0)
   /** 全部四项的掩码 —— 与固件 WorkMode::kCalAll 对齐 */
@@ -512,6 +518,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
     _deadzonesLoaded = false
     rfLocked.value = null // 下次连接重新查询, 不留上一次的结论
     calMask.value = 0
+    factoryBypass.value = false // 放行额度随连接作废
   }
 
   return {
@@ -537,6 +544,7 @@ export const useCalibrationStore = defineStore('calibration', () => {
     fetchCalData,
     // ---- RF 安全门 ----
     rfLocked,
+    factoryBypass,
     calMask,
     missingItems,
     fetchWorkMode,

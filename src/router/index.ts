@@ -41,6 +41,13 @@ router.beforeEach(to => {
     return { path: '/' }
   }
   if (serial.connected && cal.rfLocked === true && to.path !== '/setup') {
+    // 隐藏入口 (首次开机页连点「校准向导」3 次): 一次性放行 /factory-test。
+    //   未校准的新机射频上锁, 而产线测试正是要在这种状态下做 —— 这里用掉额度后立刻清零,
+    //   所以只放行这一次导航, 手改地址栏再来无效。
+    if (to.path === '/factory-test' && cal.factoryBypass) {
+      cal.factoryBypass = false
+      return true
+    }
     return { path: '/setup' }
   }
   if (serial.connected && cal.rfLocked !== true && to.path === '/setup') {

@@ -14,6 +14,7 @@ import {
   FRAME_FRAGMENT,
   FLAG_FRAGMENTED,
   STATUS_OK,
+  STATUS_INTERNAL,
   STREAM_CHANNELS,
   STREAM_RAW_IMU,
   STREAM_POWER,
@@ -503,10 +504,26 @@ function decodeChannelTlv(value: Uint8Array): ModelChannel {
 export function decodeResponse(cmdId: number, status: number, data: Uint8Array): Record<string, unknown> | null {
   const name = cmdIdToName(cmdId)
   if (status !== STATUS_OK) {
-    // F-28: OTA_CHUNK 的失败响应仍带 u32「期望 offset」—— 主机据此从该处重传
-    if (cmdId === CMD.OTA_CHUNK && data.length >= 4) {
-      const rerr = new Reader(data)
-      return { cmd: name, ok: false, error: statusText(status), status, expected_offset: rerr.u32() }
+    // OTA 失败时设备随响应回传具体原因 —— "ota queue create failed" / "ota queue full" /
+    //   "ota not started" / "ota task create failed"，以及 esp_err_to_name() 转出的 ESP_ERR_*。
+    //   必须透出，否则 UI 只有笼统的「内部错误」，无从区分堆不足、队列积压还是 esp_ota_* 本身失败。
+    //   ★ 注意载荷格式分两种，必须按 status 区分，否则必然误读：
+    //     · S_INTERNAL —— 固件走 out.str(g_ota_error)，**只有** u8 长度前缀的原因字符串，不带 offset；
+    //     · S_SEQ/SIZE —— 固件走 out.u32(期望 offset)，是纯 u32，不带字符串。
+    //     旧代码一律按 u32 解析，于是原因字符串的前 4 字节被当成 offset 读走、原因整个丢失。
+    if (cmdId === CMD.OTA_BEGIN || cmdId === CMD.OTA_CHUNK || cmdId === CMD.OTA_FINISH) {
+      if (status === STATUS_INTERNAL) {
+        const reason = safeReadReason(data)
+        return {
+          cmd: name, ok: false, status, reason,
+          error: reason ? `${statusText(status)}（${reason}）` : statusText(status),
+        }
+      }
+      // F-28: SEQ/SIZE 的失败响应带 u32「期望 offset」—— 主机据此从该处重传
+      if (cmdId === CMD.OTA_CHUNK && data.length >= 4) {
+        return { cmd: name, ok: false, error: statusText(status), status, expected_offset: new Reader(data).u32() }
+      }
+      return { cmd: name, ok: false, error: statusText(status), status }
     }
     // 配置导入失败: 设备随响应回传具体原因 ——
     //   "no import session" / "crc mismatch" / "low memory" / "snapshot apply failed"
@@ -629,6 +646,19 @@ function statusText(status: number): string {
     case 8: return '不支持'
     case 9: return '内部错误'
     default: return `设备错误(${status})`
+  }
+}
+
+/**
+ * 读取设备随错误响应回传的原因字符串（固件 Proto::Writer::str = u8 长度前缀 + 字节）。
+ * 空载荷或越界一律返回空串 —— 诊断信息不该把响应解析拖崩。
+ */
+function safeReadReason(data: Uint8Array): string {
+  if (data.length < 1) return ''
+  try {
+    return new Reader(data).str()
+  } catch {
+    return ''
   }
 }
 

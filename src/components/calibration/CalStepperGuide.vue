@@ -19,7 +19,8 @@
             <v-icon color="white" size="20">mdi-auto-fix</v-icon>
           </v-avatar>
         </template>
-        <v-card-title>校准向导</v-card-title>
+        <!-- 隐藏入口: 连点标题 3 次进出厂测试 (无样式提示, 仅强制模式响应) -->
+        <v-card-title @click="tapTitle">校准向导</v-card-title>
         <v-card-subtitle>按 IMU → 扳机 → 摇杆 的顺序完成校准</v-card-subtitle>
         <template #append>
           <v-chip v-if="busy" color="warning" size="x-small" variant="tonal">
@@ -322,6 +323,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch, type WritableComputedRef } from 'vue'
 import { storeToRefs } from 'pinia'
+import { useRouter } from 'vue-router'
 import { useCalibrationStore, type AdcCal } from '@/stores/calibration'
 
 const props = defineProps<{ modelValue: boolean; mandatory?: boolean }>()
@@ -330,6 +332,7 @@ const emit = defineEmits<{
   (e: 'completed'): void
 }>()
 
+const router = useRouter()
 const calStore = useCalibrationStore()
 const trigger = calStore.trigger
 const joyX = calStore.joyX
@@ -610,6 +613,31 @@ function closeGuide(): void {
   // 强制模式: 不关闭 —— 出口只有「完成全部校准」这一条, 由宿主去核对是否真解锁
   if (props.mandatory) { emit('completed'); return }
   open.value = false
+}
+
+// ========== 隐藏入口: 连点标题「校准向导」3 次 → 出厂测试 ==========
+/**
+ * 产线专用出口, 不占任何可见按钮: 首次开机的新机未校准、射频上锁, 除了本页哪都进不去,
+ * 而出厂测试恰恰要在这个状态下做。计数带 3s 窗口 —— 停手即清零, 免得随手点几下攒够误入。
+ * 只在 mandatory 下响应: 校准页那个可随意开关的普通向导不需要这条捷径。
+ */
+const TITLE_TAPS_TO_ENTER = 3
+const TITLE_TAP_WINDOW_MS = 3000
+let titleTaps = 0
+let titleTapTimer: ReturnType<typeof setTimeout> | null = null
+
+function tapTitle(): void {
+  if (!props.mandatory) return
+  if (titleTapTimer) clearTimeout(titleTapTimer)
+  titleTapTimer = setTimeout(() => { titleTaps = 0; titleTapTimer = null }, TITLE_TAP_WINDOW_MS)
+
+  if (++titleTaps < TITLE_TAPS_TO_ENTER) return
+  titleTaps = 0
+  clearTimeout(titleTapTimer)
+  titleTapTimer = null
+  // 放行额度: 路由守卫消费一次即清, 未校准状态下 /factory-test 只准进这一次
+  calStore.factoryBypass = true
+  void router.push('/factory-test')
 }
 
 // --- 量程计算 (与 CalWizard.vue 一致) ---

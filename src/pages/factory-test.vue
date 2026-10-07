@@ -10,7 +10,7 @@
         icon="mdi-arrow-left"
         size="small"
         variant="text"
-        @click="router.push('/system')"
+        @click="goBack"
       />
 
       <v-toolbar-title class="text-h6 page-title">
@@ -510,7 +510,7 @@
   import ElrsFieldTree from '@/components/elrs/ElrsFieldTree.vue'
   import { useNotice } from '@/composables/useNotice'
   import { serialService } from '@/services/SerialService'
-  import type { ImuCal } from '@/stores/calibration'
+  import { type ImuCal, useCalibrationStore } from '@/stores/calibration'
   import { type ElrsFieldInfo, useLinkStatsStore } from '@/stores/linkStats'
   import { useSerialStore } from '@/stores/serial'
   import { OWNER, releaseStream, requestStream } from '@/stores/stream'
@@ -520,6 +520,15 @@
   const router = useRouter()
   const serial = useSerialStore()
   const link = useLinkStatsStore()
+  const calStore = useCalibrationStore()
+
+  /**
+   * 返回: 常规从系统页进来 → 回 /system; 未校准 (射频上锁) 时只能是从首次开机页的
+   * 隐藏入口进来的, 直接回 /setup —— 那会儿 /system 会被门禁弹回来, 白跳一次。
+   */
+  function goBack(): void {
+    void router.push(calStore.rfLocked === true ? '/setup' : '/system')
+  }
 
   const { text: snackbarMsg, color: snackbarColor, visible: snackbarVisible, show: notify, timeoutMs: noticeTimeout }
     = useNotice(2000)
@@ -1456,6 +1465,7 @@
 
   onUnmounted(() => {
     pageAlive = false // 先落闸: 离页后任何迟到的流登记都被拒绝
+    calStore.factoryBypass = false // 兜底: 放行额度随离页作废 (正常路径在路由守卫里已消费)
     serialService.removeObjectListener(onObject)
     releaseStream(OWNER.FACTORY)
     if (rateTimer) {
