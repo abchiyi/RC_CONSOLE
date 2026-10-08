@@ -121,32 +121,53 @@ function clearFirmwareSelection() {
   transferEta.value = ''
 }
 
-function waitForCommand(cmd: string, timeoutMs = 10000): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      cleanup()
-      reject(new Error(`等待设备响应超时: ${cmd}`))
-    }, timeoutMs)
+async function sendCommandAndWait(
+  cmd: string,
+  params?: Record<string, unknown>,
+  timeoutMs = 10000,
+): Promise<Record<string, unknown>> {
+  const buffered: Record<string, unknown>[] = []
+  let notify: (() => void) | null = null
+  const handler = (obj: Record<string, unknown>) => {
+    if (obj.cmd !== cmd) return
+    buffered.push(obj)
+    notify?.()
+  }
 
-    const handler = (obj: Record<string, unknown>) => {
-      if (obj.cmd !== cmd) return
-      cleanup()
-      resolve(obj)
+  serialService.onObject(handler)
+  try {
+    const seq = await serialService.sendCommand(cmd, params)
+    if (seq === undefined) throw new Error(`命令未发送: ${cmd}`)
+
+    const deadline = Date.now() + timeoutMs
+    while (true) {
+      const index = buffered.findIndex(obj => Number(obj.seq) === seq)
+      if (index >= 0) {
+        const matched = buffered[index]
+        if (matched) {
+          buffered.splice(index, 1)
+          return matched
+        }
+      }
+
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) throw new Error(`等待设备响应超时: ${cmd}`)
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          notify = null
+          reject(new Error(`等待设备响应超时: ${cmd}`))
+        }, remaining)
+        notify = () => {
+          clearTimeout(timer)
+          notify = null
+          resolve()
+        }
+      })
     }
-
-    const cleanup = () => {
-      clearTimeout(timer)
-      serialService.removeObjectListener(handler)
-    }
-
-    serialService.onObject(handler)
-  })
-}
-
-async function sendCommandAndWait(cmd: string, params?: Record<string, unknown>, timeoutMs = 10000) {
-  const pending = waitForCommand(cmd, timeoutMs)
-  await serialService.sendCommand(cmd, params)
-  return pending
+  } finally {
+    notify = null
+    serialService.removeObjectListener(handler)
+  }
 }
 
 async function startFirmwareUpdate() {
@@ -192,31 +213,14 @@ async function startFirmwareUpdate() {
     const uploadChunkSize = Number.isFinite(serverChunkSize) && serverChunkSize > 0 ? serverChunkSize : chunkSize
     const totalChunks = Math.max(1, Math.ceil(data.byteLength / uploadChunkSize))
 
-    // 流水线+窗口确认: 每 WINDOW_SIZE 个 chunk 等一次响应同步, 兼顾速度和可靠性
-    // ★ 不变量: WINDOW_SIZE × (单片载荷 + 16B 帧开销) 必须 < 设备侧 rx_buffer_size。
-    //   帧开销 = 10B 帧头 + 2B cmd + 4B offset = 16B; 单片载荷取自 BEGIN 响应的 chunk_hint,
-    //   固件为迁就 BLE MTU 固定回 236B (command_center_ota.cpp:380), 即 252B/帧 ——
-    //   常被误算成 256+10=266B, 实际少了 cmd/offset 那 6B、多了 MTU 扣的那 20B。
-    //   窗口同步会等设备确认到窗口末尾, 故"在途未确认字节"的上界就是一个窗口。
-    //   旧组合 16 × 252B = 4032B, 对当时设备的 4096B 环形缓冲只剩 64B 余量,
-    //   叠加 OTA 期间 flash 擦除造成的停摆 → 几乎每个窗口都溢出 → "每 ~100 片坏一帧"的 CRC NACK。
-    //   现取 8 (= 2016B)，对应固件端 rx_buffer_size=16384，约 8.1× 余量。
-    //   窗口同步已改为"只在未确认时才发探针"，同步本身近乎零成本，收紧窗口不拖速度。
-    //   ★ 提速方案（放宽单片 / 重排 OTA 队列 slot）见 docs/UsbOtaThroughput_zh.md；
-    //     改动本节任一常量前，先读该文档 §5 的不变量清单。
+    // 流水线 + 严格窗口确认：每个窗口都以设备确认量收口，下一窗口不会越过确认点。
+    // 固件 3.1.5 的 USB Serial/JTAG RX 缓冲只有 4096B；8 × (236B 载荷 + 16B 帧开销)
+    // = 2016B，再加一帧探针仍低于缓冲的一半。后续固件即使扩大缓冲，前端也保持此前向兼容基线。
     const WINDOW_SIZE = 8
-    // F-28: 重传预算。★ 语义是「连续原地不动的次数」上限，**不是**全程累计上限 ——
-    //   921KB 镜像有 4000+ 片，链路每 ~100 片丢一个字节，全程累计上限 20 就会被填满，
-    //   大镜像必然中途死掉（实测卡在 50%，恰好 20 次 CRC NACK）。
-    //   只要设备确认量还在前进就清零；只有连续多次原地不动才判定链路已死。
+    const PROBE_TIMEOUT_MS = 2000
+    const MAX_PROBE_ATTEMPTS = 3
+    // F-28: 重传预算按「连续原地不动」计算，确认量前进即清零，避免大镜像因累计偶发丢帧失败。
     const MAX_RESEND_STALL = 20
-    // 未确认字节达到该量时主动让出事件循环：约为设备侧 USJ rx_buffer(16384B, usb_backend.cpp:123) 的 1/8。
-    //   ★ 注意：一个窗口只有 WINDOW_SIZE × 252B = 2016B，正常情况下够不到这条线，
-    //     所以它在正常传输中很少触发；真正每窗口收口的是 WINDOW_SIZE 的同步等待。
-    //     单靠抬高本值提升不了速率 —— 实测依据见 docs/UsbOtaThroughput_zh.md §4-C。
-    //   调大前仍需确认它 < 设备侧 rx_buffer_size（该限制只对 USJ 后端成立：
-    //     USJ 溢出即静默丢字节；TinyUSB 放不下时 USB 会 NAK、由主机重发）。
-    const INFLIGHT_YIELD_BYTES = 2048
     let lastError: string | null = null
     // F-28: 设备"已接受累计" = 下一个期望 offset (链路确认点; 与落盘进度解耦, 不会回退)
     let accepted = 0
@@ -226,13 +230,9 @@ async function startFirmwareUpdate() {
     const errorHandler = (obj: Record<string, unknown>) => {
       if (obj.cmd === 'ota_chunk') {
         if (obj.ok === false) {
-          // F-28: offset 不匹配(请求丢帧/响应丢帧/重复帧)属**可自愈**情形 ——
-          // 固件在响应里带回"期望 offset", 由下面的窗口同步从该处重传; 其余错误照旧中止。
+          // offset 不匹配、请求丢帧或重复帧可由窗口探针取得真实确认点后自愈。
           if (obj.status === STATUS_SEQ_ERR || obj.status === STATUS_SIZE_ERR) return
-          // S_CRC_ERR 同样是**可自愈**的：设备解帧时 CRC 失配 = 这一片没被接受，
-          //   g_ota_accepted 不推进，故下面的窗口同步会从设备确认点整片重传 ——
-          //   与"这一片丢了"完全等价。原实现把它当致命错误直接中止，
-          //   于是链路上一次偶发误帧（解码器扫到伪 SOF 后解出一个失败帧）就能废掉整次升级。
+          // CRC 失配表示当前帧未被接受，设备确认点不会推进，交由窗口同步重传。
           if (obj.status === STATUS_CRC_ERR) {
             crcNackCount++
             console.warn(`[OTA] 设备 CRC 失配 NACK #${crcNackCount}，交给窗口同步重传`)
@@ -245,16 +245,12 @@ async function startFirmwareUpdate() {
         }
       }
     }
-    serialService.onObject(errorHandler)
 
-    // 进度探针: 只带 offset、不带数据的 ota_chunk。固件对负载 ≤4B 走早期分支, 只回读
-    // "已接受累计"(不写 flash)。这是唯一能主动催出 OTA 进度的手段 —— OTA_CHUNK 是被动响应,
-    // 窗口同步若只是"停发干等", 就再不会有响应抵达, accepted 冻结, 必然假超时。
+    // 进度探针不写 flash，只回读设备真实确认量。响应必须按请求 seq 精确匹配，
+    // 否则窗口内迟到的数据分片响应会被误当成探针响应，引发错误回退和重复重传。
     const probeChunk = new Uint8Array(0)
-
     let sentBytes = 0
     let resendCount = 0
-    // 上一次窗口同步时的设备确认量：用于判定链路是「在前进」还是「原地不动」
     let lastProgressOffset = 0
 
     // ── 传输统计：速率 + 剩余时间（倒计时）─────────────────────────────────
@@ -295,79 +291,73 @@ async function startFirmwareUpdate() {
       transferEta.value = remainBytes <= 0 ? '即将完成' : `剩余 ${formatEta(remainBytes / smoothRate)}`
     }
 
-    for (let index = 0; index < totalChunks && !shouldStop;) {
-      const start = index * uploadChunkSize
-      const end = Math.min(start + uploadChunkSize, data.byteLength)
-      const chunk = data.subarray(start, end)
-      await serialService.sendCommand('ota_chunk', { offset: start, data: chunk })
-      sentBytes = end
-      index++
-      // ★ 进度也改用 accepted 为基准：与上面的速率/ETA 同口径，且重传时不会倒退。
-      //   上限锁 99% —— 数据全部确认后还有 ota_finish（队列排空 + esp_ota_end 校验
-      //   + 设置启动分区），那段最长可达数十秒，这里到 100% 会让人误以为已完成。
-      firmwareProgress.value = Math.min(99, Math.round((accepted / totalBytes) * 100))
-      refreshTransferStats(accepted)
+    serialService.onObject(errorHandler)
+    try {
+      for (let index = 0; index < totalChunks && !shouldStop;) {
+        const start = index * uploadChunkSize
+        const end = Math.min(start + uploadChunkSize, data.byteLength)
+        const chunk = data.subarray(start, end)
+        const seq = await serialService.sendCommand('ota_chunk', { offset: start, data: chunk })
+        if (seq === undefined) throw new Error(`OTA 分片未发送: offset=${start}`)
+        sentBytes = end
+        index++
+        // 进度使用设备确认量且锁在 99%，最后 1% 留给 esp_ota_end() 和启动分区切换。
+        firmwareProgress.value = Math.min(99, Math.round((accepted / totalBytes) * 100))
+        refreshTransferStats(accepted)
 
-      // 每窗口同步一次: 确认固件已接受(含链路重传)
-      if (index % WINDOW_SIZE === 0 || index === totalChunks) {
-        // ★ 只在「设备尚未确认到窗口末尾」时才发探针。多数窗口的分片响应本身就带回
-        //   total_written（见 errorHandler），于是零额外 RTT 通过。
-        //   原实现无条件发探针 + 睡 20ms + 再看：每个窗口固定付 20ms 起步、响应丢了
-        //   还要空转到 5s 上限 —— 250 个窗口就是 5s 打底，重传时再成倍放大。
-        if (accepted < sentBytes && !shouldStop) {
-          try {
-            // 直接等响应（1 个 RTT），而不是"发一条 + 睡 20ms + 再看"。
-            // 探针的响应体就是固件回的 (accepted, written)，拿来即权威进度。
-            const probe = await sendCommandAndWait(
-              'ota_chunk', { offset: accepted, data: probeChunk }, 2000)
-            if (typeof probe.total_written === 'number') {
-              accepted = Math.max(accepted, probe.total_written)
+        if (index % WINDOW_SIZE === 0 || index === totalChunks) {
+          // 每窗口固定让出一次事件循环，让串口读循环先处理已到达的响应。该节流对
+          // 3.1.5 的 4096B RX 缓冲是兼容性约束，不依赖后续固件扩大到 16384B。
+          await new Promise<void>(resolve => setTimeout(resolve, 0))
+
+          // 若普通分片响应尚未把确认点推进到窗口末尾，发送按 seq 匹配的进度探针。
+          // 探针响应丢失时最多重试三次；只有拿到真实确认点后才决定是否回退。
+          for (let attempt = 1;
+            accepted < sentBytes && !shouldStop && attempt <= MAX_PROBE_ATTEMPTS;
+            attempt++) {
+            try {
+              const probe = await sendCommandAndWait(
+                'ota_chunk', { offset: accepted, data: probeChunk }, PROBE_TIMEOUT_MS)
+              if (probe.ok === true && typeof probe.total_written === 'number') {
+                accepted = Math.max(accepted, probe.total_written)
+                break
+              }
+              if (shouldStop) break
+            } catch {
+              console.warn(`[OTA] 窗口探针超时 ${attempt}/${MAX_PROBE_ATTEMPTS}`)
             }
-          } catch {
-            // 探针超时：不致命，交给下面的「未确认 -> 重传」分支
           }
-        }
-        if (shouldStop) break
-        if (accepted < sentBytes) {
-          // F-28: 有片未被接受 —— 从设备确认的 offset 处重传(不再是致命错误)
-          // ★ 预算按「进展」重置：确认量前进了就清零，只有连续原地不动才算链路已死。
-          if (accepted > lastProgressOffset) {
+
+          if (shouldStop) break
+          if (accepted < sentBytes) {
+            // 有分片未被设备接受，从设备确认点开始重传。预算只统计连续无进展次数。
+            if (accepted > lastProgressOffset) {
+              lastProgressOffset = accepted
+              resendCount = 0
+            }
+            if (++resendCount > MAX_RESEND_STALL) {
+              shouldStop = true
+              lastError = `重传次数超限: 已发 ${sentBytes} / 设备确认 ${accepted}` +
+                `（连续 ${MAX_RESEND_STALL} 次原地不动` +
+                (crcNackCount ? `，期间设备 CRC 失配 NACK ${crcNackCount} 次` : '') +
+                '）。链路持续丢字节：检查 USB 链路、日志混流或设备接收缓冲。'
+              break
+            }
+            console.warn(`[OTA] 链路重传 #${resendCount}: 已发 ${sentBytes} -> 回到 ${accepted}`)
+            index = Math.floor(accepted / uploadChunkSize)
+            sentBytes = index * uploadChunkSize
+          } else {
             lastProgressOffset = accepted
             resendCount = 0
           }
-          if (++resendCount > MAX_RESEND_STALL) {
-            shouldStop = true
-            lastError = `重传次数超限: 已发 ${sentBytes} / 设备确认 ${accepted}` +
-              `（连续 ${MAX_RESEND_STALL} 次原地不动` +
-              (crcNackCount ? `，期间设备 CRC 失配 NACK ${crcNackCount} 次` : '') +
-              '）。链路持续丢字节：检查设备侧 usb_rx 任务是否被高优先级任务饿死、' +
-              '或 usb_serial_jtag 的 rx_buffer(16384B) 是否溢出。'
-            break
-          }
-          console.warn(`[OTA] 链路重传 #${resendCount}: 已发 ${sentBytes} -> 回到 ${accepted}`)
-          index = Math.floor(accepted / uploadChunkSize)
-          sentBytes = index * uploadChunkSize
-        } else {
-          lastProgressOffset = accepted
-          resendCount = 0
+
+          firmwareProgress.value = Math.min(99, Math.round((accepted / totalBytes) * 100))
+          refreshTransferStats(accepted)
         }
       }
-      // 前馈节流：未确认字节逼近设备 RX 环形缓冲时，主动让出事件循环。
-      //   ★ 两个后端的丢字节机理不同，别混为一谈：
-      //     · usb_serial_jtag 后端：OTA 期间周期性擦除 flash 扇区（单次数十 ms），
-      //       期间 usb_rx 任务(prio 3) 被 250Hz 控制环等 prio 4/5 任务挤掉，
-      //       rx_buffer(16384B) 填满即**静默丢字节** → 解码器错位 → 下一个能解出的帧
-      //       CRC 失配 → 设备回 S_CRC_ERR。这正是"每 ~100 片坏一帧"的来源。
-      //     · TinyUSB 后端：tu_edpt_stream_read_xfer 只在 FIFO 剩余 ≥ mps 时才挂传输，
-      //       放不下时 USB 直接 NAK、由主机重发 —— 不会静默丢字节。
-      //   ★ 顺带修正旧注释的数字错误：setTimeout(0/1) 在浏览器里被钳到 ~4ms 而非 1ms，
-      //     所以固定"每 8 片让一次"实测要付约 2s；改为按落后量触发，正常时零开销。
-      if (sentBytes - accepted >= INFLIGHT_YIELD_BYTES) {
-        await new Promise(r => setTimeout(r, 0))
-      }
+    } finally {
+      serialService.removeObjectListener(errorHandler)
     }
-
-    serialService.removeObjectListener(errorHandler)
     if (shouldStop) throw new Error(lastError || '传输中断')
     if (accepted !== data.byteLength) {
       throw new Error(`数据不完整: 已写 ${accepted} / 应写 ${data.byteLength}`)
