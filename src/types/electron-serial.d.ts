@@ -58,6 +58,8 @@ interface SerialOptions {
 interface Serial {
   requestPort(options?: SerialPortRequestOptions): Promise<SerialPort>;
   getPorts(): Promise<SerialPort[]>;
+  addEventListener(type: 'connect' | 'disconnect', listener: (event: Event) => void): void;
+  removeEventListener(type: 'connect' | 'disconnect', listener: (event: Event) => void): void;
 }
 
 interface SerialPortRequestOptions {

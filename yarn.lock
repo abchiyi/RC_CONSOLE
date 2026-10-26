@@ -1443,6 +1443,11 @@ at-least-node@^1.0.0:
   resolved "https://registry.npmmirror.com/at-least-node/-/at-least-node-1.0.0.tgz"
   integrity sha512-+q/t7Ekv1EDY2l6Gda6LLiX14rU9TV20Wa3ofeQmwPFZbOMo9DXrLbOjFaaclkXKWidIaopwAObQDqwWtGUjqg==
 
+atob-lite@^2.0.0:
+  version "2.0.0"
+  resolved "https://registry.npmmirror.com/atob-lite/-/atob-lite-2.0.0.tgz"
+  integrity sha512-LEeSAWeh2Gfa2FtlQE1shxQ8zi5F9GHarrGKz08TMdODD5T4eH6BMsvtnhbWZ+XQn+Gb6om/917ucvRu7l7ukw==
+
 axios@^1.6.1:
   version "1.18.1"
   resolved "https://registry.npmmirror.com/axios/-/axios-1.18.1.tgz"
@@ -2444,6 +2449,14 @@ espree@^10.0.1, espree@^10.4.0:
     acorn "^8.16.0"
     acorn-jsx "^5.3.2"
     eslint-visitor-keys "^5.0.1"
+
+esptool-js@^0.7.0:
+  version "0.7.0"
+  resolved "https://registry.npmmirror.com/esptool-js/-/esptool-js-0.7.0.tgz"
+  integrity sha512-9wHuW/s9t4Vs6HKcr3pra3gbRVWwaN0eabMWodWH4KEJHEYZxgmWwZ3s0F4xcWVCZOc/L98bGZ4uWoZvR8KBKA==
+  dependencies:
+    atob-lite "^2.0.0"
+    pako "^2.1.0"
 
 esquery@^1.5.0, esquery@^1.6.0:
   version "1.7.0"
@@ -3561,6 +3574,11 @@ package-manager-detector@^1.6.0:
   version "1.6.0"
   resolved "https://registry.npmmirror.com/package-manager-detector/-/package-manager-detector-1.6.0.tgz"
   integrity sha512-61A5ThoTiDG/C8s8UMZwSorAGwMJ0ERVGj2OjoW5pAalsNOg15+iQiPzrLJ4jhZ1HJzmC2PIHT2oEiH3R5fzNA==
+
+pako@^2.1.0:
+  version "2.2.0"
+  resolved "https://registry.npmmirror.com/pako/-/pako-2.2.0.tgz"
+  integrity sha512-zJq6RP/5q+TO2OpFV3FHzlPnFjmkb7Nc99a5SNjJE+uu/PkpChs+NIZSSzbBoD+6kjiISXjfYdwj1ZRQ81dz/w==
 
 parent-module@^1.0.0:
   version "1.0.1"

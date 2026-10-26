@@ -116,16 +116,37 @@
 
           <span v-else>USB 请用数据线（不支持仅充电线）；蓝牙请在设备上电后搜索并配对。</span>
         </div>
+
+        <!-- 救砖/首次烧录: 走独立 Web Serial (esptool-js), 不依赖正常串口连接 -->
+        <div class="disc-rescue">
+          <v-btn
+            color="warning"
+            variant="tonal"
+            prepend-icon="mdi-tools"
+            size="small"
+            @click="flashDialog = true"
+          >
+            固件烧录（首次烧录）
+          </v-btn>
+          <div class="disc-rescue-hint">
+            适用于尚未烧录固件的裸机/新板（首次烧录）
+          </div>
+        </div>
       </v-card-text>
     </v-card>
+
+    <FlashDialog v-model="flashDialog" />
   </div>
 </template>
 
 <script setup lang="ts">
   import { computed, onMounted, ref, watch } from 'vue'
   import { useSerialStore } from '@/stores/serial'
+  import FlashDialog from '@/components/FlashDialog.vue'
 
   const serial = useSerialStore()
+  /** 救砖/首次烧录对话框开关 */
+  const flashDialog = ref(false)
 
   /** Electron 端口下拉: 默认回填上次连过的口, 省一次挑选 */
   const selectedPort = ref<string | null>(serial.lastPortPath || null)
@@ -235,6 +256,19 @@
   font-size: 0.7rem;
   line-height: 1.45;
   text-align: left;
+  color: rgba(var(--v-theme-on-surface), 0.38);
+}
+
+/* 救砖/首次烧录入口: 虚线分隔的次要入口 */
+.disc-rescue {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(var(--v-theme-on-surface), 0.15);
+}
+
+.disc-rescue-hint {
+  margin-top: 6px;
+  font-size: 0.66rem;
   color: rgba(var(--v-theme-on-surface), 0.38);
 }
 </style>
