@@ -92,6 +92,47 @@
         </v-card-text>
       </v-card>
 
+      <!-- 授权卡片: 付费特性门控 (免费版固件物理不含付费能力) -->
+      <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
+        <v-card-item class="pb-0">
+          <template #prepend>
+            <v-avatar color="primary" size="36" class="cal-avatar">
+              <v-icon color="white" size="20">mdi-license</v-icon>
+            </v-avatar>
+          </template>
+          <v-card-title>授权</v-card-title>
+          <v-card-subtitle>付费特性：16 通道 / 8 个模型槽位</v-card-subtitle>
+          <template #append>
+            <!-- 状态如实上报: 未激活就说未激活, 不做任何欺瞒 -->
+            <v-chip v-if="license.activated" color="success" size="x-small" variant="tonal">已激活</v-chip>
+            <v-chip v-else-if="license.restricted" color="warning" size="x-small" variant="tonal">未激活</v-chip>
+            <v-chip v-else-if="license.isFreeTier" size="x-small" variant="tonal">免费版</v-chip>
+          </template>
+        </v-card-item>
+
+        <v-card-text class="pt-2 pb-3">
+          <div v-if="license.isFreeTier" class="cal-hint hint-neutral">
+            <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
+            <span>当前是免费版固件（6 通道 / 1 个模型槽位），不含付费功能，无需激活。</span>
+          </div>
+
+          <div v-else-if="license.restricted" class="cal-hint">
+            <v-icon size="16" class="mt-0.5">mdi-alert-outline</v-icon>
+            <span>付费版未激活：当前按受限功能运行（6 通道 / 1 个模型槽位）。激活后立即恢复完整功能。</span>
+          </div>
+
+          <div v-else-if="license.activated" class="cal-hint hint-neutral">
+            <v-icon size="16" class="mt-0.5">mdi-check-circle-outline</v-icon>
+            <span>已激活，完整功能可用（16 通道 / 8 个模型槽位）。</span>
+          </div>
+
+          <v-btn block class="mt-3" color="primary" variant="tonal" prepend-icon="mdi-key-outline"
+            :disabled="license.isFreeTier" :loading="license.busy" @click="openLicenseDialog">
+            <span class="btn-text">{{ license.activated ? '查看授权' : '激活' }}</span>
+          </v-btn>
+        </v-card-text>
+      </v-card>
+
       <!-- 电源卡片 (原「系统状态」卡的实时电源部分) -->
       <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
         <v-card-item class="pb-0">
@@ -486,6 +527,65 @@
       </v-card>
     </v-dialog>
 
+    <!-- 激活对话框: 取挑战串 → 交给卖家离线签发 → 粘回许可证 -->
+    <v-dialog v-model="licenseDialog" max-width="560" persistent>
+      <v-card rounded="lg">
+        <v-card-item class="pb-0">
+          <template #prepend>
+            <v-avatar color="primary" size="36" class="cal-avatar">
+              <v-icon color="white" size="20">mdi-key-outline</v-icon>
+            </v-avatar>
+          </template>
+          <v-card-title>激活付费特性</v-card-title>
+          <v-card-subtitle>一机一码：许可证绑定本机 eFuse MAC，换机无效</v-card-subtitle>
+        </v-card-item>
+
+        <v-card-text class="pt-2">
+          <!-- ① 挑战串 -->
+          <div class="lic-section-title">① 复制挑战串发给卖家</div>
+          <div class="d-flex align-start ga-2">
+            <v-textarea :model-value="license.challenge" label="挑战串" variant="outlined" density="compact"
+              rows="2" auto-grow readonly hide-details spellcheck="false" class="lic-mono" />
+            <v-btn icon variant="tonal" size="small" class="mt-1" :disabled="!license.challenge"
+              title="复制挑战串" @click="copyChallenge">
+              <v-icon size="18">mdi-content-copy</v-icon>
+            </v-btn>
+          </div>
+          <div class="d-flex align-center ga-2 mt-2">
+            <span v-if="license.mac" class="text-caption text-medium-emphasis mono">
+              设备 MAC {{ license.mac }}
+            </span>
+            <v-spacer />
+            <v-btn size="small" variant="text" prepend-icon="mdi-refresh" :loading="license.busy"
+              @click="onGetChallenge">
+              重新获取
+            </v-btn>
+          </div>
+
+          <!-- ② 许可证 -->
+          <div class="lic-section-title mt-4">② 粘贴卖家返回的许可证</div>
+          <v-textarea v-model="licenseInput" label="许可证串" variant="outlined" density="compact" rows="3"
+            auto-grow hide-details spellcheck="false" placeholder="base64url 串，约 130 个字符" class="lic-mono" />
+
+          <v-alert v-if="license.error" color="error" variant="tonal" density="compact" class="mt-3 py-1">
+            {{ license.error }}
+          </v-alert>
+          <v-alert v-else-if="license.activated" color="success" variant="tonal" density="compact" class="mt-3 py-1">
+            已激活，完整功能可用。
+          </v-alert>
+        </v-card-text>
+
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" :disabled="license.busy" @click="licenseDialog = false">关闭</v-btn>
+          <v-btn color="primary" variant="tonal" :loading="license.busy" :disabled="!licenseInput.trim()"
+            @click="onActivate">
+            激活
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <FirmwareUpgradeDialog v-model="upgradeDialog" />
 
     <!-- 固件升级提示弹窗: 自动检查/手动检查发现新版本时弹出
@@ -557,11 +657,13 @@ import { jsonToSnapshot, snapshotToJson } from '@/utils/configSnapshot'
 import { openTextFile, saveTextFile } from '@/utils/fileDialog'
 import FirmwareUpgradeDialog from '@/components/FirmwareUpgradeDialog.vue'
 import { useFirmwareReleaseStore } from '@/stores/firmwareRelease'
+import { useLicenseStore } from '@/stores/license'
 
 const serial = useSerialStore()
 const power = usePowerStore()
 const configStore = useConfigStore()
 const fwRelease = useFirmwareReleaseStore()
+const license = useLicenseStore()
 const router = useRouter()
 
 // ========== 主控固件升级对话框 (入口: 页面内「关于系统」卡片按钮) ==========
@@ -592,6 +694,43 @@ watch(updatePrompt, (open) => {
 function startUpgradeFromPrompt(): void {
   updatePrompt.value = false
   upgradeDialog.value = true
+}
+
+// ========== 激活对话框 ==========
+const licenseDialog = ref(false)
+const licenseInput = ref('')
+
+/** 打开对话框: 先查状态, 付费版再自动取一次挑战串 (免费版按钮已禁用, 不会走到这) */
+async function openLicenseDialog(): Promise<void> {
+  licenseDialog.value = true
+  licenseInput.value = ''
+  await license.refresh()
+  if (!license.isFreeTier && !license.challenge) await license.requestChallenge()
+}
+
+async function onGetChallenge(): Promise<void> {
+  const ok = await license.requestChallenge()
+  if (!ok) notify(license.error ?? '获取挑战串失败', 'error')
+}
+
+async function copyChallenge(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(license.challenge)
+    notify('已复制挑战串', 'success')
+  } catch {
+    notify('复制失败，请手动选中复制', 'error')
+  }
+}
+
+async function onActivate(): Promise<void> {
+  const ok = await license.activate(licenseInput.value.trim())
+  if (!ok) {
+    notify(license.error ?? '激活失败', 'error')
+    return
+  }
+  notify('激活成功，完整功能已启用', 'success')
+  licenseInput.value = ''
+  licenseDialog.value = false
 }
 
 // ========== 轮询 ==========
@@ -992,6 +1131,8 @@ watch(shutdownSec, () => {
 /** 进入页面/连接建立后：拉取配置并启动轮询 */
 function enterPage(): void {
   reloadAll()
+  // 授权状态：免费版设备会回「不支持」，Store 内部已按预期结果处理（不算错误）
+  void license.refresh()
   // 固件版本校验: 依赖在线发布清单; 离线/超时一律静默失败(不提示), 用户可点「检查更新」重试
   void fwRelease.check()
 }
@@ -1003,6 +1144,9 @@ watch(() => serial.connected, (connected) => {
   } else {
     stopPoll()
     power.state = null
+    // 清空授权状态，避免下次连上另一台设备时看到上一台的残留
+    license.reset()
+    licenseDialog.value = false
   }
 })
 
@@ -1484,6 +1628,22 @@ onUnmounted(() => {
   border-color: rgba(var(--v-theme-on-surface), 0.12);
   background: rgba(var(--v-theme-on-surface), 0.03);
   color: rgba(var(--v-theme-on-surface), 0.7);
+}
+
+/* ── 激活对话框: 步骤小标题与等宽串 ── */
+.lic-section-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: rgba(var(--v-theme-on-surface), 0.75);
+  margin-bottom: 6px;
+}
+
+/* 挑战串 / 许可证串: 长 base64url，等宽 + 允许任意处换行，否则会撑破对话框 */
+.lic-mono :deep(textarea) {
+  font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  word-break: break-all;
 }
 
 .hint-error {
