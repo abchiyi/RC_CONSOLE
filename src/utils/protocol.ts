@@ -52,6 +52,14 @@ export const CMD = {
   FACTORY_RESET_NVS: 0x00_04,
   LOCK_SECURE: 0x00_05, // 锁定 flash 加密为 Release（不可逆，烧 eFuse）
   GET_EFUSE: 0x00_06, // 读取 eFuse 状态（USB 通道 / JTAG / flash 加密 / secure boot 相关位）
+  // 许可证（仅付费版固件；免费版三条一律返回 S_NOT_SUPPORTED）
+  //   CHALLENGE: req 空  -> salt(16) ‖ mac(6) ‖ chip_rev(1) = 23B
+  //   ACTIVATE : req 97B -> u8 ok；97B = feat_id(1) ‖ secret(32) ‖ sig(64)
+  //   STATUS   : req 空  -> u8 has_gate + u8 active_mask（bit n = 特性 n 已激活）
+  //   ★ 免费版回 S_NOT_SUPPORTED 时 UI 应显示「免费版无此功能」，而非报错
+  LICENSE_CHALLENGE: 0x00_07,
+  LICENSE_ACTIVATE: 0x00_08,
+  LICENSE_STATUS: 0x00_09,
   GET_CONFIG: 0x01_01,
   SET_MODEL: 0x01_02,
   GET_MODEL: 0x01_03,
@@ -134,6 +142,9 @@ export const CMD_NAME_TO_ID: Record<string, number> = {
   factory_reset_nvs: CMD.FACTORY_RESET_NVS,
   lock_secure: CMD.LOCK_SECURE,
   get_efuse: CMD.GET_EFUSE,
+  license_challenge: CMD.LICENSE_CHALLENGE,
+  license_activate: CMD.LICENSE_ACTIVATE,
+  license_status: CMD.LICENSE_STATUS,
   get_config: CMD.GET_CONFIG,
   set_model: CMD.SET_MODEL,
   get_model: CMD.GET_MODEL,
@@ -190,6 +201,35 @@ export function cmdNameToId (cmd: string): number | null {
 
 export function cmdIdToName (id: number): string {
   return CMD_ID_TO_NAME[id] ?? `0x${id.toString(16).padStart(4, '0')}`
+}
+
+/**
+ * 字节 → base64url（**无填充**）。挑战串 / 许可证串的传输编码，与固件侧口径一致
+ * （固件与 tools/license_sign.py 都不带 '=' 填充）。
+ */
+export function bytesToB64Url (bytes: Uint8Array): string {
+  let bin = ''
+  for (const b of bytes) bin += String.fromCharCode(b)
+  // 不用 replaceAll：本工程 tsconfig 的 lib 低于 ES2021，没有该方法的类型定义
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+}
+
+/**
+ * base64url → 字节。兼容带填充与不带填充两种输入（用户粘贴时可能带上 '='）。
+ * @returns 解析后的字节；输入非法时返回 null（调用方据此提示"格式不对"）
+ */
+export function b64UrlToBytes (s: string): Uint8Array | null {
+  const cleaned = s.trim().replace(/-/g, '+').replace(/_/g, '/').replace(/[\s\r\n]/g, '')
+  if (!cleaned || !/^[A-Za-z0-9+/]+={0,2}$/.test(cleaned)) return null
+  const padded = cleaned + '='.repeat((4 - (cleaned.length % 4)) % 4)
+  try {
+    const bin = atob(padded)
+    const out = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+    return out
+  } catch {
+    return null
+  }
 }
 
 export function statusMessage (status: number): string {
