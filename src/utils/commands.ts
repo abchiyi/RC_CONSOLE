@@ -28,6 +28,8 @@ import {
   parseTlvList,
   cmdNameToId,
   cmdIdToName,
+  bytesToB64Url,
+  b64UrlToBytes,
 } from './protocol'
 import type { ModelChannel, ModelConfig } from '@/stores/config'
 import { RAW_MIN, RAW_CENTER, RAW_MAX } from './crsf'
@@ -198,6 +200,25 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
     case CMD.SET_SILENT:
       // 「静音模式」开关: 0=关 (有提示音), 1=开 (蜂鸣器全局禁鸣)
       w.u8(Number(params.enable ?? 0) ? 1 : 0)
+      break
+    // ── 许可证（仅付费版固件）──
+    case CMD.LICENSE_CHALLENGE:
+      // 无参数：设备回 salt(16) ‖ mac(6) ‖ chip_rev(1)
+      break
+    case CMD.LICENSE_ACTIVATE:
+      // 97B = feat_id(1) ‖ secret(32) ‖ sig(64)
+      //   接受两种入参：已解码的字节（data）或 base64url 串（license）。
+      //   串非法时不写任何字节 —— 设备会因长度不符回 S_BAD_PARAM，
+      //   比在编码层抛异常更稳（调用方也能先自行校验长度给出准确提示）。
+      if (params.data instanceof Uint8Array) {
+        w.bytes(params.data)
+      } else if (typeof params.license === 'string') {
+        const bytes = b64UrlToBytes(params.license)
+        if (bytes) w.bytes(bytes)
+      }
+      break
+    case CMD.LICENSE_STATUS:
+      // 无参数
       break
     case CMD.OTA_BEGIN:
       w.u32(Number(params.size ?? 0))
@@ -625,12 +646,39 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
         return { cmd: name, ok: true, accepted_total: r.u32() }
       case CMD.CONFIG_IMPORT_APPLY:
         return { cmd: name, ok: true, item_count: r.u8(), message: r.str() }
+      // ── 许可证（仅付费版固件）──
+      case CMD.LICENSE_CHALLENGE: {
+        // salt(16) ‖ mac(6) ‖ chip_rev(1) = 23B → base64url，供离线签发工具直接食用
+        const raw = data.subarray(r.offset)
+        if (raw.length < 23) return { cmd: name, ok: false, error: '挑战串长度不足' }
+        return {
+          cmd: name,
+          ok: true,
+          challenge: bytesToB64Url(raw),
+          mac: macFromChallenge(raw),
+          chip_rev: raw[22] ?? 0,
+        }
+      }
+      case CMD.LICENSE_ACTIVATE:
+        return { cmd: name, ok: true, activated: r.u8() !== 0 }
+      case CMD.LICENSE_STATUS:
+        // has_gate=0 → 免费版（无许可证机制）；active_mask 的 bit n = 特性 n 已激活
+        //   两者都**如实上报**：未激活时 UI 显示真实状态并给购买入口，不做任何欺瞒
+        return { cmd: name, ok: true, has_gate: r.u8() !== 0, active_mask: r.u8() }
       default:
         return { cmd: name, ok: true }
     }
   } catch {
     return { cmd: name, ok: false, error: '响应解析失败' }
   }
+}
+
+/** 挑战串（salt16 ‖ mac6 ‖ chip_rev1）中的 MAC 段 → AA:BB:CC:DD:EE:FF */
+function macFromChallenge (raw: Uint8Array): string {
+  if (raw.length < 22) return ''
+  return Array.from(raw.subarray(16, 22))
+    .map(b => b.toString(16).padStart(2, '0').toUpperCase())
+    .join(':')
 }
 
 function statusText(status: number): string {
