@@ -89,6 +89,17 @@
                 </div>
               </div>
             </div>
+
+            <!-- CRSF 串口速率: 决定模块侧单帧分片大小, 是 500Hz+ 下 Packet Rate 能否读全的关键 -->
+            <div class="stat-group">
+              <div class="stat-group-title">CRSF 串口</div>
+              <div class="stat-kv-grid">
+                <div class="stat-kv">
+                  <span class="stat-label">通讯速率</span>
+                  <span class="stat-value mono">{{ link.baudLabel }}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </v-card-text>
       </v-card>
@@ -236,15 +247,6 @@ watch(() => link.writeRejected?.seq, () => {
   showElrsMsg(`${name}：设备回读未确认，请重试`, 'warning')
 })
 
-// 写入被入口规则拒绝（如 500Hz / D500 / F500 这类切过去后模块不再上报的档位）：
-// 这不是"未确认"，重试也不会成功，故文案与上面区分开
-watch(() => link.writeBlocked?.seq, () => {
-  const fieldId = link.writeBlocked?.fieldId
-  if (fieldId == null) return
-  const name = link.fields.find(f => f.id === fieldId)?.name ?? `字段 #${fieldId}`
-  showElrsMsg(`${name}：该档位当前不可用（模块切换后不再上报此参数），已阻止下发`, 'warning')
-})
-
 /** 手动重扫：无条件清空固件缓存并强制重新发现参数 */
 async function refreshElrsFields() {
   await link.rescanFields()
@@ -258,6 +260,31 @@ async function refreshElrsFields() {
 /** 自动加载：连接/模块上线时仅拉取当前缓存（缓存为空时固件自动触发发现） */
 async function autoLoadFields() {
   await link.fetchFields()
+}
+
+// ── 字段跟随轮询 ──
+// 固件的字段发现/补读是异步且持续的：fetchFields 收敛或超时退出后，模块仍在回报字段
+// （表现为顶部「N 项参数」继续变大 —— 长字段如 Packet Rate 选项串需要多片，连接态下
+//  单片 400ms 超时容易被判无响应而跳过，之后才被补读回来）。
+// 若进页拉一次就停手，这些后到的字段只能靠切走再切回（重新 fetchFields）才看得到，
+// 故停留期间低频跟随拉取。
+const FIELDS_FOLLOW_INTERVAL_MS = 2000
+let fieldsFollowTimer: ReturnType<typeof setInterval> | null = null
+
+function startFieldsFollow(): void {
+  stopFieldsFollow()
+  fieldsFollowTimer = setInterval(() => {
+    if (!serial.connected) return
+    if (link.fieldsLoading) return // 已有拉取在跑（fetchFields / rescan / 写后回读）
+    void link.refreshFieldsOnce()
+  }, FIELDS_FOLLOW_INTERVAL_MS)
+}
+
+function stopFieldsFollow(): void {
+  if (fieldsFollowTimer) {
+    clearInterval(fieldsFollowTimer)
+    fieldsFollowTimer = null
+  }
 }
 
 /** 全局底栏「从设备加载」: 重新扫描参数 (清空固件缓存强制重建), 完成后回报 App 关闭全局按钮 loading */
@@ -276,6 +303,7 @@ async function enterPage(): Promise<void> {
   if (!serial.connected) return
   await link.startLinkStream(100)  // 链路统计走流式（10Hz，与原轮询频率一致）
   await autoLoadFields()           // 无条件拉取：缓存为空时固件异步发现，fetchFields 内部轮询等待
+  startFieldsFollow()              // 之后继续跟随：固件补读到的新字段自动进入列表
 }
 
 // 直接打开/刷新本页后连接：onMounted 时未连接会跳过初始化，连接建立后补跑
@@ -290,6 +318,7 @@ onMounted(() => {
 
 onUnmounted(async () => {
   window.removeEventListener('app:reload-from-device', onGlobalReload)
+  stopFieldsFollow()               // 离开页面停止跟随拉取
   if (!serial.connected) return
   await link.stopLinkStream()      // 离开页面停止链路流
   await chStore.startPolling()     // 恢复通道流

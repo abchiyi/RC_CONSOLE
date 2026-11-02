@@ -34,46 +34,6 @@ export interface ElrsFieldInfo {
   text?: string
 }
 
-/**
- * Packet Rate 允许的上限（Hz），含该值本身；更高的档位一概屏蔽。
- * 333Hz 实测可正常回读，故放行；500Hz / D500 / F500 三个档位切过去后模块会停止上报
- * Packet Rate 字段（切换后约 27s 无响应，重新扫描时字段已不存在），
- * 继续下发必然导致回读永久不同步。
- *
- * 实机选项文本形如（id=1 min=0）：
- *   '50Hz(-115dBm);100Hz Full(-112dBm);150Hz(-112dBm);250Hz(-108dBm);
- *    333Hz Full(-105dBm);500Hz(-105dBm);D250(-104dBm);D500(-104dBm);F500(-104dBm)'
- * 末尾带接收灵敏度说明，取速率数值前必须先剥掉括号段。
- */
-const MAX_ALLOWED_RATE_HZ = 333
-
-/** 从档位文本中取出速率数值：'333Hz Full(-105dBm)' → 333，'D250(-104dBm)' → 250 */
-function parseRateHz(label: string): number | null {
-  const match = /\d+/.exec(label.replace(/\([^)]*\)/g, ''))
-  return match ? Number(match[0]) : null
-}
-
-/** 某个取值是否落在被封禁的速率档位上（选项过滤与写入拦截共用同一判据） */
-export function isBlockedRateValue(
-  field: Pick<ElrsFieldInfo, 'name' | 'options' | 'min'>,
-  value: number,
-): boolean {
-  if (!/packet\s*rate/i.test(field.name ?? '')) return false
-
-  const options = field.options
-  if (options && options.length > 0) {
-    const base = Number.isFinite(field.min as number) ? Number(field.min) : 0
-    const label = options[value - base]
-    if (typeof label !== 'string') return false
-    const hz = parseRateHz(label)
-    // 解析不出速率时不屏蔽，避免误伤未知格式的档位
-    return hz != null && hz > MAX_ALLOWED_RATE_HZ
-  }
-
-  // 固件未下发 options 时 value 只是档位下标，无法映射回速率，按索引判断会误伤，故不屏蔽
-  return false
-}
-
 export const useLinkStatsStore = defineStore('linkStats', () => {
   const valid = ref(false)
   const fieldCount = ref(0)
@@ -82,6 +42,8 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
   const dlRssi = ref(0)
   const dlLq = ref(0)
   const txPower = ref(0)
+  // CRSF 串口波特率（手柄 ↔ ELRS 模块，开机协商后的实际生效值；0 = 未上报/旧固件）
+  const uartBaud = ref(0)
 
   // ELRS 字段列表
   const fields = ref<ElrsFieldInfo[]>([])
@@ -95,9 +57,19 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
   // ELRS 模块是否在与 UART 通信（字段发现完成）
   const moduleAlive = computed(() => fieldCount.value > 0)
 
+  /** 串口速率文案: >=1M 用 Mbps, 否则 kbps; 未上报显示 '--' */
+  const baudLabel = computed(() => {
+    const b = uartBaud.value
+    if (!b) return '--'
+    return b >= 1_000_000 ? `${(b / 1_000_000).toFixed(2)} Mbps` : `${Math.round(b / 1000)} kbps`
+  })
+
   function update(json: Record<string, unknown>): void {
     fieldCount.value = (json.field_count as number) ?? 0
     valid.value = !!json.valid
+    // 波特率在固件侧位于 valid 块之外（是串口属性，与 RF 链路是否建立无关），
+    //   故即使未建立链路也要更新，未对频时同样能看到协商结果。
+    uartBaud.value = (json.uart_baud as number) ?? 0
     if (!valid.value) return
     ulRssi.value = (json.ul_rssi as number) ?? 0
     ulLq.value = (json.ul_lq as number) ?? 0
@@ -132,6 +104,16 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
   }
 
   /**
+   * 单次拉取字段缓存（供页面停留期间的跟随轮询使用）。
+   * 固件侧的发现与补读是异步的：fetchFields 收敛或超时退出后，模块仍在回报字段
+   * （实测顶部「N 项参数」会继续变大），此时只有继续拉取才能跟上，
+   * 否则必须切走再切回（重新触发 fetchFields）才能看到新字段。
+   */
+  function refreshFieldsOnce(timeoutMs = 2000): Promise<boolean> {
+    return pullFieldsOnce(timeoutMs)
+  }
+
+  /**
    * 从固件拉取 ELRS 字段列表。
    * 固件发现是异步的：缓存从 0 逐步增长，且个别字段在连接态下会整轮超时（模块不响应）。
    * 结束判据（两条任一满足即结束）：
@@ -145,19 +127,35 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
   async function fetchFields(timeoutMs = 15000): Promise<void> {
     fieldsLoading.value = true
     const NO_GROW_MS = 6000
+    /**
+     * 从「首个字段出现」起的最短观察时长。
+     * 固件是逐字段排队发现的，中途常出现数秒的整轮超时空窗（某个字段模块不响应）。
+     * 仅凭 6s 无增长就判收敛，冷启动时会把半成品列表当成最终结果 —— 表现为「字段显示不全」，
+     * 且该残缺值一旦记进达标线，之后每次进页一达基线就结束，残缺被锁死，
+     * 只能靠切走再切回碰运气补齐（正是本 bug 的表象）。
+     */
+    const MIN_DISCOVER_MS = 8000
     const deadline = Date.now() + timeoutMs
     let lastCount = -1
     let lastGrowAt = Date.now()
+    let firstSeenAt = 0
+    let converged = false
     try {
       do {
         await pullFieldsOnce(2000)
         const n = fields.value.length
+        if (n > 0 && !firstSeenAt) firstSeenAt = Date.now()
         if (n > lastCount) {
           lastCount = n
           lastGrowAt = Date.now()
         }
         const reachedKnown = knownCompleteCount.value > 0 && n >= knownCompleteCount.value
-        if (n > 0 && (reachedKnown || Date.now() - lastGrowAt > NO_GROW_MS)) {
+        const noGrowSettled = n > 0
+          && Date.now() - lastGrowAt > NO_GROW_MS
+          && firstSeenAt > 0
+          && Date.now() - firstSeenAt >= MIN_DISCOVER_MS
+        if (n > 0 && (reachedKnown || noGrowSettled)) {
+          converged = true
           break
         }
         if (Date.now() < deadline) {
@@ -165,8 +163,9 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
         }
       } while (Date.now() < deadline)
 
-      // 记录本轮达到的最大数量, 供后续拉取作为达标线
-      if (fields.value.length > knownCompleteCount.value) {
+      // 只有判定为「发现已收敛」才把本轮数量记为达标线：
+      // 提前结束时的数量是残缺值，记进基线会让后续拉取一达基线就结束，永远停在半成品。
+      if (converged && fields.value.length > knownCompleteCount.value) {
         knownCompleteCount.value = fields.value.length
       }
     } finally {
@@ -179,6 +178,9 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
   async function rescanFields (timeoutMs = 25000): Promise<void> {
     fieldsLoading.value = true
     try {
+      // 强制重新发现前清零达标线：否则首轮读数一达到（可能是残缺的）历史基线就结束，
+      // 重扫拿不到完整列表，残缺基线也就永远无法被纠正。
+      knownCompleteCount.value = 0
       const p = rr.wait('elrs_rescan_fields', 3000)
       await serialService.sendCommand('elrs_rescan_fields')
       try {
@@ -203,8 +205,6 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
   const pendingWrites = ref<Record<number, { value: number, at: number }>>({})
   /** 最近一次回读未确认（已回滚）的写入，seq 递增以便相同字段重复失败也能触发 UI 提示 */
   const writeRejected = ref<{ fieldId: number, seq: number } | null>(null)
-  /** 最近一次被拒绝下发的写入（该档位本设备不可用），与「回读未确认」区分提示 */
-  const writeBlocked = ref<{ fieldId: number, seq: number } | null>(null)
 
   // 兜底 TTL：略长于写后轮询的总时长，避免轮询仍在跑就被清扫误判为失败
   const PENDING_TTL_MS = 14000
@@ -347,13 +347,6 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
       target = f
     }
 
-    // 封禁档位在写入口再拦一次：覆盖数值步进器手动输入等绕过选项按钮的路径。
-    // 不下发就不会切到「模块不再上报该字段」的速率，避免回读永久不同步。
-    if (target && isBlockedRateValue(target, value)) {
-      writeBlocked.value = { fieldId, seq: (writeBlocked.value?.seq ?? 0) + 1 }
-      return false
-    }
-
     const p = rr.wait('elrs_set_param', 3000)
     await serialService.sendCommand('elrs_set_param', { field_id: fieldId, value })
     try {
@@ -381,9 +374,14 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
     if (!cmd) return
 
     if (cmd === 'elrs_list_fields') {
-      fields.value = (json.fields as ElrsFieldInfo[]) ?? []
-      fieldCount.value = fields.value.length
-      reconcilePending() // 新值回读到立即消掉乐观态
+      const list = json.fields as ElrsFieldInfo[] | undefined
+      // 响应解析失败（丢帧 / 越界）时 json.fields 缺失：此时用 undefined 覆盖会把已发现的
+      // 整张字段树清空，表现为「字段显示不全」。保留旧列表，由后续轮询自愈。
+      if (Array.isArray(list)) {
+        fields.value = list
+        fieldCount.value = list.length
+        reconcilePending() // 新值回读到立即消掉乐观态
+      }
       rr.tryResolve('elrs_list_fields')
       return
     }
@@ -425,12 +423,12 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
     dlRssi.value = 0
     dlLq.value = 0
     txPower.value = 0
+    uartBaud.value = 0
     fields.value = []
     fieldsLoading.value = false
     knownCompleteCount.value = 0
     pendingWrites.value = {}
     writeRejected.value = null
-    writeBlocked.value = null
     runningCommands.value = {}
     settleToken++
     if (pendingSweeper) {
@@ -440,11 +438,11 @@ export const useLinkStatsStore = defineStore('linkStats', () => {
   }
 
   return {
-    valid, fieldCount, moduleAlive,
+    valid, fieldCount, moduleAlive, uartBaud, baudLabel,
     ulRssi, ulLq, dlRssi, dlLq, txPower,
     fields, fieldsVersion, fieldsLoading,
-    pendingValues, writeRejected, writeBlocked, runningCommands,
-    update, fetchFields, rescanFields, setParam, handleElrsResponse,
+    pendingValues, writeRejected, runningCommands,
+    update, fetchFields, refreshFieldsOnce, rescanFields, setParam, handleElrsResponse,
     startLinkStream, stopLinkStream, reset,
   }
 })

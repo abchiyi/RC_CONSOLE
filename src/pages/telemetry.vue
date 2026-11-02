@@ -377,6 +377,17 @@
                 </div>
               </div>
             </div>
+
+            <!-- 手柄 ↔ ELRS 模块的串口速率（开机协商结果，与上面飞控遥测链路无关） -->
+            <div class="stat-group">
+              <div class="stat-group-title">手柄 ↔ ELRS 模块 (CRSF 串口)</div>
+              <div class="stat-kv-grid">
+                <div class="stat-kv">
+                  <span class="stat-label">通讯速率</span>
+                  <span class="stat-value mono">{{ linkStats.baudLabel }}</span>
+                </div>
+              </div>
+            </div>
           </div>
 
         </v-card-text>
@@ -462,6 +473,7 @@
   import { useNotice } from '@/composables/useNotice'
   import { useConfigStore } from '@/stores/config'
   import { useSerialStore } from '@/stores/serial'
+  import { useLinkStatsStore } from '@/stores/linkStats'
   import { useTelemetryStore } from '@/stores/telemetry'
 
   /** 与 stores/telemetry.ts 的推送间隔保持一致（仅用于展示） */
@@ -469,6 +481,7 @@
 
   const serial = useSerialStore()
   const telem = useTelemetryStore()
+  const linkStats = useLinkStatsStore()
   const configStore = useConfigStore()
 
   /** 独占遥测转发开启时：同一帧既写该口、也复制一份给本页（同源，见 crsf_telem.h） */

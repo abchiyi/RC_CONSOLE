@@ -201,6 +201,10 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
       // 「静音模式」开关: 0=关 (有提示音), 1=开 (蜂鸣器全局禁鸣)
       w.u8(Number(params.enable ?? 0) ? 1 : 0)
       break
+    case CMD.SET_RF_BYPASS:
+      // RF 安全门旁路: 0=恢复安全门, 1=未校准也放行射频 (仅本次上电有效)
+      w.u8(Number(params.enable ?? 0) ? 1 : 0)
+      break
     // ── 许可证（仅付费版固件）──
     case CMD.LICENSE_CHALLENGE:
       // 无参数：设备回 salt(16) ‖ mac(6) ‖ chip_rev(1)
@@ -627,6 +631,9 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
       case CMD.SET_SILENT:
         // 回显生效后的开关值
         return { cmd: name, ok: true, silent_mode: r.u8() !== 0 }
+      case CMD.SET_RF_BYPASS:
+        // 回显生效后的旁路值 (1 = 安全门已旁路, 射频放行)
+        return { cmd: name, ok: true, rf_bypass: r.u8() !== 0 }
       // ── 配置备份 / 还原（§5.15）──
       case CMD.CONFIG_EXPORT_BEGIN:
         return {
@@ -873,6 +880,9 @@ function decodeLinkStats(r: Reader, name: string): Record<string, unknown> {
     r.u8()  // rf_mode: 协议占位, 前端不再消费, 必须读取以保持字节对齐
     out.tx_power = r.u8()
   }
+  // 尾字段: CRSF 串口波特率(0 = 未知/旧固件无此字段)。旧固件缺失时按 0 处理,
+  //   UI 显示 '--'，不影响其余字段解析。
+  out.uart_baud = r.remaining >= 4 ? r.u32() : 0
   return out
 }
 
@@ -885,34 +895,57 @@ function sanitizeFieldText(s: string): string {
 function decodeElrsFields(r: Reader, name: string): Record<string, unknown> {
   const count = r.u8()
   const fields: Array<Record<string, unknown>> = []
+  let truncated = false
   for (let i = 0; i < count; i++) {
-    const f: Record<string, unknown> = {
-      id: r.u8(),
-      parent: r.u8(),
-      hidden: !!r.u8(),
-      value_valid: !!r.u8(),
-      type: r.u8(),
-      min: r.i32(),
-      max: r.i32(),
-      step: r.i32(),
-      name: sanitizeFieldText(r.str()),
-      unit: sanitizeFieldText(r.str()),
+    try {
+      fields.push(decodeElrsField(r))
+    } catch {
+      // 声明项数与实际载荷不符（或中途错位）时保留已解析的部分：
+      // 整帧判废会让 UI 一直停在上一份旧快照上（表现为「N 项参数只显示一部分」）。
+      truncated = true
+      break
     }
-    if (f.value_valid) {
-      f.value = r.i32()
-      f.text = sanitizeFieldText(r.str())
-    }
-    if (f.type === 9) {
-      const optCount = r.u8()
-      if (optCount > 0) {
-        const opts: string[] = []
-        for (let j = 0; j < optCount; j++) opts.push(sanitizeFieldText(r.str()))
-        f.options = opts
-      }
-    }
-    fields.push(f)
   }
-  return { cmd: name, fields, field_count: count }
+  return { cmd: name, fields, field_count: count, truncated }
+}
+
+/** 单个 ELRS 参数字段（变长）：头 5B + name + unit [+ value + text] [+ options] */
+function decodeElrsField(r: Reader): Record<string, unknown> {
+  // 字节顺序必须与固件一致：id / parent / hidden / value_valid / type
+  const id = r.u8()
+  const parent = r.u8()
+  const hidden = !!r.u8()
+  const valueValid = !!r.u8()
+  const f: Record<string, unknown> = {
+    id,
+    parent,
+    hidden,
+    value_valid: valueValid,
+    type: r.u8(),
+    min: r.i32(),
+    max: r.i32(),
+    step: r.i32(),
+    name: sanitizeFieldText(r.str()),
+    unit: sanitizeFieldText(r.str()),
+  }
+  if (valueValid) {
+    f.value = r.i32()
+    f.text = sanitizeFieldText(r.str())
+  }
+  // 选项段只在「SELECT 且选项串解析成功」时存在。固件侧编码条件是
+  //   type == 9 && optionsText[0] != '\0'（optionsText 仅在选项串完整解析成功时非空，
+  //   成功解析的同时 valueValid 也被置 true，失败则两者皆空）。
+  // 旧实现只看 type === 9 就无条件读 optCount，遇到无选项的 SELECT 会多读 1B，
+  // 之后每个字段都错位，最终越界抛异常使整帧判废 —— 这正是「19 项只渲染 10 项」的根因。
+  if (f.type === 9 && valueValid && r.remaining > 0) {
+    const optCount = r.u8()
+    if (optCount > 0) {
+      const opts: string[] = []
+      for (let j = 0; j < optCount; j++) opts.push(sanitizeFieldText(r.str()))
+      f.options = opts
+    }
+  }
+  return f
 }
 
 // ── 流式事件解码 ──
