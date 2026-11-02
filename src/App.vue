@@ -158,6 +158,7 @@
    */
   watch(() => calStore.rfLocked, locked => {
     if (!serial.connected) return
+    if (calStore.setupBypass) return // 本次连接已手动跳过: 不再把人按回 /setup
     if (locked === true && route.path !== '/setup') {
       void router.replace('/setup')
     } else if (locked !== true && route.path === '/setup') {

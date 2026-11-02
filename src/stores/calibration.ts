@@ -85,11 +85,18 @@ export const useCalibrationStore = defineStore('calibration', () => {
   //   null = 尚未从设备读到 (刚连上/旧固件), UI 不据此做任何判断。
   const rfLocked = ref<boolean | null>(null)
   /**
-   * 出厂测试一次性放行标志 (由首次开机页的隐藏入口置位, 路由守卫消费后立刻清零)。
-   *   产线拿到的是未校准新机 —— 此刻射频上锁、门禁把人按在 /setup, 而出厂测试恰恰要在
-   *   这个状态下做, 所以这条路径必须能破一次门禁。用完即清, 不留常开后门。
+   * RF 安全门旁路 (CMD_SET_RF_BYPASS 的生效值): true = 未校准也放行射频。
+   *   设备侧只存内存、不落 NVS —— 重启即回到安全门, 不会留下常开后门。
    */
-  const factoryBypass = ref(false)
+  const rfBypass = ref(false)
+  /**
+   * 校准门禁放行标志 (由首次开机页的隐藏入口置位, 仅本次连接有效)。
+   *   产线 / 排查硬件拿到的是未校准新机 —— 此刻射频上锁、门禁把人按在 /setup,
+   *   有时必须先绕开它。连接级: 断开后 reset() 清零, 重连重新走门禁, 不留常开后门。
+   *   (正常路径下设备已旁路射频 → rfLocked 转 false → 本标志只是命令往返期间与
+   *    旧固件不认命令时的兜底。)
+   */
+  const setupBypass = ref(false)
   /** 校准完成位图: bit0 扳机 bit1 摇杆X bit2 摇杆Y bit3 IMU */
   const calMask = ref(0)
   /** 全部四项的掩码 —— 与固件 WorkMode::kCalAll 对齐 */
@@ -136,6 +143,15 @@ export const useCalibrationStore = defineStore('calibration', () => {
 
   async function pollStatus(): Promise<void> {
     await serialService.sendCommand('cal_status')
+  }
+
+  /**
+   * 旁路 RF 安全门 (CMD_SET_RF_BYPASS): enable=true → 未校准也放掉外部 ELRS 模块的 EN,
+   * 射频照常发射。EN 的实际释放由固件 rf_gate 任务的下降沿完成 (200ms 内), 故调用方
+   * 之后应再查一次 get_work_mode 复核。只改设备内存, 不落 NVS。
+   */
+  async function setRfBypass(enable: boolean): Promise<void> {
+    await serialService.sendCommand('set_rf_bypass', { enable: enable ? 1 : 0 })
   }
 
   async function fetchCalData(): Promise<void> {
@@ -334,6 +350,14 @@ export const useCalibrationStore = defineStore('calibration', () => {
       return
     }
 
+    // set_rf_bypass: 安全门已被旁路 → 立刻复核一次, 让 rfLocked 与顶部提示同步翻转
+    //   (EN 由固件 rf_gate 任务的下降沿释放, 与本次回包同拍或早一拍, 复核即可覆盖)
+    if (json.cmd === 'set_rf_bypass') {
+      rfBypass.value = json.rf_bypass === true
+      void fetchWorkMode()
+      return
+    }
+
     // cal_reset: 设备已清空调准 → 运行中会立刻把 EN 重新拉低, 这里同步状态,
     //   不等下一次 get_work_mode (用户点完就看得到"已锁")
     if (json.cmd === 'cal_reset') {
@@ -518,7 +542,8 @@ export const useCalibrationStore = defineStore('calibration', () => {
     _deadzonesLoaded = false
     rfLocked.value = null // 下次连接重新查询, 不留上一次的结论
     calMask.value = 0
-    factoryBypass.value = false // 放行额度随连接作废
+    rfBypass.value = false
+    setupBypass.value = false // 放行额度随连接作废, 重连要重新点一次
   }
 
   return {
@@ -544,10 +569,12 @@ export const useCalibrationStore = defineStore('calibration', () => {
     fetchCalData,
     // ---- RF 安全门 ----
     rfLocked,
-    factoryBypass,
+    rfBypass,
+    setupBypass,
     calMask,
     missingItems,
     fetchWorkMode,
+    setRfBypass,
     resetCal,
     applyCalRaw,
     setDeadzone,

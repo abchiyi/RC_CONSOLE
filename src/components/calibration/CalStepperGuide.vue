@@ -19,7 +19,7 @@
             <v-icon color="white" size="20">mdi-auto-fix</v-icon>
           </v-avatar>
         </template>
-        <!-- 隐藏入口: 连点标题 3 次进出厂测试 (无样式提示, 仅强制模式响应) -->
+        <!-- 隐藏入口: 连点标题 3 次 → 跳过本次校准并放行射频 (无样式提示, 仅强制模式响应) -->
         <v-card-title @click="tapTitle">校准向导</v-card-title>
         <v-card-subtitle>按 IMU → 扳机 → 摇杆 的顺序完成校准</v-card-subtitle>
         <template #append>
@@ -316,6 +316,24 @@
           </template>
         </template>
       </v-card-actions>
+
+      <!-- 跳过确认 (连点标题 3 次): 放行射频 = 绕过硬件安全门, 先讲清后果 -->
+      <v-dialog v-model="bypassConfirm" max-width="420" persistent>
+        <v-card rounded="lg">
+          <v-card-title class="text-subtitle-1">跳过本次校准并放行射频？</v-card-title>
+          <v-card-text class="text-body-2">
+            未校准状态下外部 ELRS 模块将立即上电发射，行程比例可能不准 —— 仅用于调试/产线。<br>
+            仅本次上电有效，重启后自动恢复安全门。
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer />
+            <v-btn variant="text" size="small" @click="bypassConfirm = false">取消</v-btn>
+            <v-btn color="warning" variant="tonal" size="small" :loading="bypassLoading" @click="doBypass">
+              跳过并放行射频
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
     </v-card>
   </v-dialog>
 </template>
@@ -615,16 +633,20 @@ function closeGuide(): void {
   open.value = false
 }
 
-// ========== 隐藏入口: 连点标题「校准向导」3 次 → 出厂测试 ==========
+// ========== 隐藏入口: 连点标题「校准向导」3 次 → 跳过本次校准 (并放行射频) ==========
 /**
- * 产线专用出口, 不占任何可见按钮: 首次开机的新机未校准、射频上锁, 除了本页哪都进不去,
- * 而出厂测试恰恰要在这个状态下做。计数带 3s 窗口 —— 停手即清零, 免得随手点几下攒够误入。
+ * 调试 / 产线出口, 不占任何可见按钮: 首次开机的新机未校准、射频被硬件关断, 除了本页
+ * 哪都进不去; 有时又要先拿到射频 (测通路、跑产线流程) 再回来校准。
+ * 计数带 3s 窗口 —— 停手即清零, 免得随手点几下攒够误入。
  * 只在 mandatory 下响应: 校准页那个可随意开关的普通向导不需要这条捷径。
  */
 const TITLE_TAPS_TO_ENTER = 3
 const TITLE_TAP_WINDOW_MS = 3000
 let titleTaps = 0
 let titleTapTimer: ReturnType<typeof setTimeout> | null = null
+/** 跳过确认框: 放行射频是绕过硬件安全门, 必须先讲清后果再动手 */
+const bypassConfirm = ref(false)
+const bypassLoading = ref(false)
 
 function tapTitle(): void {
   if (!props.mandatory) return
@@ -635,9 +657,22 @@ function tapTitle(): void {
   titleTaps = 0
   clearTimeout(titleTapTimer)
   titleTapTimer = null
-  // 放行额度: 路由守卫消费一次即清, 未校准状态下 /factory-test 只准进这一次
-  calStore.factoryBypass = true
-  void router.push('/factory-test')
+  bypassConfirm.value = true
+}
+
+/** 确认跳过: 先让设备放掉 EN (射频起飞), 再复核门禁状态, 最后离开本页 */
+async function doBypass(): Promise<void> {
+  bypassConfirm.value = false
+  bypassLoading.value = true
+  try {
+    await calStore.setRfBypass(true)
+    await calStore.fetchWorkMode()
+  } finally {
+    bypassLoading.value = false
+  }
+  // 兜底: 旧固件不认 CMD_SET_RF_BYPASS 时射频仍是关的, 但门禁照放 (由路由守卫消费)
+  calStore.setupBypass = true
+  void router.replace('/config')
 }
 
 // --- 量程计算 (与 CalWizard.vue 一致) ---

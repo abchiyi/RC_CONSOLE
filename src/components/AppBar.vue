@@ -81,9 +81,9 @@ const connectionName = computed(() => {
   return serial.lastPortPath || ''
 })
 
-/** 顶部状态条 → 进强制校准向导页 (与路由门禁指向同一处) */
+/** 顶部状态条 → 进校准向导页。已跳过本次门禁时去传感器页 (强制向导页会立刻把人弹回来) */
 function goCalibrate() {
-  router.push('/setup')
+  router.push(calStore.setupBypass ? '/calibration' : '/setup')
 }
 
 async function handleReset() {

@@ -112,7 +112,6 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { isBlockedRateValue } from '@/stores/linkStats'
 import type { ElrsFieldInfo } from '@/stores/linkStats'
 
 const props = defineProps<{
@@ -139,10 +138,26 @@ function isPending(field: ElrsFieldInfo): boolean {
 
 const emit = defineEmits<{ set: [payload: { field: ElrsFieldInfo; value: number }] }>()
 
-/** 可见子项：固件标记为隐藏的直接丢弃 */
-const children = computed(() =>
-  props.fields.filter(field => (field.parent ?? 0) === (props.parentId ?? 0) && !field.hidden),
-)
+/** 可见字段：固件标记为隐藏的直接丢弃 */
+const visible = computed(() => props.fields.filter(field => !field.hidden))
+/** 当前存在的字段 id 集合：用于识别父分组缺失的孤儿字段 */
+const knownIds = computed(() => new Set(visible.value.map(field => field.id)))
+
+/**
+ * 可见子项。
+ * 根层额外做「孤儿提升」：父分组可能因缓存裁剪 / 发现未完成而不在列表里，
+ * 严格按 parent 过滤会让这些字段永远渲染不出来（表现为「有 N 项参数却只显示几个」）。
+ */
+const children = computed(() => {
+  if (props.parentId == null) {
+    const ids = knownIds.value
+    return visible.value.filter(field => {
+      const parent = field.parent ?? 0
+      return parent === 0 || !ids.has(parent)
+    })
+  }
+  return visible.value.filter(field => (field.parent ?? 0) === props.parentId)
+})
 
 /** 分组展开状态：默认全开，仅记录被收起的分组 */
 const closed = ref(new Set<number>())
@@ -265,16 +280,12 @@ function isSingleOption(field: ElrsFieldInfo): boolean {
 
 /** SELECT 选项：优先用固件下发的 options，否则按 min~max 枚举（>32 档视为不可枚举） */
 function buildItems(field: ElrsFieldInfo): Array<{ title: string; value: number }> {
-  // 先按原始下标/原始数值算出 value 再过滤，避免删档后索引错位写成别的速率。
-  // 被封禁档位一律隐藏，不做「当前值豁免」：切回只需点其它档位，
-  // 而豁免会让设备正处在高速率时仍保留一个可重复点选的入口。
-  const keepVisible = (value: number) => !isBlockedRateValue(field, value)
-
+  // 全部档位照实呈现，不做速率过滤（含 500Hz / D500 / F500）：
+  // 选项按下标映射回 value，顺序与固件下发一致，可安全点选。
   if (field.options && field.options.length > 0) {
     const base = Number.isFinite(field.min as number) ? Number(field.min) : 0
     return field.options
       .map((label, idx) => ({ title: label, value: base + idx }))
-      .filter(op => keepVisible(op.value))
   }
 
   const min = Number.isFinite(field.min as number) ? Number(field.min) : 0
@@ -283,9 +294,7 @@ function buildItems(field: ElrsFieldInfo): Array<{ title: string; value: number 
 
   const list: Array<{ title: string; value: number }> = []
   for (let value = min; value <= max; value++) {
-    if (keepVisible(value)) {
-      list.push({ title: field.unit ? `${value} ${field.unit}` : `${value}`, value })
-    }
+    list.push({ title: field.unit ? `${value} ${field.unit}` : `${value}`, value })
   }
   return list
 }

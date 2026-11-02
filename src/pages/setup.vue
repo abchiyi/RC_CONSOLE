@@ -25,6 +25,8 @@ const guideOpen = ref(false)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 onMounted(() => {
+  // 已手动跳过本次校准 (地址栏手输 / 顶部 chip 点进来都会落这里): 本页不该再留人
+  if (cal.setupBypass) { void router.replace('/config'); return }
   guideOpen.value = true
   setTimeout(() => void cal.fetchCalData(), 300)
   // 实时 raw + IMU 由页面负责启停 —— 与传感器页 CalWizard 同源 (向导自身不启流),
@@ -43,7 +45,7 @@ onUnmounted(() => {
 
 /** 四项齐全 → 放行。固件侧 rf_gate_task 会捕获同一上升沿并在运行中释放 ELRS 模块的 EN */
 watch(() => cal.rfLocked, locked => {
-  if (locked === false) void router.replace('/config')
+  if (locked === false || cal.setupBypass) void router.replace('/config')
 })
 
 /** 向导走完最后一步: 立刻核一次, 若仍有缺项则把原因写进提示条, 页面继续留在本页 */

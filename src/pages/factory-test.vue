@@ -523,11 +523,11 @@
   const calStore = useCalibrationStore()
 
   /**
-   * 返回: 常规从系统页进来 → 回 /system; 未校准 (射频上锁) 时只能是从首次开机页的
-   * 隐藏入口进来的, 直接回 /setup —— 那会儿 /system 会被门禁弹回来, 白跳一次。
+   * 返回: 常规从系统页进来 → 回 /system; 未校准 (射频上锁) 且未跳过校准门禁时,
+   * 说明是被门禁按在 /setup 的状态, 直接回 /setup —— 那会儿 /system 会被弹回来, 白跳一次。
    */
   function goBack(): void {
-    void router.push(calStore.rfLocked === true ? '/setup' : '/system')
+    void router.push(calStore.rfLocked === true && !calStore.setupBypass ? '/setup' : '/system')
   }
 
   const { text: snackbarMsg, color: snackbarColor, visible: snackbarVisible, show: notify, timeoutMs: noticeTimeout }
@@ -1465,7 +1465,7 @@
 
   onUnmounted(() => {
     pageAlive = false // 先落闸: 离页后任何迟到的流登记都被拒绝
-    calStore.factoryBypass = false // 兜底: 放行额度随离页作废 (正常路径在路由守卫里已消费)
+    // 注: setupBypass 是连接级的, 离页不清 —— 跳过后还要能去别的业务页; 清零在 cal.reset()
     serialService.removeObjectListener(onObject)
     releaseStream(OWNER.FACTORY)
     if (rateTimer) {

@@ -76,6 +76,10 @@ export const CMD = {
   // 「静音模式」开关: payload u8 enable(0/1), 回显 u8 生效值
   //   1 = 蜂鸣器全局禁鸣 (按键音/通道提示音/告警音/开关机音全静), LED 不受影响
   SET_SILENT: 0x01_0C,
+  // RF 安全门旁路开关: payload u8 enable(0/1), 回显 u8 生效值
+  //   1 = 忽略「未校准」直接放行外部 ELRS 模块的 EN (射频起飞); 仅内存生效、不落 NVS,
+  //       重启即回到安全门
+  SET_RF_BYPASS: 0x01_0D,
   // 配置备份 / 还原（§5.15）：JSON 文件，会话式分块
   CONFIG_EXPORT_BEGIN: 0x01_10,
   CONFIG_EXPORT_CHUNK: 0x01_11,
@@ -189,6 +193,7 @@ export const CMD_NAME_TO_ID: Record<string, number> = {
   set_telem_rssi_mode: CMD.SET_TELEM_RSSI_MODE,
   set_lock_zero: CMD.SET_LOCK_ZERO,
   set_silent: CMD.SET_SILENT,
+  set_rf_bypass: CMD.SET_RF_BYPASS,
 }
 
 const CMD_ID_TO_NAME: Record<number, string> = Object.fromEntries(
