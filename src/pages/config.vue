@@ -21,6 +21,13 @@
       请先连接设备以加载和编辑配置
     </v-alert>
 
+    <!-- 付费版未激活: 设备受限运行 (1 槽位 / 6 通道), 切换槽位会被 S_NOT_SUPPORTED 拒绝 -->
+    <v-alert v-if="serial.connected && license.restricted" class="ma-3" color="warning" border="start"
+      border-color="warning" icon="mdi-lock-outline" variant="tonal">
+      付费版未激活：当前仅 1 个模型槽位 / 6 个输出通道，切换槽位需先激活。
+      <RouterLink to="/system" class="ms-1 text-decoration-underline">前往激活</RouterLink>
+    </v-alert>
+
     <v-row v-if="serial.connected" dense>
       <!-- 左侧: 主配置区域 -->
       <v-col cols="12">
@@ -453,6 +460,7 @@ import SliderLabel from '@/components/SliderLabel.vue'
 import { useSerialStore } from '@/stores/serial'
 import { useConfigStore, type ModelChannel, type ButtonEntry, type ChannelTrigger } from '@/stores/config'
 import { useChannelStore } from '@/stores/channels'
+import { useLicenseStore } from '@/stores/license'
 import { useNotice } from '@/composables/useNotice'
 import { rawToUs, usToRaw } from '@/utils/crsf'
 import { GEAR_COUNT } from '@/utils/commands'
@@ -464,6 +472,7 @@ import {
 const serial = useSerialStore()
 const configStore = useConfigStore()
 const chStore = useChannelStore()
+const license = useLicenseStore()
 const selectedSlot = ref(0)
 
 // 当前模型的可编辑通道副本 (存储 μs 值供 UI 编辑)
@@ -1218,6 +1227,14 @@ async function saveModel(): Promise<void> {
 // 切换选项卡时只切换运行槽位，不修改持久激活槽位
 async function onSlotSelect(slot: number): Promise<void> {
   if (CHANNEL_LINK_ONLY) return  // 调试: 暂停切换槽位同步
+  // 付费版未激活: 设备只开放 1 个槽位，切换会被 S_NOT_SUPPORTED 拒绝。
+  //   前置拦截 —— 否则由于失败响应不带 slot 字段，store 的 resolver 不命中，
+  //   用户要等 2s 超时才看到一句笼统的「切换运行模型超时」。
+  if (license.restricted) {
+    selectedSlot.value = configStore.config?.active_model ?? 0
+    notify('切换槽位需先激活付费版', 'warning')
+    return
+  }
   syncing = true
   editChannels.length = 0
   expandedIdx.value = null
@@ -1233,6 +1250,10 @@ async function onSlotSelect(slot: number): Promise<void> {
 
 // 激活当前模型为设备主配置
 async function activateModel(): Promise<void> {
+  if (license.restricted) {
+    notify('设为默认需先激活付费版', 'warning')
+    return
+  }
   const ok = await configStore.setActiveModel(selectedSlot.value)
   notify(ok ? '模型已激活' : '激活失败', ok ? 'success' : 'error')
 }
@@ -1240,6 +1261,8 @@ async function activateModel(): Promise<void> {
 /** 进入页面/连接建立后：恢复配置显示或从设备加载（含通道流启停） */
 async function enterPage(): Promise<void> {
   if (!serial.connected) return
+  // 授权状态：受限时槽位切换要前置拦截（免费版设备回「不支持」属预期，Store 内部已处理）
+  void license.refresh()
   if (configStore.config) {
     // store 中已有配置（组件重建导致 editChannels 丢失）→ 直接恢复显示
     selectedSlot.value = configStore.config.active_model
@@ -1270,7 +1293,11 @@ onMounted(() => {
 // 页面打开后再连接设备时，自动加载配置
 watch(() => serial.connected, (connected) => {
   if (CHANNEL_LINK_ONLY) return  // 调试: 暂停连接时自动加载
-  if (!connected) return
+  if (!connected) {
+    // 清空授权状态，避免下次连上另一台设备看到上一台的残留
+    license.reset()
+    return
+  }
   enterPage()
 })
 
