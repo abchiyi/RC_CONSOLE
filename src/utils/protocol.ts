@@ -54,8 +54,8 @@ export const CMD = {
   GET_EFUSE: 0x00_06, // 读取 eFuse 状态（USB 通道 / JTAG / flash 加密 / secure boot 相关位）
   // 许可证（仅付费版固件；免费版三条一律返回 S_NOT_SUPPORTED）
   //   CHALLENGE: req 空  -> salt(16) ‖ mac(6) ‖ chip_rev(1) = 23B
-  //   ACTIVATE : req 97B -> u8 ok；97B = feat_id(1) ‖ secret(32) ‖ sig(64)
-  //   STATUS   : req 空  -> u8 has_gate + u8 active_mask（bit n = 特性 n 已激活）
+  //   ACTIVATE : req 97B -> u8 ok；97B = feat_id(1, 固定 0) ‖ secret(32) ‖ sig(64)
+  //   STATUS   : req 空  -> u8 has_gate + u8 active_mask（bit0 = 已激活；单一许可证无分级）
   //   ★ 免费版回 S_NOT_SUPPORTED 时 UI 应显示「免费版无此功能」，而非报错
   LICENSE_CHALLENGE: 0x00_07,
   LICENSE_ACTIVATE: 0x00_08,

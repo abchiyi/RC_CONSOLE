@@ -28,7 +28,9 @@ export const LICENSE_LEN = 97
 /** 固件侧 S_NOT_SUPPORTED */
 const STATUS_NOT_SUPPORTED = 8
 
-/** 付费特性位（与固件 License feat_id 对齐） */
+/** 付费特性位（与固件 License feat_id 对齐）。
+ *  2026-11-03 起固件收敛为单一许可证：一张许可证 = 全部付费功能，
+ *  active_mask 只有 bit0 有意义；FEAT 保留只为 wire 兼容。 */
 export const FEAT = {
   PRO_BASE: 0,
   CONFIG_SNAPSHOT: 1,
