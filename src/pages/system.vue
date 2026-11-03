@@ -521,20 +521,17 @@
         </v-card-item>
 
         <v-card-text class="pt-2">
-          <!-- ① 挑战串 -->
-          <div class="lic-section-title">① 复制挑战串发给卖家</div>
+          <!-- ① 设备 ID（挑战串） -->
+          <div class="lic-section-title">① 复制设备ID发给卖家</div>
           <div class="d-flex align-start ga-2">
-            <v-textarea :model-value="license.challenge" label="挑战串" variant="outlined" density="compact"
+            <v-textarea :model-value="license.challenge" label="设备ID" variant="outlined" density="compact"
               rows="2" auto-grow readonly hide-details spellcheck="false" class="lic-mono" />
             <v-btn icon variant="tonal" size="small" class="mt-1" :disabled="!license.challenge"
-              title="复制挑战串" @click="copyChallenge">
+              title="复制设备ID" @click="copyChallenge">
               <v-icon size="18">mdi-content-copy</v-icon>
             </v-btn>
           </div>
           <div class="d-flex align-center ga-2 mt-2">
-            <span v-if="license.mac" class="text-caption text-medium-emphasis mono">
-              设备 MAC {{ license.mac }}
-            </span>
             <v-spacer />
             <v-btn size="small" variant="text" prepend-icon="mdi-refresh" :loading="license.busy"
               @click="onGetChallenge">
@@ -696,7 +693,7 @@ async function onGetChallenge(): Promise<void> {
 async function copyChallenge(): Promise<void> {
   try {
     await navigator.clipboard.writeText(license.challenge)
-    notify('已复制挑战串', 'success')
+    notify('已复制设备ID', 'success')
   } catch {
     notify('复制失败，请手动选中复制', 'error')
   }
