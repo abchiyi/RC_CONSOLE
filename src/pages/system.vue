@@ -92,7 +92,7 @@
         </v-card-text>
       </v-card>
 
-      <!-- 授权卡片: 付费特性门控 (免费版固件物理不含付费能力) -->
+      <!-- 激活卡片: 高级功能门控 (基础版固件物理不含高级能力) -->
       <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
         <v-card-item class="pb-0">
           <template #prepend>
@@ -100,8 +100,8 @@
               <v-icon color="white" size="20">mdi-license</v-icon>
             </v-avatar>
           </template>
-          <v-card-title>授权</v-card-title>
-          <v-card-subtitle>完整功能：16 通道 / 8 个模型槽位</v-card-subtitle>
+          <v-card-title>激活</v-card-title>
+          <v-card-subtitle>启用高级功能</v-card-subtitle>
           <template #append>
             <!-- 状态如实上报: 未激活就说未激活, 不做任何欺瞒 -->
             <v-chip v-if="license.activated" color="success" size="x-small" variant="tonal">已激活</v-chip>
@@ -128,7 +128,7 @@
 
           <v-btn block class="mt-3" color="primary" variant="tonal" prepend-icon="mdi-key-outline"
             :disabled="license.isFreeTier" :loading="license.busy" @click="openLicenseDialog">
-            <span class="btn-text">{{ license.activated ? '查看授权' : '激活' }}</span>
+            <span class="btn-text">{{ license.activated ? '查看状态' : '激活' }}</span>
           </v-btn>
         </v-card-text>
       </v-card>
