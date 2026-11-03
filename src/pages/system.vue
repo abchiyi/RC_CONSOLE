@@ -60,17 +60,10 @@
                     </v-chip>
                   </span>
                 </div>
-              </div>
-            </div>
-
-            <!-- 高级功能激活状态 (融合自原独立激活卡片) -->
-            <div class="stat-group">
-              <div class="stat-group-title">高级功能</div>
-              <div class="stat-kv-grid">
+                <!-- 激活状态并入设备信息 (高级功能门控; 状态如实上报) -->
                 <div class="stat-kv stat-kv-wide">
-                  <span class="stat-label">激活状态</span>
+                  <span class="stat-label">高级功能</span>
                   <span class="stat-value">
-                    <!-- 状态如实上报: 未激活就说未激活 -->
                     <v-chip v-if="license.activated" color="success" size="x-small" variant="tonal">已激活</v-chip>
                     <v-chip v-else-if="license.restricted" color="warning" size="x-small" variant="tonal">未激活</v-chip>
                     <v-chip v-else-if="license.isFreeTier" size="x-small" variant="tonal">基础版</v-chip>
