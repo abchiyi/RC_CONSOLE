@@ -521,6 +521,13 @@
         </v-card-item>
 
         <v-card-text class="pt-2">
+          <!-- 支持作者说明 -->
+          <div class="cal-hint hint-neutral mb-3">
+            <v-icon size="16" class="mt-0.5">mdi-heart-outline</v-icon>
+            <span>本项目由作者在业余时间持续开发与维护。激活高级功能的费用用于支持后续更新与服务，
+              你的每一份支持都让这个项目走得更远，感谢！</span>
+          </div>
+
           <!-- ① 设备 ID（挑战串） -->
           <div class="lic-section-title">① 复制设备ID发给卖家</div>
           <div class="d-flex align-start ga-2">
