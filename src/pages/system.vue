@@ -86,14 +86,8 @@
               到期后回到基础功能，激活可永久启用。</span>
           </div>
 
-          <div v-if="!license.isFreeTier && !license.activated" class="d-flex ga-2 mt-3">
-            <v-btn v-if="license.trialRemaining > 0" class="flex-grow-1"
-              :color="license.trialActive ? 'default' : 'primary'" :variant="license.trialActive ? 'text' : 'tonal'"
-              prepend-icon="mdi-timer-play-outline" :disabled="license.trialActive" :loading="license.busy"
-              @click="onStartTrial">
-              <span class="btn-text">{{ license.trialActive ? '体验中' : '体验 24 小时' }}</span>
-            </v-btn>
-            <v-btn class="flex-grow-1" color="primary" variant="tonal" prepend-icon="mdi-key-outline"
+          <div v-if="!license.isFreeTier && !license.activated" class="mt-3">
+            <v-btn block color="primary" variant="tonal" prepend-icon="mdi-key-outline"
               :loading="license.busy" @click="openLicenseDialog">
               <span class="btn-text">激活</span>
             </v-btn>
@@ -550,6 +544,20 @@
             </span>
           </div>
 
+          <!-- 体验入口: 未激活且未用完时, 可先体验 24 小时再决定激活 -->
+          <div v-if="!license.activated && license.trialRemaining > 0"
+            class="d-flex align-center ga-2 mb-3">
+            <v-btn color="primary" variant="tonal" size="small" prepend-icon="mdi-timer-play-outline"
+              :disabled="license.trialActive" :loading="license.busy" @click="onStartTrial">
+              {{ license.trialActive ? '体验中' : '先体验 24 小时' }}
+            </v-btn>
+            <span class="text-caption text-medium-emphasis">
+              {{ license.trialActive
+                ? `剩余 ${fmtTrial(license.trialRemaining)}（按设备运行时间累计，断电不计时）`
+                : '不激活也能先用完整功能 24 小时' }}
+            </span>
+          </div>
+
           <!-- ① 设备 ID（挑战串） -->
           <div class="lic-section-title">① 复制设备ID发给卖家</div>
           <div class="d-flex align-start ga-2">
@@ -717,7 +725,13 @@ async function openLicenseDialog(): Promise<void> {
 /** 开启 24h 体验（设备侧按运行时间计时，跨重启延续） */
 async function onStartTrial (): Promise<void> {
   const ok = await license.startTrial()
-  notify(ok ? '体验已开启，完整功能立即可用' : (license.error ?? '体验开启失败'), ok ? 'success' : 'error')
+  if (ok) {
+    // 体验已生效：功能已全开，弹窗使命完成，直接收起
+    licenseDialog.value = false
+    notify('体验已开启，完整功能立即可用（24 小时）', 'success')
+  } else {
+    notify(license.error ?? '体验开启失败', 'error')
+  }
 }
 
 /** 剩余秒数 → 「X 小时 Y 分」 */
