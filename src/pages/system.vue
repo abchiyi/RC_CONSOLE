@@ -74,12 +74,8 @@
             </div>
           </div>
 
-          <!-- 激活状态提示 + 入口 -->
-          <div v-if="license.restricted" class="cal-hint">
-            <v-icon size="16" class="mt-0.5">mdi-alert-outline</v-icon>
-            <span>尚未激活：当前按基础功能运行（6 通道 / 1 个模型槽位）。激活后立即启用完整功能。</span>
-          </div>
-          <div v-else-if="license.activated" class="cal-hint hint-neutral">
+          <!-- 激活状态提示 + 入口（未激活时不额外提示：上方「高级功能」行已如实显示状态） -->
+          <div v-if="license.activated" class="cal-hint hint-neutral">
             <v-icon size="16" class="mt-0.5">mdi-check-circle-outline</v-icon>
             <span>已激活，完整功能可用（16 通道 / 8 个模型槽位）。</span>
           </div>
