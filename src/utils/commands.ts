@@ -222,6 +222,7 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
       }
       break
     case CMD.LICENSE_STATUS:
+    case CMD.LICENSE_TRIAL:
       // 无参数
       break
     case CMD.OTA_BEGIN:
@@ -669,9 +670,19 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
       case CMD.LICENSE_ACTIVATE:
         return { cmd: name, ok: true, activated: r.u8() !== 0 }
       case CMD.LICENSE_STATUS:
-        // has_gate=0 → 免费版（无许可证机制）；active_mask 的 bit n = 特性 n 已激活
-        //   两者都**如实上报**：未激活时 UI 显示真实状态并给购买入口，不做任何欺瞒
-        return { cmd: name, ok: true, has_gate: r.u8() !== 0, active_mask: r.u8() }
+        // has_gate=0 → 基础版（无许可证机制）；active_mask 的 bit0 = 已激活
+        //   trial: 24h 体验状态（未激活时可能有体验在跑）——都**如实上报**
+        return {
+          cmd: name,
+          ok: true,
+          has_gate: r.u8() !== 0,
+          active_mask: r.u8(),
+          trial_active: r.u8() !== 0,
+          trial_remaining: r.i32(),
+        }
+      case CMD.LICENSE_TRIAL:
+        // 固件只回 S_OK / S_BAD_PARAM，无负载
+        return { cmd: name, ok: true }
       default:
         return { cmd: name, ok: true }
     }

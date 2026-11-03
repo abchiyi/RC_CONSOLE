@@ -35,6 +35,10 @@ export const useLicenseStore = defineStore('license', () => {
   const hasGate = ref<boolean | null>(null)
   /** 已激活位图：单一许可证下 bit0 = 已激活 */
   const activeMask = ref(0)
+  /** 24h 体验是否生效中（设备侧按运行时间计时） */
+  const trialActive = ref(false)
+  /** 体验剩余秒数（未开启时为 0） */
+  const trialRemaining = ref(0)
   /** 最近一次取到的挑战串（base64url，供离线签发工具食用） */
   const challenge = ref('')
   /** 挑战串里的设备 MAC，用于核对「签的是不是这台机器」 */
@@ -45,8 +49,8 @@ export const useLicenseStore = defineStore('license', () => {
 
   /** 已激活（仅付费版可能为真） */
   const activated = computed(() => hasGate.value === true && activeMask.value !== 0)
-  /** 付费版但尚未激活 → 受限运行 */
-  const restricted = computed(() => hasGate.value === true && activeMask.value === 0)
+  /** 付费版但尚未激活**且体验未生效** → 受限运行（体验中功能全开，不算受限） */
+  const restricted = computed(() => hasGate.value === true && activeMask.value === 0 && !trialActive.value)
   /** 免费版：物理不含付费能力 */
   const isFreeTier = computed(() => hasGate.value === false)
 
@@ -135,6 +139,8 @@ export const useLicenseStore = defineStore('license', () => {
       }
       hasGate.value = obj.has_gate === true
       activeMask.value = Number(obj.active_mask ?? 0)
+      trialActive.value = obj.trial_active === true
+      trialRemaining.value = Number(obj.trial_remaining ?? 0)
       return true
     } catch (e) {
       error.value = (e as Error).message
@@ -208,10 +214,36 @@ export const useLicenseStore = defineStore('license', () => {
     }
   }
 
+  /** 开启 24 小时体验（未激活时可用；成功后重拉状态） */
+  async function startTrial (): Promise<boolean> {
+    busy.value = true
+    error.value = null
+    try {
+      const obj = await sendCommandAndWait('license_trial')
+      const st = statusOf(obj)
+      if (st !== null) {
+        if (st === STATUS_NOT_SUPPORTED) {
+          error.value = '当前是基础版固件，无体验功能'
+          return false
+        }
+        return fail(obj, '体验开启失败（可能已用完或已激活）')
+      }
+      await refresh()
+      return true
+    } catch (e) {
+      error.value = (e as Error).message
+      return false
+    } finally {
+      busy.value = false
+    }
+  }
+
   /** 断开连接后清空，避免下次连上看到上一台设备的状态 */
   function reset (): void {
     hasGate.value = null
     activeMask.value = 0
+    trialActive.value = false
+    trialRemaining.value = 0
     challenge.value = ''
     mac.value = ''
     chipRev.value = 0
@@ -221,7 +253,8 @@ export const useLicenseStore = defineStore('license', () => {
 
   return {
     hasGate, activeMask, challenge, mac, chipRev, busy, error,
+    trialActive, trialRemaining,
     activated, restricted, isFreeTier,
-    refresh, requestChallenge, activate, reset,
+    refresh, requestChallenge, activate, startTrial, reset,
   }
 })

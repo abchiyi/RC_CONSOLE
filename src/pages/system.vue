@@ -65,6 +65,7 @@
                   <span class="stat-label">高级功能</span>
                   <span class="stat-value">
                     <v-chip v-if="license.activated" color="success" size="x-small" variant="tonal">已激活</v-chip>
+                    <v-chip v-else-if="license.trialActive" color="info" size="x-small" variant="tonal">体验中</v-chip>
                     <v-chip v-else-if="license.restricted" color="warning" size="x-small" variant="tonal">未激活</v-chip>
                     <v-chip v-else-if="license.isFreeTier" size="x-small" variant="tonal">基础版</v-chip>
                     <span v-else class="text-medium-emphasis">--</span>
@@ -79,10 +80,27 @@
             <v-icon size="16" class="mt-0.5">mdi-check-circle-outline</v-icon>
             <span>已激活，完整功能可用（16 通道 / 8 个模型槽位）。</span>
           </div>
+          <div v-else-if="license.trialActive" class="cal-hint hint-neutral">
+            <v-icon size="16" class="mt-0.5">mdi-timer-outline</v-icon>
+            <span>体验中，剩余 {{ fmtTrial(license.trialRemaining) }}（按设备运行时间累计，断电不计时）。
+              到期后回到基础功能，激活可永久启用。</span>
+          </div>
 
-          <v-btn v-if="!license.isFreeTier" block class="mt-3" color="primary" variant="tonal"
+          <div v-if="!license.isFreeTier && !license.activated" class="d-flex ga-2 mt-3">
+            <v-btn v-if="license.trialRemaining > 0" class="flex-grow-1"
+              :color="license.trialActive ? 'default' : 'primary'" :variant="license.trialActive ? 'text' : 'tonal'"
+              prepend-icon="mdi-timer-play-outline" :disabled="license.trialActive" :loading="license.busy"
+              @click="onStartTrial">
+              <span class="btn-text">{{ license.trialActive ? '体验中' : '体验 24 小时' }}</span>
+            </v-btn>
+            <v-btn class="flex-grow-1" color="primary" variant="tonal" prepend-icon="mdi-key-outline"
+              :loading="license.busy" @click="openLicenseDialog">
+              <span class="btn-text">激活</span>
+            </v-btn>
+          </div>
+          <v-btn v-else-if="!license.isFreeTier" block class="mt-3" color="primary" variant="tonal"
             prepend-icon="mdi-key-outline" :loading="license.busy" @click="openLicenseDialog">
-            <span class="btn-text">{{ license.activated ? '查看状态' : '激活' }}</span>
+            <span class="btn-text">查看状态</span>
           </v-btn>
 
           <div class="cal-hint hint-neutral mt-3">
@@ -690,6 +708,19 @@ async function openLicenseDialog(): Promise<void> {
   licenseInput.value = ''
   await license.refresh()
   if (!license.isFreeTier && !license.challenge) await license.requestChallenge()
+}
+
+/** 开启 24h 体验（设备侧按运行时间计时，跨重启延续） */
+async function onStartTrial (): Promise<void> {
+  const ok = await license.startTrial()
+  notify(ok ? '体验已开启，完整功能立即可用' : (license.error ?? '体验开启失败'), ok ? 'success' : 'error')
+}
+
+/** 剩余秒数 → 「X 小时 Y 分」 */
+function fmtTrial (sec: number): string {
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  return h > 0 ? `${h} 小时 ${m} 分` : `${m} 分钟`
 }
 
 async function onGetChallenge(): Promise<void> {
