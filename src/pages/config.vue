@@ -21,10 +21,10 @@
       请先连接设备以加载和编辑配置
     </v-alert>
 
-    <!-- 付费版未激活: 设备受限运行 (1 槽位 / 6 通道), 切换槽位会被 S_NOT_SUPPORTED 拒绝 -->
+    <!-- 未激活: 设备按基础功能运行 (1 槽位 / 6 通道), 高级操作会被 S_NOT_SUPPORTED 拒绝 -->
     <v-alert v-if="serial.connected && license.restricted" class="ma-3" color="warning" border="start"
       border-color="warning" icon="mdi-lock-outline" variant="tonal">
-      付费版未激活：当前仅 1 个模型槽位 / 6 个输出通道，切换槽位需先激活。
+      当前为基础功能（1 个模型槽位 / 6 个输出通道），激活后启用完整功能。
       <RouterLink to="/system" class="ms-1 text-decoration-underline">前往激活</RouterLink>
     </v-alert>
 
@@ -65,7 +65,8 @@
         <!-- 通道卡片列表 -->
         <template v-if="configStore.config && editChannels.length > 0">
           <template v-for="{ ch, idx } in visibleChannels" :key="idx">
-                <v-sheet rounded="lg" class="my-2 chan-card" :class="{ 'card-selected': expandedIdx === idx }"
+                <v-sheet rounded="lg" class="my-2 chan-card"
+                  :class="{ 'card-selected': expandedIdx === idx, 'chan-locked': license.restricted && idx >= 6 }"
                   style="position:relative; overflow:visible; background: rgb(var(--v-theme-surface));">
                   <!-- 头部行 -->
                   <div class="chan-header-row" style="cursor:pointer" @click="toggleExpand(idx)">
@@ -439,11 +440,11 @@
     <Teleport to="#global-footer-right">
       <template v-if="(configStore.modelCount ?? 0) > 1">
         <v-select v-model="selectedSlot" class="model-select me-2" :items="modelOptions" item-title="title"
-          item-value="value" density="compact" variant="outlined" hide-details
+          item-value="value" density="compact" variant="outlined" hide-details :disabled="license.restricted"
           @update:model-value="onSlotSelect" />
       </template>
       <v-btn v-if="configStore.config" class="btn-secondary me-2" prepend-icon="mdi-check-circle" size="small"
-        :disabled="selectedSlot === configStore.config.active_model" @click="activateModel">
+        :disabled="selectedSlot === configStore.config.active_model || license.restricted" @click="activateModel">
         <span class="btn-text">设为默认</span>
       </v-btn>
       <v-btn v-if="configStore.config" class="btn-primary" prepend-icon="mdi-content-save" size="small"
@@ -1232,7 +1233,7 @@ async function onSlotSelect(slot: number): Promise<void> {
   //   用户要等 2s 超时才看到一句笼统的「切换运行模型超时」。
   if (license.restricted) {
     selectedSlot.value = configStore.config?.active_model ?? 0
-    notify('切换槽位需先激活付费版', 'warning')
+    notify('切换槽位需先激活', 'warning')
     return
   }
   syncing = true
@@ -1251,7 +1252,7 @@ async function onSlotSelect(slot: number): Promise<void> {
 // 激活当前模型为设备主配置
 async function activateModel(): Promise<void> {
   if (license.restricted) {
-    notify('设为默认需先激活付费版', 'warning')
+    notify('设为默认需先激活', 'warning')
     return
   }
   const ok = await configStore.setActiveModel(selectedSlot.value)
@@ -1619,6 +1620,13 @@ onUnmounted(() => {
 .chan-card {
   container-type: inline-size;
   transition: border-color 0.3s, background-color 0.3s;
+}
+
+/* 未激活: ch7-16 通道卡片灰显且不可交互 —— 设备仅输出 ch1-6 */
+.chan-locked {
+  opacity: 0.45;
+  pointer-events: none;
+  filter: grayscale(0.6);
 }
 
 /* 展开内容区: 比卡片底色 rgb(var(--v-theme-surface)) 略深 */

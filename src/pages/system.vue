@@ -101,7 +101,7 @@
             </v-avatar>
           </template>
           <v-card-title>授权</v-card-title>
-          <v-card-subtitle>付费特性：16 通道 / 8 个模型槽位</v-card-subtitle>
+          <v-card-subtitle>完整功能：16 通道 / 8 个模型槽位</v-card-subtitle>
           <template #append>
             <!-- 状态如实上报: 未激活就说未激活, 不做任何欺瞒 -->
             <v-chip v-if="license.activated" color="success" size="x-small" variant="tonal">已激活</v-chip>
@@ -113,12 +113,12 @@
         <v-card-text class="pt-2 pb-3">
           <div v-if="license.isFreeTier" class="cal-hint hint-neutral">
             <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
-            <span>当前是免费版固件（6 通道 / 1 个模型槽位），不含付费功能，无需激活。</span>
+            <span>当前固件为基础版（6 通道 / 1 个模型槽位），无需激活。</span>
           </div>
 
           <div v-else-if="license.restricted" class="cal-hint">
             <v-icon size="16" class="mt-0.5">mdi-alert-outline</v-icon>
-            <span>付费版未激活：当前按受限功能运行（6 通道 / 1 个模型槽位）。激活后立即恢复完整功能。</span>
+            <span>尚未激活：当前按基础功能运行（6 通道 / 1 个模型槽位）。激活后立即启用完整功能。</span>
           </div>
 
           <div v-else-if="license.activated" class="cal-hint hint-neutral">
@@ -536,8 +536,8 @@
               <v-icon color="white" size="20">mdi-key-outline</v-icon>
             </v-avatar>
           </template>
-          <v-card-title>激活付费特性</v-card-title>
-          <v-card-subtitle>一机一码：许可证绑定本机 eFuse MAC，换机无效</v-card-subtitle>
+          <v-card-title>设备激活</v-card-title>
+          <v-card-subtitle>一机一码：许可证绑定本机，换机无效</v-card-subtitle>
         </v-card-item>
 
         <v-card-text class="pt-2">
@@ -565,7 +565,7 @@
           <!-- ② 许可证 -->
           <div class="lic-section-title mt-4">② 粘贴卖家返回的许可证</div>
           <v-textarea v-model="licenseInput" label="许可证串" variant="outlined" density="compact" rows="3"
-            auto-grow hide-details spellcheck="false" placeholder="base64url 串，约 130 个字符" class="lic-mono" />
+            auto-grow hide-details spellcheck="false" placeholder="base64url 串，128 个字符" class="lic-mono" />
 
           <v-alert v-if="license.error" color="error" variant="tonal" density="compact" class="mt-3 py-1">
             {{ license.error }}
