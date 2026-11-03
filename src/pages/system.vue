@@ -28,7 +28,7 @@
             </v-avatar>
           </template>
           <v-card-title>关于系统</v-card-title>
-          <v-card-subtitle>设备型号、软硬件版本与固件升级</v-card-subtitle>
+          <v-card-subtitle>设备信息、激活状态与固件升级</v-card-subtitle>
         </v-card-item>
 
         <v-card-text class="pt-2 pb-3">
@@ -62,9 +62,41 @@
                 </div>
               </div>
             </div>
+
+            <!-- 高级功能激活状态 (融合自原独立激活卡片) -->
+            <div class="stat-group">
+              <div class="stat-group-title">高级功能</div>
+              <div class="stat-kv-grid">
+                <div class="stat-kv stat-kv-wide">
+                  <span class="stat-label">激活状态</span>
+                  <span class="stat-value">
+                    <!-- 状态如实上报: 未激活就说未激活 -->
+                    <v-chip v-if="license.activated" color="success" size="x-small" variant="tonal">已激活</v-chip>
+                    <v-chip v-else-if="license.restricted" color="warning" size="x-small" variant="tonal">未激活</v-chip>
+                    <v-chip v-else-if="license.isFreeTier" size="x-small" variant="tonal">基础版</v-chip>
+                    <span v-else class="text-medium-emphasis">--</span>
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div class="cal-hint hint-neutral">
+          <!-- 激活状态提示 + 入口 -->
+          <div v-if="license.restricted" class="cal-hint">
+            <v-icon size="16" class="mt-0.5">mdi-alert-outline</v-icon>
+            <span>尚未激活：当前按基础功能运行（6 通道 / 1 个模型槽位）。激活后立即启用完整功能。</span>
+          </div>
+          <div v-else-if="license.activated" class="cal-hint hint-neutral">
+            <v-icon size="16" class="mt-0.5">mdi-check-circle-outline</v-icon>
+            <span>已激活，完整功能可用（16 通道 / 8 个模型槽位）。</span>
+          </div>
+
+          <v-btn v-if="!license.isFreeTier" block class="mt-3" color="primary" variant="tonal"
+            prepend-icon="mdi-key-outline" :loading="license.busy" @click="openLicenseDialog">
+            <span class="btn-text">{{ license.activated ? '查看状态' : '激活' }}</span>
+          </v-btn>
+
+          <div class="cal-hint hint-neutral mt-3">
             <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
             <span>升级中请勿断电或拔线，写完后设备自动重启进入新固件。</span>
           </div>
@@ -88,47 +120,6 @@
           <v-btn block class="mt-2" size="small" variant="text" prepend-icon="mdi-refresh"
             :loading="fwRelease.status === 'checking'" @click="onCheckUpdate">
             <span class="btn-text">检查更新</span>
-          </v-btn>
-        </v-card-text>
-      </v-card>
-
-      <!-- 激活卡片: 高级功能门控 (基础版固件物理不含高级能力) -->
-      <v-card rounded="lg" variant="outlined" elevation="0" class="cal-card my-2">
-        <v-card-item class="pb-0">
-          <template #prepend>
-            <v-avatar color="primary" size="36" class="cal-avatar">
-              <v-icon color="white" size="20">mdi-license</v-icon>
-            </v-avatar>
-          </template>
-          <v-card-title>激活</v-card-title>
-          <v-card-subtitle>启用高级功能</v-card-subtitle>
-          <template #append>
-            <!-- 状态如实上报: 未激活就说未激活, 不做任何欺瞒 -->
-            <v-chip v-if="license.activated" color="success" size="x-small" variant="tonal">已激活</v-chip>
-            <v-chip v-else-if="license.restricted" color="warning" size="x-small" variant="tonal">未激活</v-chip>
-            <v-chip v-else-if="license.isFreeTier" size="x-small" variant="tonal">免费版</v-chip>
-          </template>
-        </v-card-item>
-
-        <v-card-text class="pt-2 pb-3">
-          <div v-if="license.isFreeTier" class="cal-hint hint-neutral">
-            <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
-            <span>当前固件为基础版（6 通道 / 1 个模型槽位），无需激活。</span>
-          </div>
-
-          <div v-else-if="license.restricted" class="cal-hint">
-            <v-icon size="16" class="mt-0.5">mdi-alert-outline</v-icon>
-            <span>尚未激活：当前按基础功能运行（6 通道 / 1 个模型槽位）。激活后立即启用完整功能。</span>
-          </div>
-
-          <div v-else-if="license.activated" class="cal-hint hint-neutral">
-            <v-icon size="16" class="mt-0.5">mdi-check-circle-outline</v-icon>
-            <span>已激活，完整功能可用（16 通道 / 8 个模型槽位）。</span>
-          </div>
-
-          <v-btn block class="mt-3" color="primary" variant="tonal" prepend-icon="mdi-key-outline"
-            :disabled="license.isFreeTier" :loading="license.busy" @click="openLicenseDialog">
-            <span class="btn-text">{{ license.activated ? '查看状态' : '激活' }}</span>
           </v-btn>
         </v-card-text>
       </v-card>
