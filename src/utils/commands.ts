@@ -210,7 +210,7 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
       // 无参数：设备回 salt(16) ‖ mac(6) ‖ chip_rev(1)
       break
     case CMD.LICENSE_ACTIVATE:
-      // 97B = feat_id(1) ‖ secret(32) ‖ sig(64)
+      // 96B = secret(32) ‖ sig(64)
       //   接受两种入参：已解码的字节（data）或 base64url 串（license）。
       //   串非法时不写任何字节 —— 设备会因长度不符回 S_BAD_PARAM，
       //   比在编码层抛异常更稳（调用方也能先自行校验长度给出准确提示）。

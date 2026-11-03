@@ -137,7 +137,7 @@ class FlashService {
     if (minBytes !== null && (flashBytes === null || flashBytes < minBytes)) {
       throw new Error(`Flash 不匹配：期望 ≥${cfgFlashSize}，实际 ${flashSize ?? '未知'}`)
     }
-    return { chipName, flashSize }
+    return { chipName, flashSize: flashSize ?? 'unknown' }
   }
 
   /** 烧录固件到 0x0，onProgress 回报进度；config 覆盖部分烧录参数 */

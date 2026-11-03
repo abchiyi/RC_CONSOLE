@@ -23,24 +23,17 @@ import { b64UrlToBytes } from '@/utils/protocol'
 
 /** 挑战串长度：salt(16) ‖ mac(6) ‖ chip_rev(1) */
 export const CHALLENGE_LEN = 23
-/** 许可证长度：feat_id(1) ‖ secret(32) ‖ sig(64) */
-export const LICENSE_LEN = 97
+/** 许可证长度：secret(32) ‖ sig(64)（单一许可证，2026-11-03 起） */
+export const LICENSE_LEN = 96
 /** 固件侧 S_NOT_SUPPORTED */
 const STATUS_NOT_SUPPORTED = 8
 
-/** 付费特性位（与固件 License feat_id 对齐）。
- *  2026-11-03 起固件收敛为单一许可证：一张许可证 = 全部付费功能，
- *  active_mask 只有 bit0 有意义；FEAT 保留只为 wire 兼容。 */
-export const FEAT = {
-  PRO_BASE: 0,
-  CONFIG_SNAPSHOT: 1,
-  ADVANCED_TUNING: 2,
-} as const
+/** 已激活位图：单一许可证下仅 bit0 有意义（1 = 已激活） */
 
 export const useLicenseStore = defineStore('license', () => {
   /** null = 未查询；false = 免费版（无门控）；true = 付费版（有门控） */
   const hasGate = ref<boolean | null>(null)
-  /** 已激活特性位图：bit n = FEAT n */
+  /** 已激活位图：单一许可证下 bit0 = 已激活 */
   const activeMask = ref(0)
   /** 最近一次取到的挑战串（base64url，供离线签发工具食用） */
   const challenge = ref('')
@@ -56,8 +49,6 @@ export const useLicenseStore = defineStore('license', () => {
   const restricted = computed(() => hasGate.value === true && activeMask.value === 0)
   /** 免费版：物理不含付费能力 */
   const isFreeTier = computed(() => hasGate.value === false)
-  /** PRO_BASE 是否已激活（当前唯一的付费特性） */
-  const proActive = computed(() => (activeMask.value & (1 << FEAT.PRO_BASE)) !== 0)
 
   /**
    * 发一条命令并等它的响应（按 seq 匹配，避免与其它命令的响应串槽）。
@@ -230,7 +221,7 @@ export const useLicenseStore = defineStore('license', () => {
 
   return {
     hasGate, activeMask, challenge, mac, chipRev, busy, error,
-    activated, restricted, isFreeTier, proActive,
+    activated, restricted, isFreeTier,
     refresh, requestChallenge, activate, reset,
   }
 })
