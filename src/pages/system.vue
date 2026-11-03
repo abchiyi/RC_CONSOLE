@@ -543,7 +543,11 @@
           <div class="cal-hint hint-neutral mb-3">
             <v-icon size="16" class="mt-0.5">mdi-heart-outline</v-icon>
             <span>本项目由作者在业余时间持续开发与维护。激活高级功能的费用用于支持后续更新与服务，
-              你的每一份支持都让这个项目走得更远，感谢！</span>
+              你的每一份支持都让这个项目走得更远，感谢！
+              <br>QQ 交流群：<b class="lic-mono-inline">597811880</b>
+              · B 站：<a href="https://space.bilibili.com/8199707" target="_blank" rel="noopener"
+                class="text-decoration-underline" @click.stop>SuperHeavy5</a>
+            </span>
           </div>
 
           <!-- ① 设备 ID（挑战串） -->
@@ -1651,6 +1655,12 @@ onUnmounted(() => {
   font-weight: 600;
   color: rgba(var(--v-theme-on-surface), 0.75);
   margin-bottom: 6px;
+}
+
+/* 支持说明里的群号: 与正文同色但等宽，便于照抄 */
+.lic-mono-inline {
+  font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
 }
 
 /* 挑战串 / 许可证串: 长 base64url，等宽 + 允许任意处换行，否则会撑破对话框 */
