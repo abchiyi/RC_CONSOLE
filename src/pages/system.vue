@@ -560,10 +560,9 @@
 
           <!-- ① 设备 ID（挑战串） -->
           <div class="lic-section-title">① 复制设备ID发给卖家</div>
-          <div class="d-flex align-start ga-2">
-            <v-textarea :model-value="license.challenge" label="设备ID" variant="outlined" density="compact"
-              rows="2" auto-grow readonly hide-details spellcheck="false" class="lic-mono" />
-            <v-btn icon variant="tonal" size="small" class="mt-1" :disabled="!license.challenge"
+          <div class="d-flex align-center ga-2">
+            <div class="lic-challenge flex-grow-1">{{ license.challenge || '—' }}</div>
+            <v-btn icon variant="tonal" size="small" :disabled="!license.challenge"
               title="复制设备ID" @click="copyChallenge">
               <v-icon size="18">mdi-content-copy</v-icon>
             </v-btn>
@@ -579,7 +578,7 @@
           <!-- ② 许可证 -->
           <div class="lic-section-title mt-4">② 粘贴卖家返回的许可证</div>
           <v-textarea v-model="licenseInput" label="许可证串" variant="outlined" density="compact" rows="3"
-            auto-grow hide-details spellcheck="false" placeholder="base64url 串，128 个字符" class="lic-mono" />
+            auto-grow hide-details spellcheck="false" class="lic-mono" />
 
           <v-alert v-if="license.error" color="error" variant="tonal" density="compact" class="mt-3 py-1">
             {{ license.error }}
@@ -1683,6 +1682,19 @@ onUnmounted(() => {
   font-size: 0.8125rem;
   line-height: 1.45;
   word-break: break-all;
+}
+
+/* 设备ID展示块: 纯展示不可编辑，文字可选中复制 */
+.lic-challenge {
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.15);
+  border-radius: 8px;
+  font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  word-break: break-all;
+  user-select: text;
+  color: rgba(var(--v-theme-on-surface), 0.85);
 }
 
 .hint-error {
