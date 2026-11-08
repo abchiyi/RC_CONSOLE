@@ -1264,15 +1264,16 @@ function fmtSeconds(s: number): string {
 }
 
 // ========== 电量显示 (四段电池, 不显示百分比) ==========
-/** 固件上报的电量档位 0~4; 越界夹紧, 并对旧固件 (上报 0~100 百分比) 折算成档位 */
+/** 固件上报的电量档位 0~4; 越界夹紧, 并对旧固件 (上报 0~100 百分比) 折算成档位
+ *  新语义 (固件): 0=警告挡 (声光告警), 1 已取消不再产出, 2/3/4=格数 */
 const battLevel = computed(() => {
   const raw = power.state?.battery_level ?? 0
   const lv = raw > 4 ? Math.round(raw / 25) : raw
   return Math.min(4, Math.max(0, lv))
 })
 
-/** 档位 → 文字: 平台区电压分辨率只够分 5 档, 百分比没有意义 */
-const battLabel = computed(() => ['空', '低', '中', '高', '满'][battLevel.value])
+/** 档位 → 文字: 平台区电压分辨率只够分 4 档, 百分比没有意义 */
+const battLabel = computed(() => ['警告', '警告', '低', '中', '满'][battLevel.value])
 /** 档位 → 悬浮说明 */
 const battTitle = computed(() => `电量${battLabel.value}：${battLevel.value} / 4 格`)
 /** 档位 → 图标配色 (Vuetify 主题变量, 随明暗主题自动切换) */
