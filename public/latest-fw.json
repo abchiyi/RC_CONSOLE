@@ -1,6 +1,6 @@
 {
   "fw_version": "3.2",
-  "commit": "9686e45c",
+  "commit": "4a2d6588",
   "released_at": "2026-11-10",
-  "notes": "fix(elrs): model_id 就地编辑即时生效 + 解码 clamp + 补单元测试\n\nCMD_SAVE 后重发当前运行槽 model_id；parse_model clamp 到 0~63；model_select_step 读入 WriteGuard；补 test_model_id_roundtrip"
+  "notes": "ci(release): 发布说明改为取 tag 注释"
 }
