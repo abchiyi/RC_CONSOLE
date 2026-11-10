@@ -35,7 +35,7 @@ export const useLicenseStore = defineStore('license', () => {
   const hasGate = ref<boolean | null>(null)
   /** 已激活位图：单一许可证下 bit0 = 已激活 */
   const activeMask = ref(0)
-  /** 24h 体验是否生效中（设备侧按运行时间计时） */
+  /** 8h 体验是否生效中（设备侧按运行时间计时） */
   const trialActive = ref(false)
   /** 体验剩余秒数（未开启时为 0） */
   const trialRemaining = ref(0)
@@ -214,7 +214,7 @@ export const useLicenseStore = defineStore('license', () => {
     }
   }
 
-  /** 开启 24 小时体验（未激活时可用；成功后重拉状态） */
+  /** 开启 8 小时体验（可重复激活重置满额；已激活时设备拒绝；成功后重拉状态） */
   async function startTrial (): Promise<boolean> {
     busy.value = true
     error.value = null
@@ -226,7 +226,7 @@ export const useLicenseStore = defineStore('license', () => {
           error.value = '当前是基础版固件，无体验功能'
           return false
         }
-        return fail(obj, '体验开启失败（可能已用完或已激活）')
+        return fail(obj, '体验开启失败（已激活时不可开启）')
       }
       await refresh()
       return true

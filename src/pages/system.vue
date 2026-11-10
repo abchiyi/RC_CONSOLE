@@ -77,8 +77,8 @@
 
           <!-- 激活状态提示 + 入口（未激活时不额外提示：上方「高级功能」行已如实显示状态） -->
           <div v-if="license.activated" class="cal-hint hint-neutral">
-            <v-icon size="16" class="mt-0.5">mdi-check-circle-outline</v-icon>
-            <span>已激活，完整功能可用（16 通道 / 8 个模型槽位）。</span>
+            <v-icon size="16" class="mt-0.5">mdi-heart-outline</v-icon>
+            <span>感谢你的支持！你的每一份激活都是项目持续更新的动力，祝你飞行愉快 ✈</span>
           </div>
           <div v-else-if="license.trialActive" class="cal-hint hint-neutral">
             <v-icon size="16" class="mt-0.5">mdi-timer-outline</v-icon>
@@ -92,10 +92,6 @@
               <span class="btn-text">激活</span>
             </v-btn>
           </div>
-          <v-btn v-else-if="!license.isFreeTier" block class="mt-3" color="primary" variant="tonal"
-            prepend-icon="mdi-key-outline" :loading="license.busy" @click="openLicenseDialog">
-            <span class="btn-text">查看状态</span>
-          </v-btn>
 
           <div class="cal-hint hint-neutral mt-3">
             <v-icon size="16" class="mt-0.5">mdi-information-outline</v-icon>
@@ -544,17 +540,17 @@
             </span>
           </div>
 
-          <!-- 体验入口: 未激活且未用完时, 可先体验 24 小时再决定激活 -->
-          <div v-if="!license.activated && license.trialRemaining > 0"
+          <!-- 体验入口: 未激活即可开启（固件端可重复激活，重置满额 8h） -->
+          <div v-if="!license.activated"
             class="d-flex align-center ga-2 mb-3">
             <v-btn color="primary" variant="tonal" size="small" prepend-icon="mdi-timer-play-outline"
               :disabled="license.trialActive" :loading="license.busy" @click="onStartTrial">
-              {{ license.trialActive ? '体验中' : '先体验 24 小时' }}
+              {{ license.trialActive ? '体验中' : '先体验 8 小时' }}
             </v-btn>
             <span class="text-caption text-medium-emphasis">
               {{ license.trialActive
                 ? `剩余 ${fmtTrial(license.trialRemaining)}（按设备运行时间累计，断电不计时）`
-                : '不激活也能先用完整功能 24 小时' }}
+                : license.trialRemaining > 0 ? '剩余 0s，可再次开启重置满额 8 小时' : '不激活也能先用完整功能 8 小时' }}
             </span>
           </div>
 
@@ -721,7 +717,7 @@ async function openLicenseDialog(): Promise<void> {
   if (!license.isFreeTier && !license.challenge) await license.requestChallenge()
 }
 
-/** 开启 24h 体验（设备侧按运行时间计时，跨重启延续） */
+/** 开启 8h 体验（设备侧按运行时间计时，跨重启延续） */
 async function onStartTrial (): Promise<void> {
   const ok = await license.startTrial()
   if (ok) {

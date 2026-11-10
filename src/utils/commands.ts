@@ -671,7 +671,7 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
         return { cmd: name, ok: true, activated: r.u8() !== 0 }
       case CMD.LICENSE_STATUS:
         // has_gate=0 → 基础版（无许可证机制）；active_mask 的 bit0 = 已激活
-        //   trial: 24h 体验状态（未激活时可能有体验在跑）——都**如实上报**
+        //   trial: 8h 体验状态（未激活时可能有体验在跑）——都**如实上报**
         return {
           cmd: name,
           ok: true,
