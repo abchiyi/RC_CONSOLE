@@ -136,8 +136,9 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
           name: string | null
           channels: Map<number, ModelChannel>
           curveEnabled: boolean | null
+          modelId: number | null
         }
-        w.bytes(encodeModelDiffTlv(d.name, d.channels, d.curveEnabled))
+        w.bytes(encodeModelDiffTlv(d.name, d.channels, d.curveEnabled, d.modelId))
       } else {
         // 全量覆盖: flags=0x00 (兼容旧语义, 缺失字段恢复默认)
         w.u8(0)
@@ -347,6 +348,7 @@ export function encodeModelTlv(model: ModelConfig): Uint8Array {
   if (model.curve_enabled !== undefined) {
     w.tlv(0x12, new Writer().u8(model.curve_enabled ? 1 : 0).toBytes())
   }
+  if (model.model_id !== undefined) w.tlv(0x13, new Writer().u8(model.model_id).toBytes())
   const channels = model.channels ?? []
   for (let i = 0; i < 16 && i < channels.length; i++) {
     const ch = channels[i]
@@ -363,12 +365,15 @@ export function encodeModelDiffTlv(
   name: string | null,
   channels: Map<number, ModelChannel>,
   curveEnabled: boolean | null = null,
+  modelId: number | null = null,
 ): Uint8Array {
   const w = new Writer()
   // name 有变化就发送 (即使空串, 用于清空模型名)
   if (name !== null) w.tlv(0x01, new Writer().str(name).toBytes())
   // 模型级曲线总开关有变化才发送
   if (curveEnabled !== null) w.tlv(0x12, new Writer().u8(curveEnabled ? 1 : 0).toBytes())
+  // 模型 ID 有变化才发送
+  if (modelId !== null) w.tlv(0x13, new Writer().u8(modelId).toBytes())
   for (const [idx, ch] of channels) {
     if (idx >= 0 && idx < 16) w.tlv(0x02 + idx, encodeChannelTlv(ch))
   }
@@ -428,7 +433,7 @@ export function encodeChannelTlv(ch: ModelChannel): Uint8Array {
 }
 
 export function decodeModelTlv(data: Uint8Array): ModelConfig {
-  const model: ModelConfig = { name: '', channels: [], curve_enabled: true }
+  const model: ModelConfig = { name: '', channels: [], curve_enabled: true, model_id: 0 }
   for (const { tag, value } of parseTlvList(data)) {
     if (tag === 0x01) {
       // 防御: name 字段数据异常(如长度越界)时降级为空名, 不让整个响应丢失
@@ -439,6 +444,8 @@ export function decodeModelTlv(data: Uint8Array): ModelConfig {
       }
     } else if (tag === 0x12) {
       model.curve_enabled = !!new Reader(value).u8()
+    } else if (tag === 0x13) {
+      model.model_id = new Reader(value).u8()
     } else if (tag >= 0x02 && tag <= 0x11) {
       const idx = tag - 0x02
       if (idx < 16) {
@@ -787,7 +794,7 @@ function decodeGetConfig(r: Reader, name: string): Record<string, unknown> {
     else if (tag >= 0x10 && tag <= 0x17) {
       const slot = tag - 0x10
       // 固件仅回模型名 str（完整通道数据经 GET_MODEL 按需拉取）
-      ;(cfg.models as ModelConfig[])[slot] = { name: new Reader(value).str(), channels: [], curve_enabled: true }
+      ;(cfg.models as ModelConfig[])[slot] = { name: new Reader(value).str(), channels: [], curve_enabled: true, model_id: 0 }
     }
   }
   return cfg

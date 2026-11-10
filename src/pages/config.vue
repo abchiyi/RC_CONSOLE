@@ -49,6 +49,20 @@
           </div>
         </v-sheet>
 
+        <!-- 模型级: 名称 -->
+        <v-sheet v-if="configStore.config" rounded="lg" class="pa-3 mb-3 model-curve-sheet">
+          <div class="param-group">
+            <span class="text-caption font-weight-bold">
+              <v-icon size="16" class="me-1">mdi-tag-text-outline</v-icon>
+              模型名称</span>
+            <v-text-field v-model="modelName" density="compact" hide-details variant="outlined"
+              style="max-width: 240px" maxlength="31" placeholder="Model 名称" />
+          </div>
+          <div class="text-caption text-medium-emphasis mt-1">
+            自定义当前模型的显示名称 (≤31 字符)，在模型下拉框与状态中显示。
+          </div>
+        </v-sheet>
+
         <!-- 模型级: 输出响应曲线总开关 -->
         <v-sheet v-if="configStore.config" rounded="lg" class="pa-3 mb-3 model-curve-sheet">
           <div class="param-group">
@@ -59,6 +73,20 @@
           </div>
           <div class="text-caption text-medium-emphasis mt-1">
             开启后连续量通道输出按「传感器」页对应曲线整形；关闭则原样输出。默认开启。
+          </div>
+        </v-sheet>
+
+        <!-- 模型级: ELRS Model Match 模型 ID -->
+        <v-sheet v-if="configStore.config" rounded="lg" class="pa-3 mb-3 model-curve-sheet">
+          <div class="param-group">
+            <span class="text-caption font-weight-bold">
+              <v-icon size="16" class="me-1">mdi-identifier</v-icon>
+              ELRS 模型 ID (Model Match)</span>
+            <v-text-field v-model.number="modelId" type="number" density="compact"
+              hide-details variant="outlined" style="max-width: 120px" min="0" max="63" step="1" />
+          </div>
+          <div class="text-caption text-medium-emphasis mt-1">
+            切到此槽位时下发给 ELRS 高频头 (0~63)，配合接收机 Model Match 编号使用；默认 0。
           </div>
         </v-sheet>
 
@@ -490,6 +518,28 @@ const modelCurveEnabled = computed<boolean>({
     if (!m) return
     m.curve_enabled = v
     // 直接改写 store 内配置(不经过 setModel) → 手动标记未保存, 否则按钮会一直是"已保存"态
+    configStore.markConfigDirty()
+  },
+})
+
+// ELRS Model Match 模型 ID (0~63), 双向绑定到当前模型的 model_id
+const modelId = computed<number>({
+  get: () => configStore.config?.models?.[selectedSlot.value]?.model_id ?? 0,
+  set: (v: number) => {
+    const m = configStore.config?.models?.[selectedSlot.value]
+    if (!m) return
+    m.model_id = Math.max(0, Math.min(63, Math.round(v)))
+    configStore.markConfigDirty()
+  },
+})
+
+// 模型名称 (可自定义), 双向绑定到当前模型的 name
+const modelName = computed<string>({
+  get: () => configStore.config?.models?.[selectedSlot.value]?.name ?? '',
+  set: (v: string) => {
+    const m = configStore.config?.models?.[selectedSlot.value]
+    if (!m) return
+    m.name = v.slice(0, 31) // 固件 name[32], 留 1 字节给 NUL 终止
     configStore.markConfigDirty()
   },
 })
@@ -1137,6 +1187,7 @@ async function saveCurrentModel(): Promise<boolean> {
   const model = configStore.config?.models?.[selectedSlot.value]
   const name = model?.name || ''
   const curveEnabled = !!model?.curve_enabled
+  const modelIdValue = model?.model_id ?? 0
   // 将 μs 转回 CRSF raw 再发送到固件
   // 条件字段需扁平化并映射到固件缩写的 JSON key
   const rawChannels = editChannels.map((ch, idx) => {
@@ -1188,6 +1239,7 @@ async function saveCurrentModel(): Promise<boolean> {
     name,
     channels: rawChannels,
     curve_enabled: curveEnabled,
+    model_id: modelIdValue,
   })
 }
 

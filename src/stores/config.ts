@@ -80,6 +80,8 @@ export interface ModelConfig {
   channels: ModelChannel[]
   // 模型级输出响应曲线总开关: 开启后模型所有连续量通道输出应用对应源的响应曲线
   curve_enabled: boolean
+  // ELRS Model Match 模型 ID (0~63): 切到本槽时经 CRSF 命令帧下发给外接 TX 模块
+  model_id: number
 }
 
 export interface AppConfig {
@@ -185,6 +187,7 @@ export const useConfigStore = defineStore('config', () => {
     name: string | null
     channels: Map<number, ModelChannel>
     curveEnabled: boolean | null
+    modelId: number | null
   } | null {
     if (!base) {
       const channels = new Map<number, ModelChannel>()
@@ -192,10 +195,11 @@ export const useConfigStore = defineStore('config', () => {
         const ch = data.channels[i]
         if (ch) channels.set(i, ch)
       }
-      return { name: data.name, channels, curveEnabled: data.curve_enabled }
+      return { name: data.name, channels, curveEnabled: data.curve_enabled, modelId: data.model_id ?? 0 }
     }
     const nameChanged = String(data.name) !== String(base.name)
     const curveChanged = !!data.curve_enabled !== !!base.curve_enabled
+    const modelIdChanged = (data.model_id ?? 0) !== (base.model_id ?? 0)
     const changed = new Map<number, ModelChannel>()
     for (let i = 0; i < 16; i++) {
       const a = data.channels[i]
@@ -203,11 +207,12 @@ export const useConfigStore = defineStore('config', () => {
       if (!a) continue
       if (!b || !bytesEqual(encodeChannelTlv(a), encodeChannelTlv(b))) changed.set(i, a)
     }
-    if (!nameChanged && !curveChanged && changed.size === 0) return null
+    if (!nameChanged && !curveChanged && !modelIdChanged && changed.size === 0) return null
     return {
       name: nameChanged ? data.name : null,
       channels: changed,
       curveEnabled: curveChanged ? !!data.curve_enabled : null,
+      modelId: modelIdChanged ? (data.model_id ?? 0) : null,
     }
   }
 
@@ -285,7 +290,7 @@ export const useConfigStore = defineStore('config', () => {
       radio_mode: 0,
       active_model: activeSlot ?? config.value?.active_model ?? 0,
       lpf_alpha: 0,
-      models: new Array(count).fill(null).map(() => ({ name: '', channels: [], curve_enabled: true })),
+      models: new Array(count).fill(null).map(() => ({ name: '', channels: [], curve_enabled: true, model_id: 0 })),
     }
 
     for (let slot = 0; slot < count; slot++) {
@@ -315,6 +320,7 @@ export const useConfigStore = defineStore('config', () => {
       name: config.value?.models?.[i]?.name ?? '',
       channels: [],
       curve_enabled: config.value?.models?.[i]?.curve_enabled ?? true,
+      model_id: config.value?.models?.[i]?.model_id ?? 0,
     }))
     await fetchModel(config.value.active_model)
   }
@@ -685,6 +691,7 @@ export const useConfigStore = defineStore('config', () => {
               ? prev.models[i]!.channels
               : (m.channels ?? []),
             curve_enabled: m.curve_enabled ?? prev?.models?.[i]?.curve_enabled ?? true,
+            model_id: m.model_id ?? prev?.models?.[i]?.model_id ?? 0,
           }
         }),
       }
