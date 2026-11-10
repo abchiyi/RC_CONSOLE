@@ -17,7 +17,7 @@ export interface PowerState {
   charge: 'none' | 'charging' | 'full'
   idle_s: number
   battery_mv: number
-  /** 电量档位 0~4 (0=空 4=满, 每档约 20% 容量); 固件不再上报百分比 */
+  /** 电量档位 0~4 (0=警告挡即声光告警; 1 已取消不再产出; 2/3/4=格数); 固件不再上报百分比 */
   battery_level: number
   vbus_mv: number
   sys_mv: number

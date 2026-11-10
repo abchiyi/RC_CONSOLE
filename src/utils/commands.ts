@@ -873,7 +873,7 @@ function decodePowerState(r: Reader, name: string): Record<string, unknown> {
     state: 'normal',
     charge: chargeStatusMap(r.u8()),
     battery_mv: r.u16(),
-    battery_level: r.u8(), // 电量档位 0~4 (0=空 4=满, 每档约 20% 容量)
+    battery_level: r.u8(), // 电量档位 0~4 (0=警告挡; 1 已取消; 2/3/4=格数)
     vbus_mv: r.u16(),
     sys_mv: r.u16(),
     temp: r.i16() / 10,
