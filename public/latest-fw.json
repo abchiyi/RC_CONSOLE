@@ -1,5 +1,5 @@
 {
-  "fw_version": "3.2",
+  "fw_version": "3.2.1",
   "commit": "4a2d6588",
   "released_at": "2026-11-10",
   "notes": "ci(release): 发布说明改为取 tag 注释"
