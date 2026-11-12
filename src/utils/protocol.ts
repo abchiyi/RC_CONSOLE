@@ -121,6 +121,10 @@ export const CMD = {
   // 转发出口的 RSSI 字节口径: payload u8 0=ELRS 原生 int8 dBm(透传) / 1=TBS·Crossfire uint8=-dBm
   //   第三方手机地面站按后者解析，口径不对时 RSSI 会显示成 0%（0x0803 编号复用）
   SET_TELEM_RSSI_MODE: 0x08_03,
+  // Xbox 手柄输出映射 / 灵敏度（v2 64B blob = 6 轴 + 15 按钮；v1 19B 可读入）
+  //   GET: req 空 → resp 64B；SET: req 64B → resp 64B 生效值回显
+  XBOX_GET_CFG: 0x09_01,
+  XBOX_SET_CFG: 0x09_02,
 } as const
 
 /** ELRS_FLASH_BEGIN 的 flags 位（对齐固件 protocol.h FlashBeginFlags） */
@@ -196,6 +200,8 @@ export const CMD_NAME_TO_ID: Record<string, number> = {
   set_lock_zero: CMD.SET_LOCK_ZERO,
   set_silent: CMD.SET_SILENT,
   set_rf_bypass: CMD.SET_RF_BYPASS,
+  xbox_get_cfg: CMD.XBOX_GET_CFG,
+  xbox_set_cfg: CMD.XBOX_SET_CFG,
 }
 
 const CMD_ID_TO_NAME: Record<number, string> = Object.fromEntries(

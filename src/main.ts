@@ -26,6 +26,7 @@ import { useLinkStatsStore } from '@/stores/linkStats'
 import { usePowerStore } from '@/stores/power'
 import { handleStreamResponse } from '@/stores/stream'
 import { useTelemetryStore } from '@/stores/telemetry'
+import { useXboxStore } from '@/stores/xbox'
 
 // Components
 import App from './App.vue'
@@ -78,6 +79,13 @@ function routeObject (obj: Record<string, unknown>): void {
   // cal_* → 校准 Store（通道/raw+IMU 已并入流式推送）
   if (cmd.startsWith('cal_')) {
     useCalibrationStore().handleResponse(obj)
+    return
+  }
+
+  // xbox_get_cfg / xbox_set_cfg → Xbox 手柄映射 Store
+  //   ★ 必须排在 config Store 兜底之前，且不能在 cmd.includes('power') 之后被误吞
+  if (cmd.startsWith('xbox_')) {
+    useXboxStore().handleResponse(obj)
     return
   }
 

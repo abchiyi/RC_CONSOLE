@@ -16,6 +16,7 @@ import { useLinkStatsStore } from './linkStats'
 import { usePowerStore } from './power'
 import { releaseAllStreams } from './stream'
 import { useTelemetryStore } from './telemetry'
+import { useXboxStore } from './xbox'
 
 export function resetAllStores (): void {
   // 遥测：先停流（撤请求 + 停 1s 结算定时器），再清统计与解码值
@@ -27,6 +28,7 @@ export function resetAllStores (): void {
   useCalibrationStore().reset()
   useConfigStore().reset()
   usePowerStore().reset()
+  useXboxStore().reset()
   useChannelStore().reset()
 
   // 收口：清空全部流请求 + 让在飞行的 flush 回写失效（各 store 的 stop/reset 已撤过自己的）

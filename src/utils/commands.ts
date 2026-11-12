@@ -34,6 +34,264 @@ import {
 import type { ModelChannel, ModelConfig } from '@/stores/config'
 import { RAW_MIN, RAW_CENTER, RAW_MAX } from './crsf'
 
+// ── Xbox 手柄输出映射 / 灵敏度（与固件 components/xbox_cfg/xbox_cfg.h 逐字节一致）──
+
+/** 模拟轴顺序（同时是 blob 中的顺序） */
+export const XBOX_AXIS_KEYS = ['lx', 'ly', 'rx', 'ry', 'lt', 'rt'] as const
+export type XboxAxisKey = typeof XBOX_AXIS_KEYS[number]
+
+/** 按钮顺序（同时是 blob 中的顺序，与 espp::xinput::Button 位序一致） */
+export const XBOX_BUTTON_KEYS = [
+  'dpad_up', 'dpad_down', 'dpad_left', 'dpad_right',
+  'start', 'back', 'l3', 'r3',
+  'lb', 'rb', 'guide',
+  'a', 'b', 'x', 'y',
+] as const
+export type XboxButtonKey = typeof XBOX_BUTTON_KEYS[number]
+
+/** 物理输入源枚举（数值必须与固件 XboxCfg::Source 一致） */
+export const XBOX_SOURCE = {
+  NONE: 0,
+  IMU_ROLL: 1, IMU_PITCH: 2, IMU_YAW: 3,
+  JOY_X: 4, JOY_Y: 5, TRIGGER_PULL: 6, KNOB: 7,
+  BTN_LOCK: 8, BTN_MH: 9, BTN_EC11: 10, BTN_SHOT: 11,
+  BTN_POWER: 12, BTN_TRIGGER_PUSH: 13,
+  KNOB_UP: 14, KNOB_DOWN: 15,
+} as const
+
+/** 半周选择（按钮的模拟源） */
+export const XBOX_HALF = { BOTH: 0, POSITIVE: 1, NEGATIVE: 2 } as const
+
+export interface XboxSourceOption {
+  value: number
+  title: string
+  /** 十字图/紧凑处用的短名 */
+  short: string
+  /** IMU 源：只允许映射到模拟轴，需角度量程 */
+  imu: boolean
+  /** 数字源：物理按钮 / 波轮事件，只能映射到按钮 */
+  digital: boolean
+}
+
+/** 全部源（下拉基础数据） */
+export const XBOX_SOURCE_OPTIONS: readonly XboxSourceOption[] = [
+  { value: XBOX_SOURCE.NONE, title: '关闭（恒 0 / 不按下）', short: '关闭', imu: false, digital: false },
+  { value: XBOX_SOURCE.IMU_ROLL, title: '姿态 Roll（横滚）', short: 'Roll', imu: true, digital: false },
+  { value: XBOX_SOURCE.IMU_PITCH, title: '姿态 Pitch（俯仰）', short: 'Pitch', imu: true, digital: false },
+  { value: XBOX_SOURCE.IMU_YAW, title: '姿态 Yaw（偏航）', short: 'Yaw', imu: true, digital: false },
+  { value: XBOX_SOURCE.JOY_X, title: '摇杆 X', short: '摇杆 X', imu: false, digital: false },
+  { value: XBOX_SOURCE.JOY_Y, title: '摇杆 Y', short: '摇杆 Y', imu: false, digital: false },
+  { value: XBOX_SOURCE.TRIGGER_PULL, title: '扳机「拉」', short: '扳机拉', imu: false, digital: false },
+  { value: XBOX_SOURCE.KNOB, title: '波轮位置（相对基准 ±20 格）', short: '波轮位置', imu: false, digital: false },
+  { value: XBOX_SOURCE.BTN_LOCK, title: '按键 LOCK', short: 'LOCK', imu: false, digital: true },
+  { value: XBOX_SOURCE.BTN_MH, title: '按键 MH', short: 'MH', imu: false, digital: true },
+  { value: XBOX_SOURCE.BTN_EC11, title: '按键 EC11 按下', short: 'EC11', imu: false, digital: true },
+  { value: XBOX_SOURCE.BTN_SHOT, title: '按键 SHOT', short: 'SHOT', imu: false, digital: true },
+  { value: XBOX_SOURCE.BTN_POWER, title: '按键 POWER', short: 'POWER', imu: false, digital: true },
+  { value: XBOX_SOURCE.BTN_TRIGGER_PUSH, title: '扳机「推」', short: '扳机推', imu: false, digital: true },
+  { value: XBOX_SOURCE.KNOB_UP, title: '波轮上拨（脉冲 80ms）', short: '波轮上拨', imu: false, digital: true },
+  { value: XBOX_SOURCE.KNOB_DOWN, title: '波轮下拨（脉冲 80ms）', short: '波轮下拨', imu: false, digital: true },
+]
+
+const XBOX_DIGITAL_SOURCES = new Set<number>(
+  XBOX_SOURCE_OPTIONS.filter(o => o.digital).map(o => o.value),
+)
+const XBOX_IMU_SOURCES = new Set<number>(
+  XBOX_SOURCE_OPTIONS.filter(o => o.imu).map(o => o.value),
+)
+
+export function isXboxImuSource (source: number): boolean {
+  return XBOX_IMU_SOURCES.has(source)
+}
+
+export function isXboxDigitalSource (source: number): boolean {
+  return XBOX_DIGITAL_SOURCES.has(source)
+}
+
+/** 模拟轴可选源：模拟源 + NONE（数字源是布尔量，不允许映射到模拟轴） */
+export const XBOX_AXIS_SOURCE_OPTIONS: readonly XboxSourceOption[]
+  = XBOX_SOURCE_OPTIONS.filter(o => !o.digital)
+
+/** 按钮可选源：排除 IMU（IMU 只允许映射到模拟轴） */
+export const XBOX_BUTTON_SOURCE_OPTIONS: readonly XboxSourceOption[]
+  = XBOX_SOURCE_OPTIONS.filter(o => !o.imu)
+
+export const XBOX_HALF_OPTIONS = [
+  { value: XBOX_HALF.BOTH, title: '全周 |v|' },
+  { value: XBOX_HALF.POSITIVE, title: '正半周 +v' },
+  { value: XBOX_HALF.NEGATIVE, title: '负半周 −v' },
+] as const
+
+export interface XboxAxisCfg {
+  source: number
+  invert: boolean
+  half_range_deg: number // 5..90，仅 IMU_* 源有效；其余源恒 0
+}
+
+export interface XboxButtonCfg {
+  source: number
+  half: number
+  threshold: number // 0..100；数字源恒 0
+}
+
+export interface XboxConfig {
+  version: number
+  axes: Record<XboxAxisKey, XboxAxisCfg>
+  buttons: Record<XboxButtonKey, XboxButtonCfg>
+}
+
+export const XBOX_BLOB_VERSION = 2
+export const XBOX_BLOB_VERSION_V1 = 1
+// v1: version + 6 轴 = 19B；v2: 再 + 15 按钮 = 64B
+export const XBOX_BLOB_SIZE_V1 = 1 + XBOX_AXIS_KEYS.length * 3
+export const XBOX_BLOB_SIZE = 1 + XBOX_AXIS_KEYS.length * 3 + XBOX_BUTTON_KEYS.length * 3
+
+export const XBOX_AXIS_LABELS: Record<XboxAxisKey, string> = {
+  lx: '左摇杆 X', ly: '左摇杆 Y', rx: '右摇杆 X',
+  ry: '右摇杆 Y', lt: '左扳机 LT', rt: '右扳机 RT',
+}
+
+export const XBOX_BUTTON_LABELS: Record<XboxButtonKey, string> = {
+  dpad_up: '十字键 ↑', dpad_down: '十字键 ↓', dpad_left: '十字键 ←', dpad_right: '十字键 →',
+  start: 'Start', back: 'Back', l3: 'L3 左摇杆按下', r3: 'R3 右摇杆按下',
+  lb: 'LB 左肩键', rb: 'RB 右肩键', guide: 'Guide',
+  a: 'A', b: 'B', x: 'X', y: 'Y',
+}
+
+/** 按钮分组（页面按组折叠；顺序即 blob 索引顺序的子集） */
+export const XBOX_BUTTON_GROUPS: ReadonlyArray<{
+  title: string
+  subtitle: string
+  icon: string
+  keys: readonly XboxButtonKey[]
+}> = [
+  { title: '面部键', subtitle: 'A / B / X / Y', icon: 'mdi-gamepad-variant', keys: ['a', 'b', 'x', 'y'] },
+  { title: '肩键与摇杆键', subtitle: 'LB / RB / L3 / R3', icon: 'mdi-gamepad-right', keys: ['lb', 'rb', 'l3', 'r3'] },
+  { title: '十字键', subtitle: 'D-pad 四方向', icon: 'mdi-axis-arrow', keys: ['dpad_up', 'dpad_down', 'dpad_left', 'dpad_right'] },
+  { title: '系统键', subtitle: 'Start / Back / Guide', icon: 'mdi-circle', keys: ['start', 'back', 'guide'] },
+]
+
+/** 出厂默认 = 固件 XboxCfg::kDefaults（按钮映射与改造前固定行为一致） */
+export function defaultXboxConfig (): XboxConfig {
+  const buttons = {} as Record<XboxButtonKey, XboxButtonCfg>
+  for (const k of XBOX_BUTTON_KEYS) {
+    buttons[k] = { source: XBOX_SOURCE.NONE, half: 0, threshold: 0 }
+  }
+  buttons.start = { source: XBOX_SOURCE.BTN_POWER, half: 0, threshold: 0 }
+  buttons.lb = { source: XBOX_SOURCE.BTN_SHOT, half: 0, threshold: 0 }
+  buttons.a = { source: XBOX_SOURCE.BTN_LOCK, half: 0, threshold: 0 }
+  buttons.b = { source: XBOX_SOURCE.BTN_MH, half: 0, threshold: 0 }
+  buttons.x = { source: XBOX_SOURCE.BTN_EC11, half: 0, threshold: 0 }
+  buttons.y = { source: XBOX_SOURCE.BTN_TRIGGER_PUSH, half: 0, threshold: 0 }
+  return {
+    version: XBOX_BLOB_VERSION,
+    axes: {
+      lx: { source: XBOX_SOURCE.IMU_ROLL, invert: false, half_range_deg: 25 },
+      ly: { source: XBOX_SOURCE.IMU_PITCH, invert: true, half_range_deg: 15 },
+      rx: { source: XBOX_SOURCE.JOY_X, invert: false, half_range_deg: 0 },
+      ry: { source: XBOX_SOURCE.JOY_Y, invert: false, half_range_deg: 0 },
+      lt: { source: XBOX_SOURCE.TRIGGER_PULL, invert: false, half_range_deg: 0 },
+      rt: { source: XBOX_SOURCE.NONE, invert: false, half_range_deg: 0 },
+    },
+    buttons,
+  }
+}
+
+/** 源短名（十字图标注用） */
+export function xboxSourceShort (source: number): string {
+  return XBOX_SOURCE_OPTIONS.find(o => o.value === source)?.short ?? '?'
+}
+
+/** 解码 6 个模拟轴（v1/v2 前 19B 布局相同）；strict=v2 时额外拒绝非 IMU 带量程 */
+function decodeXboxAxes (bytes: Uint8Array, cfg: XboxConfig, strict: boolean): void {
+  for (const [i, key] of XBOX_AXIS_KEYS.entries()) {
+    const p = 1 + i * 3
+    const source = bytes[p] ?? 0
+    const invert = bytes[p + 1] ?? 0
+    const half = bytes[p + 2] ?? 0
+    if (source >= XBOX_SOURCE_OPTIONS.length || isXboxDigitalSource(source) || invert > 1) {
+      throw new Error(`Xbox 配置 ${key} 源/翻转值非法`)
+    }
+    const imu = isXboxImuSource(source)
+    if (imu && (half < 5 || half > 90)) {
+      throw new Error(`Xbox 配置 ${key} 角度量程须在 5..90°`)
+    }
+    if (strict && !imu && half !== 0) {
+      throw new Error(`Xbox 配置 ${key} 非姿态源不应带角度量程`)
+    }
+    cfg.axes[key] = { source, invert: invert !== 0, half_range_deg: imu ? half : 0 }
+  }
+}
+
+/** 解码 15 个按钮（仅 v2） */
+function decodeXboxButtons (bytes: Uint8Array, cfg: XboxConfig): void {
+  const b0 = 1 + XBOX_AXIS_KEYS.length * 3
+  for (const [i, key] of XBOX_BUTTON_KEYS.entries()) {
+    const p = b0 + i * 3
+    const source = bytes[p] ?? 0
+    const half = bytes[p + 1] ?? 0
+    const threshold = bytes[p + 2] ?? 0
+    if (source >= XBOX_SOURCE_OPTIONS.length || half > XBOX_HALF.NEGATIVE || threshold > 100) {
+      throw new Error(`Xbox 配置按钮 ${key} 参数非法`)
+    }
+    if (isXboxImuSource(source)) {
+      throw new Error(`Xbox 配置按钮 ${key} 不允许映射 IMU（IMU 只用于模拟轴）`)
+    }
+    const digital = source === XBOX_SOURCE.NONE || isXboxDigitalSource(source)
+    cfg.buttons[key] = digital
+      ? { source, half: 0, threshold: 0 }
+      : { source, half, threshold: threshold === 0 ? 50 : threshold }
+  }
+}
+
+/** v2 64B（或 v1 19B）blob → 配置对象；v1 的按钮填出厂默认 */
+export function decodeXboxBlob (bytes: Uint8Array): XboxConfig {
+  const version = bytes[0] ?? 0
+  const cfg = defaultXboxConfig()
+  if (version === XBOX_BLOB_VERSION_V1 && bytes.length === XBOX_BLOB_SIZE_V1) {
+    decodeXboxAxes(bytes, cfg, false)
+    return cfg
+  }
+  if (version !== XBOX_BLOB_VERSION || bytes.length !== XBOX_BLOB_SIZE) {
+    throw new Error(`Xbox 配置版本/长度不符: v${version}, ${bytes.length}B`)
+  }
+  decodeXboxAxes(bytes, cfg, true)
+  decodeXboxButtons(bytes, cfg)
+  return cfg
+}
+
+/** 配置对象 → v2 64B blob（前端先规范化+校验，避免设备回 S_BAD_PARAM） */
+export function encodeXboxBlob (cfg: XboxConfig): Uint8Array {
+  const out = new Uint8Array(XBOX_BLOB_SIZE)
+  out[0] = XBOX_BLOB_VERSION
+  for (const [i, key] of XBOX_AXIS_KEYS.entries()) {
+    const a = cfg.axes[key]
+    if (isXboxDigitalSource(a.source)) {
+      throw new Error(`Xbox 配置 ${key} 数字源不能映射到模拟轴`)
+    }
+    const imu = isXboxImuSource(a.source)
+    const half = imu ? Math.min(90, Math.max(5, Math.round(a.half_range_deg))) : 0
+    const p = 1 + i * 3
+    out[p] = a.source & 0xff
+    out[p + 1] = a.invert ? 1 : 0
+    out[p + 2] = half
+  }
+
+  const b0 = 1 + XBOX_AXIS_KEYS.length * 3
+  for (const [i, key] of XBOX_BUTTON_KEYS.entries()) {
+    const b = cfg.buttons[key]
+    if (isXboxImuSource(b.source)) {
+      throw new Error(`Xbox 配置按钮 ${key} 不允许映射 IMU`)
+    }
+    const digital = b.source === XBOX_SOURCE.NONE || isXboxDigitalSource(b.source)
+    const p = b0 + i * 3
+    out[p] = b.source & 0xff
+    out[p + 1] = digital ? 0 : Math.min(XBOX_HALF.NEGATIVE, Math.max(0, b.half))
+    out[p + 2] = digital ? 0 : Math.min(100, Math.max(1, Math.round(b.threshold || 50)))
+  }
+  return out
+}
+
 // ── 枚举名称表（对齐固件 protocol.h） ──
 
 const INPUT_SOURCE_NAMES = [
@@ -205,6 +463,13 @@ function encodeParams(id: number, w: Writer, params: Record<string, unknown>): v
     case CMD.SET_RF_BYPASS:
       // RF 安全门旁路: 0=恢复安全门, 1=未校准也放行射频 (仅本次上电有效)
       w.u8(Number(params.enable ?? 0) ? 1 : 0)
+      break
+    case CMD.XBOX_GET_CFG:
+      // 无参数：设备回 19B blob
+      break
+    case CMD.XBOX_SET_CFG:
+      // 19B blob（u8 version + 6×{source,invert,half_range_deg}）
+      if (params.data instanceof Uint8Array) w.bytes(params.data)
       break
     // ── 许可证（仅付费版固件）──
     case CMD.LICENSE_CHALLENGE:
@@ -642,6 +907,10 @@ export function decodeResponse(cmdId: number, status: number, data: Uint8Array):
       case CMD.SET_RF_BYPASS:
         // 回显生效后的旁路值 (1 = 安全门已旁路, 射频放行)
         return { cmd: name, ok: true, rf_bypass: r.u8() !== 0 }
+      case CMD.XBOX_GET_CFG:
+      case CMD.XBOX_SET_CFG:
+        // 两者响应同为 19B 生效值 blob；SET 的回显用于核对设备实际采用的配置
+        return { cmd: name, ok: true, xbox: decodeXboxBlob(data) }
       // ── 配置备份 / 还原（§5.15）──
       case CMD.CONFIG_EXPORT_BEGIN:
         return {

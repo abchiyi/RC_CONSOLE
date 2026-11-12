@@ -16,7 +16,16 @@ import { decodeModelTlv, encodeModelTlv } from './commands'
  *   type 0x21        analog_curve : 6 × { i8 x1,y1,x2,y2 }
  *   type 0x22        imu_cal      : 4 × { f32 x,y,z }
  *   type 0x23        attitude_zero: f32 w,x,y,z + u8 enabled
+ *   type 0x24        xbox_cfg     : v2 64B (version + 6×轴 + 15×按钮)；v1 19B 可读入
  */
+import {
+  decodeXboxBlob,
+  defaultXboxConfig,
+  encodeXboxBlob,
+  XBOX_BLOB_SIZE,
+  XBOX_BLOB_SIZE_V1,
+  type XboxConfig,
+} from './commands'
 import { Reader, Writer } from './protocol'
 
 const MAGIC = [0x52, 0x43, 0x53, 0x31] // 'R','C','S','1'
@@ -30,6 +39,7 @@ const SEC = {
   ANALOG_CURVE: 0x21,
   IMU_CAL: 0x22,
   ATT_ZERO: 0x23,
+  XBOX_CFG: 0x24,
 } as const
 
 /** 与固件 config.h 的 CONFIG_INT_FIELDS 顺序一致（调序必须同步两端） */
@@ -72,6 +82,8 @@ export interface ConfigBackupJson {
   version: number
   config: Record<string, number | boolean>
   models: ModelConfig[]
+  /** Xbox 手柄输出映射/灵敏度；旧备份文件无此字段时按出厂默认处理 */
+  xbox?: XboxConfig
   calibration: {
     analog: Record<string, AnalogCal>
     curves: Record<string, CurveData>
@@ -98,6 +110,18 @@ function emptyBackup (): ConfigBackupJson {
       imu: {},
       attitude_zero: { w: 1, x: 0, y: 0, z: 0, enabled: false },
     },
+  }
+}
+
+/** 解析 Xbox section；长度/版本不符或坏数据一律忽略，保持默认值 */
+function parseXboxSection (payload: Uint8Array, len: number): XboxConfig | undefined {
+  if (len !== XBOX_BLOB_SIZE && len !== XBOX_BLOB_SIZE_V1) {
+    return undefined
+  }
+  try {
+    return decodeXboxBlob(payload)
+  } catch {
+    return undefined
   }
 }
 
@@ -202,6 +226,10 @@ export function snapshotToJson (bytes: Uint8Array): ConfigBackupJson {
 
           break
         }
+        case SEC.XBOX_CFG: {
+          out.xbox = parseXboxSection(payload, len) ?? out.xbox
+          break
+        }
  // No default
       }
     }
@@ -273,6 +301,11 @@ function buildAttZeroSection (z: ConfigBackupJson['calibration']['attitude_zero'
   return p.toBytes()
 }
 
+/** Xbox 配置 section：直接用协议同款 19B blob，不另造格式 */
+function buildXboxSection (cfg: XboxConfig | undefined): Uint8Array {
+  return encodeXboxBlob(cfg ?? defaultXboxConfig())
+}
+
 /** JSON 对象 → 二进制快照 */
 export function jsonToSnapshot (input: unknown): Uint8Array {
   if (!input || typeof input !== 'object') {
@@ -320,6 +353,10 @@ export function jsonToSnapshot (input: unknown): Uint8Array {
   if (cal?.attitude_zero) {
     appendSection(w, SEC.ATT_ZERO, buildAttZeroSection(cal.attitude_zero))
   }
+
+  // 4) Xbox 手柄映射/灵敏度（新 section；旧文件无此字段时按出厂默认写入，
+  //    固件侧未知 section 自动跳过，两端都向前兼容）
+  appendSection(w, SEC.XBOX_CFG, buildXboxSection(obj.xbox))
 
   return w.toBytes()
 }

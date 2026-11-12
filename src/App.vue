@@ -9,6 +9,7 @@
         <v-list-item prepend-icon="mdi-chip" title="传感器" to="/calibration" />
         <v-list-item prepend-icon="mdi-antenna" title="ELRS" to="/elrs" />
         <v-list-item prepend-icon="mdi-access-point-network" title="遥测" to="/telemetry" />
+        <v-list-item prepend-icon="mdi-gamepad-variant" title="手柄输出" to="/xbox" />
         <v-list-item prepend-icon="mdi-monitor-dashboard" title="系统" to="/system" />
       </v-list>
 
