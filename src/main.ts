@@ -116,7 +116,7 @@ function routeObject (obj: Record<string, unknown>): void {
   useConfigStore().handleResponse(obj)
 }
 
-/** 流式事件路由（STREAM content_type：0=通道 1=raw+IMU 2=电源 3=链路 4=飞控遥测原始帧） */
+/** 流式事件路由（STREAM content_type：0=通道 1=raw+IMU 2=电源 3=链路 4=遥测 5=出厂 6=Xbox 输出） */
 function routeStreamEvent (
   contentType: number,
   data: Record<string, unknown>,
@@ -151,6 +151,11 @@ function routeStreamEvent (
       if (raw) {
         useTelemetryStore().handleStreamPayload(raw)
       }
+      break
+    }
+    case 6: {
+      // Xbox 手柄输出实时状态（20B XInput report）
+      useXboxStore().handleStreamData(data)
       break
     }
     default: {

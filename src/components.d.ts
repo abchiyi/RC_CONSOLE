@@ -27,5 +27,6 @@ declare module 'vue' {
     SliderLabel: typeof import('./components/SliderLabel.vue')['default']
     StickCross: typeof import('./components/xbox/StickCross.vue')['default']
     ThemeModeToggle: typeof import('./components/ThemeModeToggle.vue')['default']
+    XboxReportCard: typeof import('./components/xbox/XboxReportCard.vue')['default']
   }
 }

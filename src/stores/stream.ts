@@ -34,6 +34,7 @@ export const OWNER = {
   CALIBRATION: 'calibration',
   LINK: 'link',
   TELEMETRY: 'telemetry',
+  XBOX: 'xbox',
 } as const
 
 /**
@@ -42,10 +43,13 @@ export const OWNER = {
  * 常驻请求，否则进页后拿不到带 source 表的帧 —— 那张表是定位按钮 / 旋钮所在通道的唯一依据。
  * 测试页全程只用这一条（监测期间仅把间隔从 50ms 提到 20ms），不再切 raw 流。
  * 遥测与链路同级：固件是单流会话，两者互斥，谁后申请谁生效（见文件头注释）。
+ * ★ 新 owner 必须登记优先级：未登记默认 0，与连接成功即常驻的 CHANNELS 同级，
+ *   pick() 用严格大于比较（同级先登记者胜），会导致 Xbox 实时流永远抢不到。
  */
 const OWNER_PRIORITY: Record<string, number> = {
   [OWNER.FACTORY]: 3,
   [OWNER.CALIBRATION]: 2,
+  [OWNER.XBOX]: 2,
   [OWNER.LINK]: 1,
   [OWNER.TELEMETRY]: 1,
   [OWNER.CHANNELS]: 0,

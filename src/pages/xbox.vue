@@ -10,6 +10,9 @@
       <v-chip v-if="xbox.dirty" color="warning" size="small" variant="tonal">未保存</v-chip>
     </v-toolbar>
 
+    <!-- ── 顶部专用区域：Xbox 输出报文实时数据（始终可见，进页面即开流）── -->
+    <XboxReportCard />
+
     <!-- 未连接（路由门禁通常已挡住，这里仍做页面内兜底） -->
     <v-alert
       v-if="!serial.connected"
@@ -68,6 +71,8 @@
         <v-card-text class="pt-2 pb-3">
           <div class="cross-grid">
             <StickCross
+              :live-x="liveX('lx')"
+              :live-y="liveY('ly')"
               title="左摇杆"
               :x-invert="xbox.editCfg.axes.lx.invert"
               :x-label="xboxSourceShort(xbox.editCfg.axes.lx.source)"
@@ -78,6 +83,8 @@
             />
 
             <StickCross
+              :live-x="liveX('rx')"
+              :live-y="liveY('ry')"
               title="右摇杆"
               :x-invert="xbox.editCfg.axes.rx.invert"
               :x-label="xboxSourceShort(xbox.editCfg.axes.rx.source)"
@@ -303,8 +310,9 @@
 </template>
 
 <script setup lang="ts">
-  import { onMounted, onUnmounted, ref } from 'vue'
+  import { onMounted, onUnmounted, ref, watch } from 'vue'
   import StickCross from '@/components/xbox/StickCross.vue'
+  import XboxReportCard from '@/components/xbox/XboxReportCard.vue'
   import { useNotice } from '@/composables/useNotice'
   import { useSerialStore } from '@/stores/serial'
   import { useXboxStore } from '@/stores/xbox'
@@ -347,6 +355,15 @@
     return isImu(key) ? xbox.editCfg.axes[key].half_range_deg : undefined
   }
 
+  /** 十字图实时点位：仅在流有效且设备侧 active 时给值，否则隐藏点位 */
+  function liveX (key: 'lx' | 'rx'): number | undefined {
+    return xbox.liveActive ? xbox.live?.[key] : undefined
+  }
+
+  function liveY (key: 'ly' | 'ry'): number | undefined {
+    return xbox.liveActive ? xbox.live?.[key] : undefined
+  }
+
   /** 按钮是否接模拟源（决定半周/阈值控件是否可用） */
   function isAnalogButton (key: XboxButtonKey): boolean {
     const s = xbox.editCfg.buttons[key].source
@@ -383,12 +400,27 @@
     await xbox.fetch()
   }
 
+  // 与其他页面同机制：进页登记流请求（stream.ts 单流仲裁），离页只撤销登记、
+  // 不发礼让式 stop（BLE 写入有退避，迟到的 stop 会关掉下个页面刚开的流）。
+  watch(() => serial.connected, connected => {
+    if (connected) {
+      xbox.start()
+      void xbox.fetch()
+    } else {
+      xbox.stop()
+    }
+  })
+
   onMounted(() => {
     window.addEventListener('app:reload-from-device', onGlobalReload)
-    if (serial.connected) void xbox.fetch()
+    if (serial.connected) {
+      xbox.start()
+      void xbox.fetch()
+    }
   })
 
   onUnmounted(() => {
+    xbox.stop()
     window.removeEventListener('app:reload-from-device', onGlobalReload)
   })
 </script>

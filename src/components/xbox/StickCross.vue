@@ -56,6 +56,20 @@
       <circle class="cross-dot" cx="100" cy="100" r="3.5" />
       <circle class="cross-hub" cx="100" cy="100" r="9" />
 
+      <!-- 实时点位：X/Y 为当前 XInput 报告的轴值（i16），未开流时不显示 -->
+      <g v-if="liveX !== undefined && liveY !== undefined">
+        <line
+          class="cross-live-trace"
+          :x1="100"
+          :x2="liveCx"
+          :y1="100"
+          :y2="liveCy"
+        />
+
+        <circle class="cross-live-halo" :cx="liveCx" :cy="liveCy" r="10" />
+        <circle class="cross-live-dot" :cx="liveCx" :cy="liveCy" r="5" />
+      </g>
+
       <!-- 四端标签：上=Y+ 下=Y− 左=X− 右=X+；翻转时 +/− 互换 -->
       <g class="cross-labels">
         <text class="cross-label-y" text-anchor="middle" x="100" y="36">
@@ -107,7 +121,15 @@
     /** IMU 源的角度量程（0 表示非姿态源，不显示） */
     xRange?: number
     yRange?: number
+    /** 实时轴值（i16）；未开流时传 undefined，点位隐藏 */
+    liveX?: number
+    liveY?: number
   }>()
+
+  // i16 → SVG 坐标：中心 100，半幅 90（对应边界框内缘）。
+  //   Y 轴画面向下为正，而 XInput 的 Y 上推为正，故取负号。
+  const liveCx = computed(() => 100 + Math.max(-1, Math.min(1, (props.liveX ?? 0) / 32_767)) * 90)
+  const liveCy = computed(() => 100 - Math.max(-1, Math.min(1, (props.liveY ?? 0) / 32_767)) * 90)
 
   // 翻转后，物理源的「正」落到摇杆的负方向，故标注互换
   const xPositive = computed(() => props.xInvert ? '−' : '+')
@@ -171,6 +193,23 @@
   fill: none;
   stroke: rgba(var(--v-theme-primary), 0.45);
   stroke-width: 1;
+}
+
+.cross-live-trace {
+  stroke: rgb(var(--v-theme-secondary));
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+  opacity: 0.8;
+}
+
+.cross-live-halo {
+  fill: rgba(var(--v-theme-secondary), 0.22);
+  stroke: rgba(var(--v-theme-secondary), 0.6);
+  stroke-width: 1;
+}
+
+.cross-live-dot {
+  fill: rgb(var(--v-theme-secondary));
 }
 
 .cross-labels text {

@@ -21,6 +21,7 @@ import {
   STREAM_LINK,
   STREAM_CRSF_TELEM,
   STREAM_FACTORY,
+  STREAM_XBOX_OUTPUT,
   EVENT_STREAM_DATA,
   Writer,
   Reader,
@@ -1237,6 +1238,74 @@ function decodeElrsField(r: Reader): Record<string, unknown> {
 
 // ── 流式事件解码 ──
 
+/** XInput input report 长度（wire 20B） */
+export const XBOX_REPORT_SIZE = 20
+
+/** 按钮位：XBOX_BUTTON_KEYS 第 i 项在 buttons 位图中的位置（bit11 保留） */
+const XBOX_BUTTON_BITS: readonly number[] = [
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15,
+]
+
+export interface XboxLiveData {
+  /** 采样任务在跑、数据有效 */
+  active: boolean
+  /** 正向主机发送 XInput 报告（Xbox 模式且已枚举） */
+  usbActive: boolean
+  /** 20B 原始 wire 报告（hex 展示用） */
+  report: Uint8Array
+  buttons: number
+  buttonStates: Record<XboxButtonKey, boolean>
+  lt: number
+  rt: number
+  lx: number
+  ly: number
+  rx: number
+  ry: number
+  frameSeq: number
+}
+
+/**
+ * 解码 STREAM_CT_XBOX_OUTPUT 负载：
+ *   u8 active + u8 usb_active + 20B report + u32 frame_seq(LE，帧尾可选)
+ * report 为 Xbox 360 XInput input report 原始字节，按 espp xinput.hpp::report() 布局：
+ *   [0]=0x00 [1]=0x14 [2..3]=buttons LE [4]=LT [5]=RT
+ *   [6..7]=LX [8..9]=LY [10..11]=RX [12..13]=RY (i16 LE) [14..19]=reserved
+ */
+export function decodeXboxOutput(dataBytes: Uint8Array): XboxLiveData {
+  if (dataBytes.length < 2 + XBOX_REPORT_SIZE) throw new Error('Xbox 实时帧长度不足')
+  const active = dataBytes[0] !== 0
+  const usbActive = dataBytes[1] !== 0
+  const report = dataBytes.slice(2, 2 + XBOX_REPORT_SIZE)
+  const dv = new DataView(report.buffer, report.byteOffset, report.byteLength)
+  const buttons = dv.getUint16(2, true)
+
+  const buttonStates = {} as Record<XboxButtonKey, boolean>
+  for (const [i, key] of XBOX_BUTTON_KEYS.entries()) {
+    buttonStates[key] = (buttons & (1 << (XBOX_BUTTON_BITS[i] ?? 0))) !== 0
+  }
+
+  let frameSeq = 0
+  if (dataBytes.length >= 2 + XBOX_REPORT_SIZE + 4) {
+    const off = 2 + XBOX_REPORT_SIZE
+    frameSeq = new DataView(dataBytes.buffer, dataBytes.byteOffset + off, 4).getUint32(0, true)
+  }
+
+  return {
+    active,
+    usbActive,
+    report,
+    buttons,
+    buttonStates,
+    lt: report[4] ?? 0,
+    rt: report[5] ?? 0,
+    lx: dv.getInt16(6, true),
+    ly: dv.getInt16(8, true),
+    rx: dv.getInt16(10, true),
+    ry: dv.getInt16(12, true),
+    frameSeq,
+  }
+}
+
 export function decodeEvent(payload: Uint8Array, streamFlags = 0): Record<string, unknown> | null {
   const r = new Reader(payload)
   if (r.remaining < 3) return null
@@ -1262,6 +1331,8 @@ export function decodeEvent(payload: Uint8Array, streamFlags = 0): Record<string
         return { evt: eventId, contentType, raw: dataBytes }
       case STREAM_FACTORY:
         return { evt: eventId, contentType, data: decodeFactoryInputs(dataBytes) }
+      case STREAM_XBOX_OUTPUT:
+        return { evt: eventId, contentType, data: decodeXboxOutput(dataBytes) }
       default:
         return null
     }
