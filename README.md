@@ -66,5 +66,11 @@ Xbox 手柄输出的 64B 配置 blob 另有**一对独立镜像**：
 `CMD` / `CMD_NAME_TO_ID`。配置快照 section `0x24` 双方也要同步。
 详见固件仓库 `docs/XboxOutput_zh.md` §五 / §六。
 
+手柄输出页顶部还有一块**实时报文卡片**：进入 `/xbox` 即开 stream
+`content_type=6`（50ms），显示固件当前生成的 20B X-Input input report，
+两个摇杆十字图同时叠加实时点；CDC 模式下是「实时预览（未发送）」，
+Xbox 模式下为「手柄输出中」。该增量的未提交状态、验证与接手顺序见固件仓库
+`docs/Handoff_XboxRealtimeStream_zh.md`。
+
 > **配置通道**：手柄（Xbox）模式下 USB 被手柄独占、无 CDC，实时改映射需走
 > **BLE**；用 USB 串口改成的是离线配置，下次以手柄模式开机才生效。
