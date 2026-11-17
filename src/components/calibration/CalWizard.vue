@@ -91,19 +91,8 @@
 
       <v-card-text>
         <div class="joy-2d-wrap">
-          <!-- 2D 十字: X/Y 实时位置 -->
-          <svg :viewBox="`0 0 ${JOY2D_SIZE} ${JOY2D_SIZE}`" class="joy-2d">
-            <rect x="1" y="1" :width="JOY2D_SIZE - 2" :height="JOY2D_SIZE - 2" rx="12" class="joy-2d-bg" />
-            <!-- 十字轴线 -->
-            <line :x1="JOY2D_SIZE / 2" y1="8" :x2="JOY2D_SIZE / 2" :y2="JOY2D_SIZE - 8" class="joy-2d-line" />
-            <line x1="8" :y1="JOY2D_SIZE / 2" :x2="JOY2D_SIZE - 8" :y2="JOY2D_SIZE / 2" class="joy-2d-line" />
-            <!-- 边界框 -->
-            <rect :x="8" y="8" :width="JOY2D_SIZE - 16" :height="JOY2D_SIZE - 16" rx="8" class="joy-2d-bound" />
-            <!-- 实时位置点 (白色小点) -->
-            <circle :cx="joyDot.x" :cy="joyDot.y" r="3" class="joy-2d-dot" />
-            <!-- 中心死区圆环 (半径 = 死区占行程真实比例, 0 死区不显示) -->
-            <circle v-if="joyRingR > 0" :cx="JOY2D_SIZE / 2" :cy="JOY2D_SIZE / 2" :r="joyRingR" class="joy-2d-ring" />
-          </svg>
+          <!-- 2D 十字: X/Y 实时位置（底图由通用 AxisCross2D 提供，数据适配留在本页） -->
+          <AxisCross2D :dot="joyDot" :deadzone-radius="joyRingR" label="摇杆 XY 实时位置" />
           <div class="joy-2d-readout">
             <div class="joy-axis-row">
               <span class="text-caption text-medium-emphasis">X</span>
@@ -508,40 +497,6 @@ onUnmounted(async () => {
   align-items: center;
   justify-content: center;
   gap: 20px;
-}
-
-.joy-2d {
-  width: 240px;
-  height: 240px;
-}
-
-.joy-2d-bg {
-  /* 底与曲线画布/IMU 视窗统一: on-surface 4% (亮=浅灰纸面, 暗=微亮), 原为 rgba(0,0,0,.35) 半透明黑 */
-  fill: rgba(var(--v-theme-on-surface), 0.04);
-  stroke: rgba(var(--v-theme-on-surface), 0.1);
-}
-
-.joy-2d-line {
-  stroke: rgba(var(--v-theme-on-surface), 0.18);
-  stroke-width: 1;
-}
-
-.joy-2d-ring {
-  fill: none;
-  stroke: rgb(var(--v-theme-warning));
-  stroke-width: 1.5;
-  opacity: 0.9;
-}
-
-.joy-2d-bound {
-  fill: none;
-  stroke: rgba(var(--v-theme-on-surface), 0.14);
-  stroke-dasharray: 4 4;
-}
-
-.joy-2d-dot {
-  fill: rgb(var(--v-theme-on-surface));
-  transition: cx 0.1s linear, cy 0.1s linear;
 }
 
 .joy-2d-readout {

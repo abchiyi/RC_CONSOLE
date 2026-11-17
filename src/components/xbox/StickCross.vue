@@ -1,109 +1,20 @@
 <template>
-  <!-- Xbox 摇杆映射十字示意图：静态展示 X/Y 两轴各自的输入源、正负方向与翻转。
-       坐标与图元颜色全部沿用 CalWizard.vue 的 .joy-2d-* 主题派生规则，亮暗自适应。 -->
+  <!-- Xbox 摇杆实时位置：底图直接复用传感器页同款 AxisCross2D，仅标注左/右摇杆。 -->
   <div class="stick-cross-wrap">
-    <svg
-      :aria-label="`${title} X 轴 ${xLabel}，Y 轴 ${yLabel}`"
-      class="stick-cross"
-      preserveAspectRatio="xMidYMid meet"
-      role="img"
-      viewBox="0 0 200 200"
-    >
-      <rect
-        class="cross-bg"
-        height="198"
-        rx="12"
-        width="198"
-        x="1"
-        y="1"
-      />
+    <AxisCross2D
+      :dot="liveDot"
+      :label="`${title} 实时位置`"
+    />
 
-      <!-- 十字轴线 + 边界框 -->
-      <line
-        class="cross-line"
-        x1="100"
-        x2="100"
-        y1="8"
-        y2="192"
-      />
+    <div class="stick-cross-side">
+      <div class="stick-cross-label">{{ title }}</div>
 
-      <line
-        class="cross-line"
-        x1="8"
-        x2="192"
-        y1="100"
-        y2="100"
-      />
-
-      <rect
-        class="cross-bound"
-        height="184"
-        rx="8"
-        width="184"
-        x="8"
-        y="8"
-      />
-
-      <!-- 四端方向箭头（源映射到该方向；翻转时箭头方向不变、标注互换） -->
-      <g class="cross-arrows">
-        <path d="M100 18 L96 26 L104 26 Z" />
-        <path d="M100 182 L96 174 L104 174 Z" />
-        <path d="M18 100 L26 96 L26 104 Z" />
-        <path d="M182 100 L174 96 L174 104 Z" />
-      </g>
-
-      <!-- 中心点 -->
-      <circle class="cross-dot" cx="100" cy="100" r="3.5" />
-      <circle class="cross-hub" cx="100" cy="100" r="9" />
-
-      <!-- 实时点位：X/Y 为当前 XInput 报告的轴值（i16），未开流时不显示 -->
-      <g v-if="liveX !== undefined && liveY !== undefined">
-        <line
-          class="cross-live-trace"
-          :x1="100"
-          :x2="liveCx"
-          :y1="100"
-          :y2="liveCy"
-        />
-
-        <circle class="cross-live-halo" :cx="liveCx" :cy="liveCy" r="10" />
-        <circle class="cross-live-dot" :cx="liveCx" :cy="liveCy" r="5" />
-      </g>
-
-      <!-- 四端标签：上=Y+ 下=Y− 左=X− 右=X+；翻转时 +/− 互换 -->
-      <g class="cross-labels">
-        <text class="cross-label-y" text-anchor="middle" x="100" y="36">
-          {{ yPositive }} · {{ yLabel }}
-        </text>
-
-        <text class="cross-label-y" text-anchor="middle" x="100" y="172">
-          {{ yNegative }} · {{ yLabel }}
-        </text>
-
-        <text class="cross-label-x" text-anchor="start" x="10" y="94">
-          {{ xNegative }} · {{ xLabel }}
-        </text>
-
-        <text class="cross-label-x" text-anchor="end" x="190" y="94">
-          {{ xPositive }} · {{ xLabel }}
-        </text>
-      </g>
-
-      <!-- 角落标注：翻转状态 -->
-      <g v-if="xInvert || yInvert" class="cross-invert">
-        <text x="12" y="190">{{ invertText }}</text>
-      </g>
-    </svg>
-
-    <div class="cross-caption">
-      <div class="text-caption font-weight-bold">{{ title }}</div>
-
-      <div class="text-caption text-medium-emphasis">
-        X: {{ xLabel }}<span v-if="xRange">（{{ xRange }}°）</span>
+      <div class="stick-cross-raw mono">
+        X: {{ liveX ?? '--' }}
       </div>
 
-      <div class="text-caption text-medium-emphasis">
-        Y: {{ yLabel }}<span v-if="yRange">（{{ yRange }}°）</span>
+      <div class="stick-cross-raw mono">
+        Y: {{ liveY ?? '--' }}
       </div>
     </div>
   </div>
@@ -114,130 +25,56 @@
 
   const props = defineProps<{
     title: string
-    xLabel: string
-    yLabel: string
-    xInvert: boolean
-    yInvert: boolean
-    /** IMU 源的角度量程（0 表示非姿态源，不显示） */
-    xRange?: number
-    yRange?: number
     /** 实时轴值（i16）；未开流时传 undefined，点位隐藏 */
     liveX?: number
     liveY?: number
   }>()
 
-  // i16 → SVG 坐标：中心 100，半幅 90（对应边界框内缘）。
+  // i16 → SVG 坐标：中心 100，半幅 72（与传感器页 JOY_RADIUS 一致）。
   //   Y 轴画面向下为正，而 XInput 的 Y 上推为正，故取负号。
-  const liveCx = computed(() => 100 + Math.max(-1, Math.min(1, (props.liveX ?? 0) / 32_767)) * 90)
-  const liveCy = computed(() => 100 - Math.max(-1, Math.min(1, (props.liveY ?? 0) / 32_767)) * 90)
-
-  // 翻转后，物理源的「正」落到摇杆的负方向，故标注互换
-  const xPositive = computed(() => props.xInvert ? '−' : '+')
-  const xNegative = computed(() => props.xInvert ? '+' : '−')
-  const yPositive = computed(() => props.yInvert ? '−' : '+')
-  const yNegative = computed(() => props.yInvert ? '+' : '−')
-
-  const invertText = computed(() => {
-    const parts: string[] = []
-    if (props.xInvert) parts.push('X')
-    if (props.yInvert) parts.push('Y')
-    return `${parts.join(' / ')} 已翻转`
+  const liveDot = computed(() => {
+    if (props.liveX === undefined || props.liveY === undefined)
+      return undefined
+    const clamp = (v: number) => Math.max(-1, Math.min(1, v / 32_767))
+    return {
+      x: 100 + clamp(props.liveX) * 72,
+      y: 100 - clamp(props.liveY) * 72,
+    }
   })
 </script>
 
 <style scoped>
 .stick-cross-wrap {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
   gap: 12px;
-  flex-wrap: wrap;
   background: rgba(var(--v-theme-on-surface), 0.04);
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   border-radius: 10px;
   padding: 10px;
 }
 
-.stick-cross {
-  width: 100%;
-  max-width: 210px;
-  height: auto;
-  display: block;
+.stick-cross-side {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 72px;
 }
 
-.cross-bg {
-  fill: rgba(var(--v-theme-on-surface), 0.04);
-  stroke: rgba(var(--v-theme-on-surface), 0.1);
+.stick-cross-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgb(var(--v-theme-on-surface));
 }
 
-.cross-line {
-  stroke: rgba(var(--v-theme-on-surface), 0.28);
-  stroke-width: 1;
+.stick-cross-raw {
+  font-size: 0.75rem;
+  color: rgba(var(--v-theme-on-surface), 0.7);
 }
 
-.cross-bound {
-  fill: none;
-  stroke: rgba(var(--v-theme-on-surface), 0.14);
-  stroke-dasharray: 4 4;
-}
-
-.cross-arrows path {
-  fill: rgba(var(--v-theme-primary), 0.75);
-}
-
-.cross-dot {
-  fill: rgb(var(--v-theme-primary));
-}
-
-.cross-hub {
-  fill: none;
-  stroke: rgba(var(--v-theme-primary), 0.45);
-  stroke-width: 1;
-}
-
-.cross-live-trace {
-  stroke: rgb(var(--v-theme-secondary));
-  stroke-width: 1.5;
-  stroke-dasharray: 3 3;
-  opacity: 0.8;
-}
-
-.cross-live-halo {
-  fill: rgba(var(--v-theme-secondary), 0.22);
-  stroke: rgba(var(--v-theme-secondary), 0.6);
-  stroke-width: 1;
-}
-
-.cross-live-dot {
-  fill: rgb(var(--v-theme-secondary));
-}
-
-.cross-labels text {
-  font-size: 8px;
-}
-
-.cross-label-x,
-.cross-label-y {
-  fill: rgba(var(--v-theme-on-surface), 0.72);
-}
-
-.cross-invert text {
-  font-size: 8px;
-  fill: rgb(var(--v-theme-warning));
-}
-
-.cross-caption {
-  min-width: 96px;
-  flex: 1 1 96px;
-}
-
-@media (max-width: 520px) {
-  .stick-cross-wrap {
-    flex-direction: column;
-  }
-
-  .cross-caption {
-    text-align: center;
-  }
+.mono {
+  font-family: 'Cascadia Mono', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
 }
 </style>

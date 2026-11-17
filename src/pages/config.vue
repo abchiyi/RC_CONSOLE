@@ -278,21 +278,21 @@
                           <v-divider class="my-2" />
                         </v-sheet>
 
-                        <!-- 辅助输入 (EC11 旋钮): 独立卡片 (从连续量参数组拆出) -->
+                        <!-- 辅助输入 (旋钮): 独立卡片 (从连续量参数组拆出) -->
                         <v-sheet v-if="isAnalogLikeSource(ch.source) || isKnobEc11Source(ch.source)" rounded="lg"
                           class="pa-3 mb-3" :class="{ 'aux-active': ch.aux_source === 'KNOB_EC11' }">
                           <div class="param-group">
-                            <span class="text-caption font-weight-bold">&#127921; 辅助输入 (EC11 旋钮)</span>
+                            <span class="text-caption font-weight-bold">&#127921; 辅助输入 (旋钮)</span>
                             <v-select v-if="isAnalogLikeSource(ch.source)" v-model="ch.aux_source"
                               :items="auxSourceOptions" density="compact" hide-details variant="outlined"
                               style="max-width:150px" @update:model-value="(val: string) => onAuxChange(idx, val)" />
-                            <span v-else class="text-caption text-medium-emphasis">EC11 旋钮为本通道主输入源</span>
+                            <span v-else class="text-caption text-medium-emphasis">旋钮为本通道主输入源</span>
                           </div>
-                          <!-- EC11 步长 (主源为旋钮, 或本通道持有 EC11 辅助输入时均需配置) -->
+                          <!-- 旋钮步长 (主源为旋钮, 或本通道持有旋钮辅助输入时均需配置) -->
                           <template v-if="isKnobEc11Source(ch.source) || ch.aux_source === 'KNOB_EC11'">
                             <v-divider class="my-2" />
                             <div class="param-group">
-                              <span class="text-caption font-weight-bold">EC11 步长 (µs/格)</span>
+                              <span class="text-caption font-weight-bold">旋钮步长 (µs/格)</span>
                               <span class="param-input-wrap">
                                 <v-number-input v-model="ch.ec11_step" :min="1" :max="500" :step="50"
                                   controlVariant="stacked" density="compact" hide-details :hideInput="false"
@@ -301,8 +301,8 @@
                             </div>
                           </template>
                           <div v-if="isAnalogLikeSource(ch.source)" class="text-caption text-medium-emphasis mt-1">
-                            EC11 按钮按下：锁定当前输出值并交由旋钮增减微调。扳机/摇杆回中后有输入动作自动退出；IMU
-                            需再次点击 EC11 按钮退出（该按钮退出方式对摇杆/IMU 同样有效）。设为辅助后，EC11
+                            旋钮按钮按下：锁定当前输出值并交由旋钮增减微调。扳机/摇杆回中后有输入动作自动退出；IMU
+                            需再次点击旋钮按钮退出（该按钮退出方式对摇杆/IMU 同样有效）。设为辅助后，旋钮
                             按钮与旋钮均不可再作为其他通道的输入源。
                           </div>
                         </v-sheet>
@@ -578,7 +578,7 @@ const SOURCE_LABELS: Record<string, string> = {
   NONE: '无',
   BUTTON_LOCK: 'LOCK 按钮',
   BUTTON_MH: 'MH 按钮',
-  BUTTON_EC11_BTN: 'EC11 按钮',
+  BUTTON_EC11_BTN: '旋钮按钮',
   BUTTON_SHOT: 'SHOT 按钮',
   ANALOG_TRIGGER: '扳机',
   ANALOG_JOYSTICK_X: '摇杆 X',
@@ -586,7 +586,7 @@ const SOURCE_LABELS: Record<string, string> = {
   IMU_ROLL: 'IMU Roll',
   IMU_PITCH: 'IMU Pitch',
   IMU_YAW: 'IMU Yaw',
-  KNOB_EC11: 'EC11 旋钮',
+  KNOB_EC11: '旋钮',
   MIX: '混合输入',
 }
 
@@ -642,12 +642,12 @@ function onSourceChange(idx: number, newSource: string): void {
       if (i === idx) continue
       if (newSource === 'KNOB_EC11' && editChannels[i]!.source === 'KNOB_EC11') {
         editChannels[i]!.source = 'NONE'
-        notify(`EC11 已从 ${channelDisplayName(i)} 移动到 ${channelDisplayName(idx)}`, 'success')
+        notify(`旋钮已从 ${channelDisplayName(i)} 移动到 ${channelDisplayName(idx)}`, 'success')
       }
       // 互斥: EC11 作为本通道输入源时, 其他通道的辅助占用一并取消
       if (editChannels[i]!.aux_source === 'KNOB_EC11') {
         editChannels[i]!.aux_source = 'NONE'
-        notify(`EC11 已作为 ${channelDisplayName(idx)} 的输入源，${channelDisplayName(i)} 的辅助输入已取消`, 'success')
+        notify(`旋钮已作为 ${channelDisplayName(idx)} 的输入源，${channelDisplayName(i)} 的辅助输入已取消`, 'success')
       }
     }
   }
@@ -658,10 +658,10 @@ function onSourceChange(idx: number, newSource: string): void {
   }
 }
 
-// ── 辅助输入 (EC11 旋钮) ──
+// ── 辅助输入 (旋钮) ──
 const auxSourceOptions = [
   { title: '无', value: 'NONE' },
-  { title: 'EC11 旋钮', value: 'KNOB_EC11' },
+  { title: '旋钮', value: 'KNOB_EC11' },
 ]
 
 // 可作为辅助输入宿主的模拟类输入源 (扳机 / 摇杆 / IMU)
@@ -679,12 +679,12 @@ function onAuxChange(idx: number, newAux: string): void {
     // 只能被一个通道持有
     if (editChannels[i]!.aux_source === 'KNOB_EC11') {
       editChannels[i]!.aux_source = 'NONE'
-      notify(`EC11 辅助已从 ${channelDisplayName(i)} 移动到 ${channelDisplayName(idx)}`, 'success')
+      notify(`旋钮辅助已从 ${channelDisplayName(i)} 移动到 ${channelDisplayName(idx)}`, 'success')
     }
     // 互斥: EC11 旋钮 / 按钮都不能再作为其他通道的主输入源
     if (editChannels[i]!.source === 'KNOB_EC11' || editChannels[i]!.source === 'BUTTON_EC11_BTN') {
       editChannels[i]!.source = 'NONE'
-      notify(`EC11 已作为 ${channelDisplayName(idx)} 的辅助输入，${channelDisplayName(i)} 的输入源已取消`, 'success')
+      notify(`旋钮已作为 ${channelDisplayName(idx)} 的辅助输入，${channelDisplayName(i)} 的输入源已取消`, 'success')
     }
   }
 }

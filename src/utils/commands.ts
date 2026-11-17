@@ -70,28 +70,28 @@ export interface XboxSourceOption {
   short: string
   /** IMU 源：只允许映射到模拟轴，需角度量程 */
   imu: boolean
-  /** 数字源：物理按钮 / 波轮事件，只能映射到按钮 */
+  /** 数字源：物理按钮 / 旋钮事件，只能映射到按钮 */
   digital: boolean
 }
 
-/** 全部源（下拉基础数据） */
+/** 全部源（下拉基础数据）。EC11 与波轮是同一器件，界面统一称"旋钮"。 */
 export const XBOX_SOURCE_OPTIONS: readonly XboxSourceOption[] = [
-  { value: XBOX_SOURCE.NONE, title: '关闭（恒 0 / 不按下）', short: '关闭', imu: false, digital: false },
-  { value: XBOX_SOURCE.IMU_ROLL, title: '姿态 Roll（横滚）', short: 'Roll', imu: true, digital: false },
-  { value: XBOX_SOURCE.IMU_PITCH, title: '姿态 Pitch（俯仰）', short: 'Pitch', imu: true, digital: false },
-  { value: XBOX_SOURCE.IMU_YAW, title: '姿态 Yaw（偏航）', short: 'Yaw', imu: true, digital: false },
+  { value: XBOX_SOURCE.NONE, title: '关闭', short: '关闭', imu: false, digital: false },
+  { value: XBOX_SOURCE.IMU_ROLL, title: '姿态 Roll', short: 'Roll', imu: true, digital: false },
+  { value: XBOX_SOURCE.IMU_PITCH, title: '姿态 Pitch', short: 'Pitch', imu: true, digital: false },
+  { value: XBOX_SOURCE.IMU_YAW, title: '姿态 Yaw', short: 'Yaw', imu: true, digital: false },
   { value: XBOX_SOURCE.JOY_X, title: '摇杆 X', short: '摇杆 X', imu: false, digital: false },
   { value: XBOX_SOURCE.JOY_Y, title: '摇杆 Y', short: '摇杆 Y', imu: false, digital: false },
   { value: XBOX_SOURCE.TRIGGER_PULL, title: '扳机「拉」', short: '扳机拉', imu: false, digital: false },
-  { value: XBOX_SOURCE.KNOB, title: '波轮位置（相对基准 ±20 格）', short: '波轮位置', imu: false, digital: false },
+  { value: XBOX_SOURCE.KNOB, title: '旋钮位置', short: '旋钮位置', imu: false, digital: false },
   { value: XBOX_SOURCE.BTN_LOCK, title: '按键 LOCK', short: 'LOCK', imu: false, digital: true },
   { value: XBOX_SOURCE.BTN_MH, title: '按键 MH', short: 'MH', imu: false, digital: true },
-  { value: XBOX_SOURCE.BTN_EC11, title: '按键 EC11 按下', short: 'EC11', imu: false, digital: true },
+  { value: XBOX_SOURCE.BTN_EC11, title: '旋钮按下', short: '旋钮', imu: false, digital: true },
   { value: XBOX_SOURCE.BTN_SHOT, title: '按键 SHOT', short: 'SHOT', imu: false, digital: true },
   { value: XBOX_SOURCE.BTN_POWER, title: '按键 POWER', short: 'POWER', imu: false, digital: true },
   { value: XBOX_SOURCE.BTN_TRIGGER_PUSH, title: '扳机「推」', short: '扳机推', imu: false, digital: true },
-  { value: XBOX_SOURCE.KNOB_UP, title: '波轮上拨（脉冲 80ms）', short: '波轮上拨', imu: false, digital: true },
-  { value: XBOX_SOURCE.KNOB_DOWN, title: '波轮下拨（脉冲 80ms）', short: '波轮下拨', imu: false, digital: true },
+  { value: XBOX_SOURCE.KNOB_UP, title: '旋钮上拨', short: '旋钮上拨', imu: false, digital: true },
+  { value: XBOX_SOURCE.KNOB_DOWN, title: '旋钮下拨', short: '旋钮下拨', imu: false, digital: true },
 ]
 
 const XBOX_DIGITAL_SOURCES = new Set<number>(

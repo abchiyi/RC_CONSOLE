@@ -638,11 +638,11 @@
   }> = [
     { id: 'lock', name: 'LOCK', source: 'BUTTON_LOCK', kind: 'button', bit: 1, pressIndex: 1 },
     { id: 'mh', name: 'MH', source: 'BUTTON_MH', kind: 'button', bit: 2, pressIndex: 2 },
-    { id: 'ec11btn', name: 'EC11 键', source: 'BUTTON_EC11_BTN', kind: 'button', bit: 3, pressIndex: 3 },
+    { id: 'ec11btn', name: '旋钮按键', source: 'BUTTON_EC11_BTN', kind: 'button', bit: 3, pressIndex: 3 },
     { id: 'shot', name: 'SHOT', source: 'BUTTON_SHOT', kind: 'button', bit: 4, pressIndex: 4 },
     // POWER: 没有对应 InputSource（不参与输入映射），电平位图单列 bit15，press[] 下标却是 0
     { id: 'power', name: 'POWER', source: '', kind: 'button', bit: 15, pressIndex: 0, standalone: true },
-    { id: 'knob', name: 'EC11 旋钮', source: 'KNOB_EC11', kind: 'knob', bit: 10 },
+    { id: 'knob', name: '旋钮', source: 'KNOB_EC11', kind: 'knob', bit: 10 },
   ]
 
   function buildTags (allow: Set<string> | null): InputTag[] {

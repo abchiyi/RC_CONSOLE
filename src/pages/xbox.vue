@@ -64,8 +64,8 @@
             </v-avatar>
           </template>
 
-          <v-card-title>摇杆映射总览</v-card-title>
-          <v-card-subtitle>四端标注输入源与正/负方向，翻转后标注互换</v-card-subtitle>
+          <v-card-title>摇杆实时位置</v-card-title>
+          <v-card-subtitle>连接手柄并开启实时报文流后显示实时点位</v-card-subtitle>
         </v-card-item>
 
         <v-card-text class="pt-2 pb-3">
@@ -74,24 +74,12 @@
               :live-x="liveX('lx')"
               :live-y="liveY('ly')"
               title="左摇杆"
-              :x-invert="xbox.editCfg.axes.lx.invert"
-              :x-label="xboxSourceShort(xbox.editCfg.axes.lx.source)"
-              :x-range="imuRange('lx')"
-              :y-invert="xbox.editCfg.axes.ly.invert"
-              :y-label="xboxSourceShort(xbox.editCfg.axes.ly.source)"
-              :y-range="imuRange('ly')"
             />
 
             <StickCross
               :live-x="liveX('rx')"
               :live-y="liveY('ry')"
               title="右摇杆"
-              :x-invert="xbox.editCfg.axes.rx.invert"
-              :x-label="xboxSourceShort(xbox.editCfg.axes.rx.source)"
-              :x-range="imuRange('rx')"
-              :y-invert="xbox.editCfg.axes.ry.invert"
-              :y-label="xboxSourceShort(xbox.editCfg.axes.ry.source)"
-              :y-range="imuRange('ry')"
             />
           </div>
         </v-card-text>
@@ -116,7 +104,7 @@
 
             <span>
               姿态源的角度量程越小越灵敏（打满摇杆所需倾斜角）。IMU 只允许映射到模拟轴；
-              波轮上下拨、物理按键等布尔源只能映射到按钮。双向源映射到扳机轴时负半丢弃。
+              旋钮上下拨、物理按键等布尔源只能映射到按钮。双向源映射到扳机轴时负半丢弃。
             </span>
           </div>
 
@@ -179,7 +167,7 @@
           </template>
 
           <v-card-title>按钮映射</v-card-title>
-          <v-card-subtitle>15 个 Xbox 按键，可选物理按钮、波轮拨动或模拟量半周触发</v-card-subtitle>
+          <v-card-subtitle>15 个 Xbox 按键，可选物理按钮、旋钮拨动或模拟量半周触发</v-card-subtitle>
         </v-card-item>
 
         <v-card-text class="pt-2 pb-3">
@@ -188,7 +176,7 @@
 
             <span>
               模拟量映射到按钮时，超过阈值即视为按下；半周可选「全周 / 正半周 / 负半周」，
-              于是摇杆 X 的正半可给 A、负半给 B。波轮上拨/下拨为 80ms 脉冲按下。
+              于是摇杆 X 的正半可给 A、负半给 B。旋钮上拨/下拨为 80ms 脉冲按下。
               IMU 不能映射到按钮。
             </span>
           </div>
@@ -329,7 +317,6 @@
     XBOX_SOURCE,
     type XboxAxisKey,
     type XboxButtonKey,
-    xboxSourceShort,
   } from '@/utils/commands'
 
   const serial = useSerialStore()
@@ -348,11 +335,6 @@
 
   function isImu (key: XboxAxisKey): boolean {
     return imuSources.has(xbox.editCfg.axes[key].source)
-  }
-
-  /** 十字图角标：仅 IMU 源显示角度量程 */
-  function imuRange (key: XboxAxisKey): number | undefined {
-    return isImu(key) ? xbox.editCfg.axes[key].half_range_deg : undefined
   }
 
   /** 十字图实时点位：仅在流有效且设备侧 active 时给值，否则隐藏点位 */
