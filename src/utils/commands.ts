@@ -588,7 +588,7 @@ const DEFAULT_CHANNEL: ModelChannel = {
   lock_enabled: false,
   lock_value: RAW_CENTER,
   lock_reset_input: false,
-  mix_enabled: false,
+  default_value: 0,
   mix_items: [],
   triggers: [],
   aux_source: 'NONE',
@@ -671,9 +671,9 @@ export function encodeChannelTlv(ch: ModelChannel): Uint8Array {
       .u8(c.switch_source ? 1 : 0).u16(c.value ?? 0).u8(sourceToId(c.alt_source ?? 'NONE'))
       .toBytes())
   }
-  if (ch.mix_enabled !== undefined || ch.mix_items) {
+  if (ch.mix_items !== undefined) {
     const items = (ch.mix_items ?? []).slice(0, 4)
-    const t = new Writer().u8(ch.mix_enabled ? 1 : 0).u8(items.length)
+    const t = new Writer().u8(items.length)
     for (const m of items) t.u8(sourceToId(m.src ?? 'NONE')).i8(m.w ?? 0).u8(m.reverse ? 1 : 0)
     w.tlv(0x0f, t.toBytes())
   }
@@ -685,6 +685,9 @@ export function encodeChannelTlv(ch: ModelChannel): Uint8Array {
   }
   if (ch.aux_source && ch.aux_source !== 'NONE') {
     w.tlv(0x15, new Writer().u8(sourceToId(ch.aux_source)).toBytes())
+  }
+  if (ch.default_value !== undefined) {
+    w.tlv(0x16, new Writer().u16(ch.default_value).toBytes())
   }
   if (ch.triggers?.length) {
     const items = ch.triggers.slice(0, 5)
@@ -770,7 +773,6 @@ function decodeChannelTlv(value: Uint8Array): ModelChannel {
         break
       }
       case 0x0f: {
-        ch.mix_enabled = !!r.u8()
         const cnt = Math.min(r.u8(), 4)
         ch.mix_items = []
         for (let i = 0; i < cnt; i++) {
@@ -781,6 +783,7 @@ function decodeChannelTlv(value: Uint8Array): ModelChannel {
       case 0x10: ch.lock_enabled = !!r.u8(); ch.lock_value = r.u16(); break
       case 0x14: ch.lock_reset_input = !!r.u8(); break
       case 0x15: ch.aux_source = sourceFromId(r.u8()); break
+      case 0x16: ch.default_value = r.u16(); break
       case 0x13: {
         const cnt = Math.min(r.u8(), 5)
         ch.triggers = []

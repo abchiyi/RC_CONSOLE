@@ -169,7 +169,7 @@
                   </div>
                   <!-- 展开详情 (动画) -->
                   <v-expand-transition>
-                    <div v-if="expandedIdx === idx && (effectiveSource(ch) !== 'NONE' || ch.condition.enabled)">
+                    <div v-if="expandedIdx === idx">
                       <v-divider />
                       <div class="pa-3 chan-expand-body">
 
@@ -246,11 +246,7 @@
                           <!-- MIX 混合配置 -->
                           <template v-if="ch.source === 'MIX'">
                             <v-divider class="my-2" />
-                            <div class="param-group">
-                              <span class="text-caption font-weight-bold">启用混合</span>
-                              <v-switch v-model="ch.mix_enabled" />
-                            </div>
-                            <div v-if="ch.mix_enabled" class="mt-2">
+                            <div class="mt-2">
                               <div v-for="(mi, miIdx) in ch.mix_items" :key="miIdx"
                                 class="mix-item-card mb-2 pa-2" style="border-radius:8px">
                                 <!-- 行1: 输入源 + 权重 -->
@@ -276,6 +272,22 @@
                             </div>
                           </template>
                           <v-divider class="my-2" />
+                        </v-sheet>
+
+                        <!-- 未设置输入源: 默认输出值 -->
+                        <v-sheet v-if="ch.source === 'NONE'" rounded="lg" class="pa-3 mb-3">
+                          <div class="param-group">
+                            <span class="text-caption font-weight-bold">默认输出值 (μs)</span>
+                            <span class="param-input-wrap">
+                              <v-number-input :model-value="ch.default_value || 1500"
+                                @update:model-value="(v: number) => { ch.default_value = v }"
+                                :min="1000" :max="2000" :step="50" controlVariant="stacked" density="compact"
+                                hide-details :hideInput="false" :inset="false" variant="outlined" style="min-width:100px" />
+                            </span>
+                          </div>
+                          <div class="text-caption text-medium-emphasis mt-1">
+                            未设置输入源时按此值输出。
+                          </div>
                         </v-sheet>
 
                         <!-- 辅助输入 (旋钮): 独立卡片 (从连续量参数组拆出) -->
@@ -362,7 +374,7 @@
                         </v-sheet>
 
                         <!-- 安全锁: 固件固定监视 CH5 / AUX1 > 1500μs 控制; AUX1 自身作为解锁源, 不提供该开关 -->
-                        <v-sheet v-if="idx !== LOCK_CHANNEL_INDEX" rounded="lg" class="pa-3 mb-3"
+                        <v-sheet v-if="idx !== LOCK_CHANNEL_INDEX && ch.source !== 'NONE'" rounded="lg" class="pa-3 mb-3"
                           :class="{ 'cond-active': ch.lock_enabled }">
                           <div class="param-group">
                             <span class="text-caption font-weight-bold">&#128274;
@@ -398,7 +410,7 @@
                         </v-sheet>
 
                         <!-- 通道触发规则: 本通道输出值进入区间 → 执行一次动作 (蜂鸣器 / LED) -->
-                        <v-sheet rounded="lg" class="pa-3 mb-3">
+                        <v-sheet v-if="ch.source !== 'NONE'" rounded="lg" class="pa-3 mb-3">
                           <div class="param-group">
                             <span class="text-caption font-weight-bold">&#9889; 触发规则</span>
                             <v-btn size="x-small" rounded="lg" color="primary" variant="tonal" prepend-icon="mdi-plus"
@@ -1107,7 +1119,7 @@ function syncEditFromStore(): void {
         lock_value: rawToUs(flat.lock_value ?? 991),
         lock_reset_input: flat.lock_reset_input === undefined ? false : !!flat.lock_reset_input,
         aux_source: flat.aux_source ?? 'NONE',
-        mix_enabled: !!flat.mix_enabled,
+        default_value: flat.default_value ? rawToUs(flat.default_value) : 0,
         mix_items: Array.isArray(flat.mix_items) ? flat.mix_items.map((mi: any) => ({
           src: mi.src ?? 'NONE',
           w: mi.w ?? 0,
@@ -1223,7 +1235,7 @@ async function saveCurrentModel(): Promise<boolean> {
       aux_source: ch.aux_source ?? 'NONE',
       // 步进以 µs/格 直传 (固件内部按 1.61 raw/µs 换算后取整)
       ec11_step: ch.ec11_step ?? 50,
-      mix_enabled: ch.mix_enabled,
+      default_value: ch.default_value ? usToRaw(ch.default_value) : 0,
       mix_items: ch.mix_items?.map(mi => ({ src: mi.src, w: mi.w, reverse: mi.reverse })) ?? [],
       // 触发规则区间 μs → raw (固件判定用 CRSF raw 域)
       triggers: ch.triggers?.slice(0, TRIGGER_COUNT).map(t => ({

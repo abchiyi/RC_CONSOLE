@@ -65,7 +65,7 @@ export interface ModelChannel {
   lock_enabled: boolean         // 安全锁: 固件固定监视 0 起始 index 4 (= CH5 / AUX1) > 1500μs 时解锁
   lock_value: number            // 锁定时输出值 (μs)
   lock_reset_input: boolean     // 锁定上升沿时是否把按钮挡位 / EC11 计数重置到默认值
-  mix_enabled: boolean          // 混合输入开关
+  default_value: number         // 未设置输入源时的默认输出值 (CRSF raw, 0=未设置)
   mix_items: Array<{            // 混合项列表 (最多 4 项)
     src: string                 // InputSource 字符串
     w: number                   // 权重 -100..100
