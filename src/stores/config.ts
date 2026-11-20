@@ -18,6 +18,8 @@ export interface DeviceInfo {
   fw_version?: string      // 软件版本（固件）
   hw_version?: string      // 硬件版本
   secure_mode?: number     // 安全模式：0=未加密 1=Development 2=Release
+  /** 配置 schema 版本（"major.minor"，备份编解码引擎用）；旧固件不上报 → undefined，按 V1 兼容模式处理 */
+  cfg_schema_version?: string
   model_count: number
   channel_count: number
   input_sources: InputSourceInfo[]
@@ -52,6 +54,12 @@ export interface ChannelTrigger {
 export interface ModelChannel {
   source: string
   gears: ButtonEntry[]              // 按钮挡位列表 (最多 GEAR_COUNT 个, trigger='NONE' 表示未启用)
+  /**
+   * ⚠️ V1 遗留字段：仅存在于 V1 备份文件与 V1 固件 TLV 布局（0x0F 首字节）。
+   * V2 schema 已废弃（mix 数量由 mix_items 长度派生），运行态不使用；
+   * 仅备份编解码引擎的 V1 引擎读写（见 Legacy_Config_Import_Plan.md）。
+   */
+  mix_enabled?: boolean
   input_min: number
   input_center: number
   input_max: number

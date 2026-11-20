@@ -1,27 +1,23 @@
 import type { ModelConfig } from '@/stores/config'
 import { decodeModelTlv, encodeModelTlv } from './commands'
 /**
- * configSnapshot.ts — 配置快照（二进制）↔ JSON 备份文件
+ * configSnapshot.ts — 配置备份的版本化编解码引擎
  *
- * 固件只认**二进制快照**（协议 §5.15）：JSON 的编解码全部放在上位机。
- * 这样设备端不必为 8×16 通道构建 cJSON 树（那会耗尽堆并直接 abort）。
+ * 架构（Legacy_Config_Import_Plan.md）：
+ *   固件 get_info 上报 cfg_schema_version = D（未上报 → V1 兼容模式）。
+ *   前端按 major 维护独立引擎 engines[major] = { validate, decode, encode }：
+ *     V1：0x0F 旧布局 [enabled,count,items...]，无 0x16 default_value
+ *     V2：0x0F 新布局 [count,items...] + 0x16 default_value
+ *   导入只允许向上：F>D 拒绝（不允许降级导入）；F<D 沿 MIGRATIONS 级联转码；F=D 直编。
+ *   导出按设备版本 D 选引擎 decode，文件 version 标真实来源版本。
+ *
+ * 固件只认**二进制快照**（协议 §5.15），JSON 编解码全部在上位机。
  *
  * 快照布局（小端）：
  *   "RCS1" | u16 version | u8 model_slots
  *   section: u8 type + u32 len + payload
- *
- *   type 0x01        全局标量字段：u8 intCount + i32×N + u8 boolCount + u8×M
- *   type 0x10+slot   模型（就是 GET_MODEL 的 TLV 字节）
- *   type 0x20~0x23   校准类 section —— **已退出备份范围**（设备本地数据，见
- *                    Legacy_Config_Import_Plan.md §四）：导出不写，导入忽略
- *   type 0x24        xbox_cfg     : v2 64B (version + 6×轴 + 15×按钮)；v1 19B 可读入
- *
- * ── 文件版本规则（对齐系统版本语义）──
- *   version = "major.minor" 字符串；
- *   major：破坏性变更（字段语义重排/结构大改）→ 导入必须经迁移函数；
- *   minor：增删条目但结构不变 → 同 major 下天然兼容（缺键默认、多键跳过）。
- *   历史 version: 1（数字）视为 major=1。schema 变更必须 bump major——
- *   把"变更须声明"固化为规则（Legacy_Config_Import_Plan.md）。
+ *   type 0x01 全局标量 / 0x10+slot 模型 / 0x24 xbox_cfg
+ *   0x20~0x23 校准类 —— 已退出备份（设备本地数据），导入忽略、导出不写
  */
 import {
   decodeXboxBlob,
@@ -34,18 +30,17 @@ import {
 import { Reader, Writer } from './protocol'
 
 const MAGIC = [0x52, 0x43, 0x53, 0x31] // 'R','C','S','1'
-/** 二进制快照头版本（TLV 布局大改时才递增） */
+/** 二进制快照头版本（快照容器布局大改时才递增, 与 schema 版本解耦） */
 export const SNAPSHOT_VERSION = 1
 export const MODEL_SLOTS = 8
 
-/** JSON 备份文件的当前版本 */
+/** 前端引擎库支持的最高文件版本 */
 export const BACKUP_VERSION = '2.0'
 const BACKUP_MAJOR = 2
 
 const SEC = {
   CONFIG: 0x01,
   MODEL_BASE: 0x10,
-  // 0x20~0x23（analog_cal/curve/imu/att_zero）不再编解码, 保留常量仅为导入时识别跳过
   ANALOG_CAL: 0x20,
   ANALOG_CURVE: 0x21,
   IMU_CAL: 0x22,
@@ -72,7 +67,7 @@ export interface ConfigBackupJson {
 }
 
 // ============================================================
-// 文件版本解析 / 结构探测 / 迁移管道
+// 版本解析 / 结构探测 / 迁移管道
 // ============================================================
 
 interface FileVersion { major: number, minor: number }
@@ -103,7 +98,7 @@ function classifyChannel (c: unknown): 'pre' | 'post' | 'skip' {
 
 /**
  * 结构特征探测：version 字段在 ffe8335/f98c490 时未 bump，线上"version:1"
- * 文件存在两种形状，必须以实际字段存在性判别（不信任声明的版本号）。
+ * 文件存在两种形状。引擎选择以固件上报为准，此处仅作辅助校验（防文件标错版本）。
  */
 function probeChannelShape (models: unknown[]): ChannelShape {
   let shape: ChannelShape = 'none'
@@ -114,7 +109,6 @@ function probeChannelShape (models: unknown[]): ChannelShape {
       const s = classifyChannel(c)
       if (s === 'skip') continue
       if (shape !== 'none' && shape !== s) {
-        // 同一文件里两种形状并存 → 结构自相矛盾
         throw new Error('文件结构自相矛盾: 通道数据同时含 mix_enabled 与 default_value 特征')
       }
       shape = s
@@ -134,13 +128,13 @@ function checkShapeConsistency (major: number, shape: ChannelShape): void {
       '文件版本声明为 2.x，但通道数据含已废弃的 mix_enabled 字段（1.x 前期形状）——版本与结构不符',
     )
   }
-  // major===1 + pre/post 都是线上真实存在的历史形状 → 一律放行给迁移管道
+  // major===1 + pre/post 都是线上真实存在的历史形状 → 放行给迁移/引擎
 }
 
 /**
  * 迁移管道: 键 = 源 major, 值 = 迁移到 major+1 的函数。
  * 每个函数对应一次真实的固件 schema 变更（变更须 bump major 并在此登记）。
- * 只增不删——旧版本迁移函数永远保留。
+ * 只增不删——旧版本迁移函数永远保留, 级联转码即按序链式调用。
  */
 type LooseModel = Record<string, unknown>
 type LooseChannel = Record<string, unknown>
@@ -176,12 +170,65 @@ function toLooseBackup (obj: Partial<ConfigBackupJson>): LooseBackup {
   }
 }
 
-/** 校验单个模型槽位能否安全编码; 返回原因（null=通过） */
-function validateSlot (m: LooseModel, slot: number): string | null {
-  const name = typeof m.name === 'string' ? m.name : `槽位${slot}`
-  if (!Array.isArray(m.channels)) return `${name}: 缺少 channels 数组`
-  return null
+// ============================================================
+// 编解码引擎注册表
+// ============================================================
+
+export interface CodecEngine {
+  /** 引擎对应的固件 schema major 版本 */
+  major: number
+  /** 全局结构校验（模型槽位错误走 encode 的逐槽隔离, 不在此抛） */
+  validate (b: LooseBackup): void
+  /** JSON → 固件二进制快照（本引擎版本的布局）; 单槽失败经 onSlotError 隔离跳过 */
+  encode (b: LooseBackup, onSlotError?: (e: SlotImportError) => void): Uint8Array
+  /** 固件二进制快照 → JSON（本引擎版本的布局, version 标本引擎版本） */
+  decode (bytes: Uint8Array): ConfigBackupJson
 }
+
+function makeEngine (major: number, legacyMix: boolean): CodecEngine {
+  return {
+    major,
+    validate () { /* 全局校验已在导入入口完成（版本/结构一致性） */ },
+    encode (b, onSlotError) {
+      const w = new Writer()
+      for (const m of MAGIC) w.u8(m)
+      w.u16(SNAPSHOT_VERSION)
+      w.u8(MODEL_SLOTS)
+      appendSection(w, SEC.CONFIG, buildConfigSection(b.config as Record<string, number | boolean>))
+      for (let i = 0; i < MODEL_SLOTS; i++) {
+        const m = b.models[i]
+        if (!m) continue
+        try {
+          if (!Array.isArray(m.channels)) {
+            throw new Error('缺少 channels 数组')
+          }
+          appendSection(w, SEC.MODEL_BASE + i, encodeModelTlv(m as unknown as ModelConfig, legacyMix))
+        } catch (e: unknown) {
+          onSlotError?.({
+            slot: i,
+            name: typeof m.name === 'string' ? m.name : `槽位${i}`,
+            reason: e instanceof Error ? e.message : String(e),
+          })
+        }
+      }
+      appendSection(w, SEC.XBOX_CFG, buildXboxSection(b.xbox as XboxConfig | undefined))
+      return w.toBytes()
+    },
+    decode (bytes) {
+      return parseSnapshot(bytes, major, legacyMix)
+    },
+  }
+}
+
+/** 引擎注册表: 键 = 固件 schema major。新版本在此登记。 */
+export const ENGINES: Record<number, CodecEngine> = {
+  1: makeEngine(1, true), // V1: 0x0F 旧布局
+  2: makeEngine(2, false), // V2: 0x0F 新布局 + 0x16 default_value（当前）
+}
+
+// ============================================================
+// 导入 / 导出主入口
+// ============================================================
 
 export interface SlotImportError {
   slot: number
@@ -191,7 +238,7 @@ export interface SlotImportError {
 
 export interface ImportResult {
   snapshot: Uint8Array
-  /** 非致命提示（如"校准数据不在备份范围"） */
+  /** 非致命提示（calibration 忽略、兼容模式、迁移警告等） */
   notices: string[]
   /** 逐槽隔离的失败列表（该槽跳过, 其余继续） */
   slotErrors: SlotImportError[]
@@ -200,15 +247,15 @@ export interface ImportResult {
 /**
  * JSON 备份文件 → 二进制快照（导入主入口）
  *
- * ① version + 结构双重校验 → ② major 迁移管道 → ③ 当前 schema 编码。
+ * @param deviceSchema 设备上报的 cfg_schema_version（"major.minor"）；undefined → V1 兼容模式
+ *
+ * F>D 拒绝（不允许降级导入）；F<D 级联迁移；最后由设备版本的引擎编码。
  * calibration 一律忽略（设备本地数据, 不跨机复用）。
  */
-export function importBackupJson (input: unknown): ImportResult {
+export function importBackupJson (input: unknown, deviceSchema?: string): ImportResult {
   if (!input || typeof input !== 'object') {
     throw new Error('文件内容不是对象')
   }
-  // 深拷贝: 迁移管道会改写通道对象 (删 mix_enabled / 补 default_value),
-  // 必须与调用方的输入隔离, 否则同一文件二次导入时结构特征已被抹掉
   const obj = structuredClone(input) as Partial<ConfigBackupJson> & { calibration?: unknown }
   if (obj.format !== 'gamepad2rc-config') {
     throw new Error('不是 GamePad2RC 配置文件')
@@ -219,19 +266,40 @@ export function importBackupJson (input: unknown): ImportResult {
     notices.push('已忽略文件中的 calibration 段：校准数据属于设备本地数据，不随配置备份导入')
   }
 
+  // ── 设备版本（版本事实来源; 未上报 = V1 兼容模式）──
+  let deviceMajor: number
+  if (deviceSchema === undefined) {
+    deviceMajor = 1
+    notices.push('设备未上报配置版本，按 V1 兼容模式处理')
+  } else {
+    deviceMajor = parseFileVersion(deviceSchema).major
+  }
+  const engine = ENGINES[deviceMajor]
+  if (!engine) {
+    throw new Error(`设备配置版本 ${deviceMajor}.x 高于上位机支持的最高版本 ${BACKUP_VERSION}，请升级上位机`)
+  }
+
+  // ── 文件版本 vs 设备版本 ──
   const declared = parseFileVersion(obj.version)
-  if (declared.major > BACKUP_MAJOR) {
+  if (declared.major > deviceMajor) {
     throw new Error(
-      `文件版本 ${declared.major}.${declared.minor} 高于当前支持的最高版本 ${BACKUP_VERSION}，请升级上位机`,
+      `配置文件版本 ${declared.major}.${declared.minor} 高于设备固件支持的 ${deviceMajor}.x——` +
+      '不允许降级导入，请先升级设备固件',
     )
   }
+
   const models = Array.isArray(obj.models) ? obj.models : []
   const shape = probeChannelShape(models)
   checkShapeConsistency(declared.major, shape)
 
-  // 迁移管道: 从声明 major 逐级升到当前 major
+  // V1 设备 + 含 default_value 的文件 → 0x16 会被丢弃, 数据有损
+  if (deviceMajor < 2 && shape === 'post') {
+    notices.push('文件含 default_value 字段，V1 固件不支持该字段，导入后将丢失（其余数据不受影响）')
+  }
+
+  // ── 级联迁移: F → F+1 → … → D ──
   let cur: LooseBackup = toLooseBackup(obj)
-  for (let major = declared.major; major < BACKUP_MAJOR; major++) {
+  for (let major = declared.major; major < deviceMajor; major++) {
     const step = MIGRATIONS[major]
     if (!step) {
       throw new Error(`缺少版本 ${major} → ${major + 1} 的迁移函数（文件版本 ${declared.major}.${declared.minor}）`)
@@ -239,47 +307,33 @@ export function importBackupJson (input: unknown): ImportResult {
     cur = step(cur)
   }
 
-  // ── 编码（当前 schema）──
-  const w = new Writer()
-  for (const m of MAGIC) {
-    w.u8(m)
-  }
-  w.u16(SNAPSHOT_VERSION)
-  w.u8(MODEL_SLOTS)
-
-  // 1) 全局标量字段
-  appendSection(w, SEC.CONFIG, buildConfigSection(cur.config as Record<string, number | boolean>))
-
-  // 2) 模型: 逐槽隔离——坏槽跳过并记录, 其余继续
+  // ── 设备版本引擎: 校验 + 编码（逐槽隔离内建于引擎）──
+  engine.validate(cur)
   const slotErrors: SlotImportError[] = []
-  for (let i = 0; i < MODEL_SLOTS; i++) {
-    const m = cur.models[i]
-    if (!m) continue
-    const reason = validateSlot(m, i)
-    if (reason) {
-      slotErrors.push({ slot: i, name: typeof m.name === 'string' ? m.name : `槽位${i}`, reason })
-      continue
-    }
-    try {
-      appendSection(w, SEC.MODEL_BASE + i, encodeModelTlv(m as unknown as ModelConfig))
-    } catch (e: unknown) {
-      slotErrors.push({
-        slot: i,
-        name: typeof m.name === 'string' ? m.name : `槽位${i}`,
-        reason: e instanceof Error ? e.message : String(e),
-      })
-    }
+  const snapshot = engine.encode(cur, (e) => slotErrors.push(e))
+
+  return { snapshot, notices, slotErrors }
+}
+
+/**
+ * 固件二进制快照 → JSON 对象（导出主入口）
+ *
+ * @param deviceSchema 设备上报的 cfg_schema_version；undefined → V1 兼容模式（旧固件快照）
+ * 文件 version 标设备真实版本, 不虚标。
+ */
+export function snapshotToJson (bytes: Uint8Array, deviceSchema?: string): ConfigBackupJson {
+  const deviceMajor = deviceSchema === undefined
+    ? 1 // 未上报 = 早于上报机制 = V1 布局
+    : parseFileVersion(deviceSchema).major
+  const engine = ENGINES[deviceMajor]
+  if (!engine) {
+    throw new Error(`设备配置版本 ${deviceMajor}.x 高于上位机支持的最高版本 ${BACKUP_VERSION}，请升级上位机`)
   }
-
-  // 3) Xbox 手柄映射/灵敏度（可选段；缺失按出厂默认写入，
-  //    固件侧未知 section 自动跳过，两端都向前兼容）
-  appendSection(w, SEC.XBOX_CFG, buildXboxSection(cur.xbox as XboxConfig | undefined))
-
-  return { snapshot: w.toBytes(), notices, slotErrors }
+  return engine.decode(bytes)
 }
 
 // ============================================================
-// 二进制快照 ↔ JSON
+// 快照容器编解码（V1/V2 引擎共用, 仅模型 TLV 布局不同）
 // ============================================================
 
 function appendSection (w: Writer, type: number, payload: Uint8Array): void {
@@ -288,10 +342,10 @@ function appendSection (w: Writer, type: number, payload: Uint8Array): void {
   w.bytes(payload)
 }
 
-function emptyBackup (): ConfigBackupJson {
+function emptyBackup (version: string): ConfigBackupJson {
   return {
     format: 'gamepad2rc-config',
-    version: BACKUP_VERSION,
+    version,
     config: {},
     models: [],
   }
@@ -309,8 +363,7 @@ function parseXboxSection (payload: Uint8Array, len: number): XboxConfig | undef
   }
 }
 
-/** 二进制快照 → JSON 对象（导出；校准类 section 0x20~0x23 一律跳过） */
-export function snapshotToJson (bytes: Uint8Array): ConfigBackupJson {
+function parseSnapshot (bytes: Uint8Array, major: number, legacyMix: boolean): ConfigBackupJson {
   if (bytes.length < 7) {
     throw new Error('快照长度不足')
   }
@@ -330,7 +383,7 @@ export function snapshotToJson (bytes: Uint8Array): ConfigBackupJson {
     throw new Error(`模型槽位数不符: 文件 ${slots}，期望 ${MODEL_SLOTS}`)
   }
 
-  const out = emptyBackup()
+  const out = emptyBackup(`${major}.0`)
 
   let pos = 7
   while (pos + 5 <= bytes.length) {
@@ -357,7 +410,7 @@ export function snapshotToJson (bytes: Uint8Array): ConfigBackupJson {
         out.config[CONFIG_BOOL_FIELDS[i] ?? ''] = !!r.u8()
       }
     } else if (type >= SEC.MODEL_BASE && type < SEC.MODEL_BASE + MODEL_SLOTS) {
-      out.models[type - SEC.MODEL_BASE] = decodeModelTlv(payload)
+      out.models[type - SEC.MODEL_BASE] = decodeModelTlv(payload, legacyMix)
     } else if (type >= SEC.ANALOG_CAL && type <= SEC.ATT_ZERO) {
       // 校准类 section: 已退出备份范围, 导出时丢弃（旧固件快照可能仍携带）
       continue
@@ -370,7 +423,7 @@ export function snapshotToJson (bytes: Uint8Array): ConfigBackupJson {
   return out
 }
 
-// ── 各 section 的构建 ──
+// ── section 构建 ──
 
 function buildConfigSection (cfg: Record<string, number | boolean>): Uint8Array {
   const p = new Writer()

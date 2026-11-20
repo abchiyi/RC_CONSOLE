@@ -607,8 +607,9 @@ function defaultChannel(): ModelChannel {
   }
 }
 
-/** 模型对象 TLV：0x01 name, 0x02..0x11 通道 0..15, 0x12 curve_enabled */
-export function encodeModelTlv(model: ModelConfig): Uint8Array {
+/** 模型对象 TLV：0x01 name, 0x02..0x11 通道 0..15, 0x12 curve_enabled
+ *  legacyMix=true 时按 V1 固件布局编码（0x0F 旧布局, 见 Legacy_Config_Import_Plan.md） */
+export function encodeModelTlv(model: ModelConfig, legacyMix = false): Uint8Array {
   const w = new Writer()
   if (model.name) w.tlv(0x01, new Writer().str(model.name).toBytes())
   if (model.curve_enabled !== undefined) {
@@ -618,7 +619,7 @@ export function encodeModelTlv(model: ModelConfig): Uint8Array {
   const channels = model.channels ?? []
   for (let i = 0; i < 16 && i < channels.length; i++) {
     const ch = channels[i]
-    if (ch) w.tlv(0x02 + i, encodeChannelTlv(ch))
+    if (ch) w.tlv(0x02 + i, encodeChannelTlv(ch, legacyMix))
   }
   return w.toBytes()
 }
@@ -646,7 +647,7 @@ export function encodeModelDiffTlv(
   return w.toBytes()
 }
 
-export function encodeChannelTlv(ch: ModelChannel): Uint8Array {
+export function encodeChannelTlv(ch: ModelChannel, legacyMix = false): Uint8Array {
   const w = new Writer()
   w.tlv(0x01, new Writer().u8(sourceToId(ch.source ?? 'NONE')).toBytes())
   const gears = (ch.gears ?? []).slice(0, GEAR_COUNT)
@@ -673,7 +674,14 @@ export function encodeChannelTlv(ch: ModelChannel): Uint8Array {
   }
   if (ch.mix_items !== undefined) {
     const items = (ch.mix_items ?? []).slice(0, 4)
-    const t = new Writer().u8(items.length)
+    const t = new Writer()
+    if (legacyMix) {
+      // V1 布局: [enabled, count, items...] —— mix_enabled 独立字节 (V1 固件语义)
+      t.u8(ch.mix_enabled ? 1 : 0).u8(items.length)
+    } else {
+      // V2 布局: [count, items...] —— mix 数量由 items 长度派生
+      t.u8(items.length)
+    }
     for (const m of items) t.u8(sourceToId(m.src ?? 'NONE')).i8(m.w ?? 0).u8(m.reverse ? 1 : 0)
     w.tlv(0x0f, t.toBytes())
   }
@@ -686,7 +694,8 @@ export function encodeChannelTlv(ch: ModelChannel): Uint8Array {
   if (ch.aux_source && ch.aux_source !== 'NONE') {
     w.tlv(0x15, new Writer().u8(sourceToId(ch.aux_source)).toBytes())
   }
-  if (ch.default_value !== undefined) {
+  if (ch.default_value !== undefined && !legacyMix) {
+    // 0x16 default_value 是 V2 新增 tag, V1 固件不认识 → V1 布局下跳过
     w.tlv(0x16, new Writer().u16(ch.default_value).toBytes())
   }
   if (ch.triggers?.length) {
@@ -701,7 +710,7 @@ export function encodeChannelTlv(ch: ModelChannel): Uint8Array {
   return w.toBytes()
 }
 
-export function decodeModelTlv(data: Uint8Array): ModelConfig {
+export function decodeModelTlv(data: Uint8Array, legacyMix = false): ModelConfig {
   const model: ModelConfig = { name: '', channels: [], curve_enabled: true, model_id: 0 }
   for (const { tag, value } of parseTlvList(data)) {
     if (tag === 0x01) {
@@ -719,7 +728,7 @@ export function decodeModelTlv(data: Uint8Array): ModelConfig {
       const idx = tag - 0x02
       if (idx < 16) {
         try {
-          model.channels[idx] = decodeChannelTlv(value)
+          model.channels[idx] = decodeChannelTlv(value, legacyMix)
         } catch {
           // 单个通道解析失败不致命, 保留默认通道
         }
@@ -732,7 +741,7 @@ export function decodeModelTlv(data: Uint8Array): ModelConfig {
   return model
 }
 
-function decodeChannelTlv(value: Uint8Array): ModelChannel {
+function decodeChannelTlv(value: Uint8Array, legacyMix = false): ModelChannel {
   const ch: Partial<ModelChannel> = {}
   for (const { tag, value: val } of parseTlvList(value)) {
     const r = new Reader(val)
@@ -773,6 +782,8 @@ function decodeChannelTlv(value: Uint8Array): ModelChannel {
         break
       }
       case 0x0f: {
+        // V2 布局: [count, items...]; V1 布局(legacyMix): [enabled, count, items...]
+        if (legacyMix) ch.mix_enabled = !!r.u8()
         const cnt = Math.min(r.u8(), 4)
         ch.mix_items = []
         for (let i = 0; i < cnt; i++) {
@@ -1042,10 +1053,13 @@ function decodeGetInfo(r: Reader, name: string): Record<string, unknown> {
   for (let i = 0; i < btnCount; i++) button_triggers.push(r.str())
   // 安全模式：0=未加密 1=Development 2=Release（旧固件无此字段，按 0 处理）
   const secure_mode = r.remaining >= 1 ? r.u8() : 0
+  // 配置 schema 版本（备份编解码引擎用，尾追加字段；旧固件无此字段 → undefined，
+  // 由备份流程按 V1 兼容模式处理——未上报等价于早于 V2，见 Legacy_Config_Import_Plan.md §二）
+  const cfg_schema_version = r.remaining >= 2 ? `${r.u8()}.${r.u8()}` : undefined
   return {
     cmd: name, device, fw_version, hw_version,
     model_count, channel_count, input_src_count,
-    input_sources, button_triggers, secure_mode,
+    input_sources, button_triggers, secure_mode, cfg_schema_version,
   }
 }
 

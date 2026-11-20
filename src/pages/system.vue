@@ -971,12 +971,14 @@ async function onExportConfig (): Promise<void> {
 
   try {
     const bytes = await exportSnapshot(backupProgressHandler)
-    const json = snapshotToJson(bytes)
+    const deviceSchema = configStore.deviceInfo?.cfg_schema_version
+    const json = snapshotToJson(bytes, deviceSchema)
     const text = JSON.stringify(json, null, 2)
     const name = `gamepad2rc-config-${new Date().toISOString().slice(0, 10)}.json`
     const saved = await saveTextFile(name, text)
     if (saved) {
-      backupMsg.value = `已导出 ${json.models.length} 个模型槽位（${text.length} 字节）`
+      const compat = deviceSchema === undefined ? '（设备未上报配置版本，按 V1 兼容模式导出）' : ''
+      backupMsg.value = `已导出 ${json.models.length} 个模型槽位（${text.length} 字节）${compat}`
     }
   } catch (e: unknown) {
     backupError.value = `导出失败: ${e instanceof Error ? e.message : String(e)}`
@@ -1000,8 +1002,10 @@ async function onImportConfig (): Promise<void> {
       backupMsg.value = '已取消导入'
       return
     }
-    // 先本地转成快照 (顺带做版本/结构校验与迁移), 避免把坏文件分块推给设备浪费一次会话
-    const { snapshot, notices, slotErrors } = importBackupJson(JSON.parse(file.text) as unknown)
+    // 先本地转成快照 (按设备上报的 schema 版本选引擎做校验/迁移/编码),
+    // 避免把坏文件分块推给设备浪费一次会话。设备未上报版本 → 引擎内部按 V1 兼容模式处理
+    const { snapshot, notices, slotErrors } =
+      importBackupJson(JSON.parse(file.text) as unknown, configStore.deviceInfo?.cfg_schema_version)
     await importSnapshot(snapshot, backupProgressHandler)
     const parts: string[] = ['配置已导入并生效']
     if (notices.length > 0) parts.push(notices.join('；'))
