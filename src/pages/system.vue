@@ -662,7 +662,7 @@ import { useConfigStore } from '@/stores/config'
 import { useNotice } from '@/composables/useNotice'
 import { serialService } from '@/services/SerialService'
 import { exportSnapshot, importSnapshot } from '@/services/configBackup'
-import { jsonToSnapshot, snapshotToJson } from '@/utils/configSnapshot'
+import { importBackupJson, snapshotToJson } from '@/utils/configSnapshot'
 import { openTextFile, saveTextFile } from '@/utils/fileDialog'
 import FirmwareUpgradeDialog from '@/components/FirmwareUpgradeDialog.vue'
 import { useFirmwareReleaseStore } from '@/stores/firmwareRelease'
@@ -1000,10 +1000,15 @@ async function onImportConfig (): Promise<void> {
       backupMsg.value = '已取消导入'
       return
     }
-    // 先本地转成快照 (顺带校验结构与版本), 避免把坏文件分块推给设备浪费一次会话
-    const bytes = jsonToSnapshot(JSON.parse(file.text) as unknown)
-    await importSnapshot(bytes, backupProgressHandler)
-    backupMsg.value = '配置已导入并生效'
+    // 先本地转成快照 (顺带做版本/结构校验与迁移), 避免把坏文件分块推给设备浪费一次会话
+    const { snapshot, notices, slotErrors } = importBackupJson(JSON.parse(file.text) as unknown)
+    await importSnapshot(snapshot, backupProgressHandler)
+    const parts: string[] = ['配置已导入并生效']
+    if (notices.length > 0) parts.push(notices.join('；'))
+    if (slotErrors.length > 0) {
+      parts.push(`另有 ${slotErrors.length} 个槽位导入失败已跳过: ${slotErrors.map(e => `槽${e.slot}(${e.name}) ${e.reason}`).join('；')}`)
+    }
+    backupMsg.value = parts.join('。')
     // 设备侧已落 NVS 并重载运行态: 回读电源设置与设备信息刷新本页
     await reloadAll()
   } catch (e: unknown) {
