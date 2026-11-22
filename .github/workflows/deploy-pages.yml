@@ -34,16 +34,17 @@ jobs:
             exit 78
           fi
 
-          git fetch origin master --depth=1
-          MASTER_SHA=$(git rev-parse origin/master)
-          HEAD_SHA=$(git rev-parse HEAD)
-
-          if [ "$HEAD_SHA" != "$MASTER_SHA" ]; then
-            echo "Tag is not on the current master HEAD. Skipping deployment."
+          # 门禁: tag 必须在 master 历史之内(防止从无关分支/落后分叉发版)。
+          #   不再要求 tag == master 顶端 —— tag 打上后 master 继续前进是常态,
+          #   发布产物 checkout 的是 tag 自身, master 新提交不会进入本次部署。
+          #   注意用完整历史(fetch-depth=0)做祖先判定, 浅克隆会使 merge-base 失效。
+          git fetch origin master
+          if ! git merge-base --is-ancestor HEAD origin/master; then
+            echo "Tag is not on the master history. Skipping deployment."
             exit 78
           fi
 
-          echo "Deploying release $TAG from master"
+          echo "Deploying release $TAG (tag=$(git rev-parse --short HEAD), master=$(git rev-parse --short origin/master))"
 
       - name: Setup Node
         uses: actions/setup-node@v4
